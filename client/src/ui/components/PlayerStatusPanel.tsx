@@ -16,7 +16,7 @@ export function PlayerStatusPanel() {
   const [chosen, setChosen] = useState<SpellId>('ember-bolt');
   const [targetId, setTargetId] = useState('left');
   const [dodgeMode, setDodgeMode] = useState<DodgeMode>('natural');
-  const targets = combatants.filter(actor => actor.side === 'enemy' && !battle.opponents[actor.id].defeated);
+  const targets = combatants.filter(actor => actor.side === 'enemy' && battle.opponents[actor.id] && !battle.opponents[actor.id].defeated);
   const target = targets.some(actor => actor.id === targetId) ? targetId : targets[0]?.id ?? '';
   // Switching element keeps the choice only if it belongs to that element.
   const spell = SPELLS[SPELLS_BY_ELEMENT[element].includes(chosen) ? chosen : SPELLS_BY_ELEMENT[element][0]];
@@ -72,6 +72,7 @@ export function PlayerStatusPanel() {
         disabled={!!battle.pending || battle.activeId !== 'player' || battle.status !== 'active'} onClick={() => battle.rest()}>Rest</button>
       {diagnostics && <><p role="status" aria-live="polite">{!targets.length ? 'The clearing is safe.' : player.magicPower < spell.cost && !battle.pending ? 'Not enough Magic Power — rest or end your turn to recover it.' : battle.message}</p>
       <button type="button" disabled={!!battle.pending || battle.activeId !== 'player'} onClick={() => playerStore.getState().setMagicPower(player.maxMagicPower)}>Refill magic</button>
+      <button type="button" onClick={() => battle.diagnosticKillAll()}>Instant kill all</button>
       <button type="button" onClick={() => { battle.reset(); playerStore.getState().reset(); }}>Reset encounter</button></>}
       <label className="diagnostics-toggle"><input type="checkbox" checked={diagnostics} onChange={event => setDiagnostics(event.target.checked)} />Enable diagnostics</label>
     </footer>

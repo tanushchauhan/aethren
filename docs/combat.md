@@ -183,3 +183,52 @@ Every active opponent displays its move name beneath its sprite, from preparatio
 The supplied Jaw and Grab video is stored at `client/public/art/combat/moves/jaw-grab.mp4`. It plays source seconds 0–4.95 at 1.35×, with the forward bite landing at source time 1.8 seconds. It costs 8 Energy (versus Slash’s 4 and Roar’s 3), deals the wolf’s normal health damage (including Roused), and removes 55 stance. Guarding halves both damage types. It refreshes the existing Bleeding effect. Impact is idempotent even if video playback fails. Its cooldown ticks on its owner’s turn starts.
 
 Player **Rest** is available alongside End turn, outside diagnostics. It immediately restores 45 stance (the current stamina/balance reserve) and 3 Magic Power, clamped to their maxima, then spends the turn. It neither heals Health nor removes Bleeding. Normal turn-start recovery and bleed ticks still occur. No separate player Energy meter is introduced. Rest is blocked during casts, opponent turns, and completed encounters, including repeated clicks.
+
+## Final boss — The Ruined Gatekeeper
+
+Victory over the wolves unlocks: silhouette forest sprint → deserted castle dialogue → supplied descent video (3) → gatekeeper warning → final battle. The child recovers Health and stance to 100 and Magic Power to 12 before this battle. Death never advances the story. Boss victory opens the demo-complete screen; Retry restarts the boss, while a new adventure resets to wolves.
+
+The boss uses its own encounter roster (`encounterId: 'knight'`); wolf actors are absent. It shares validated spell resolution, status effects, turn order, move captions, Rest, media fallbacks and the player HUD. The castle image is a separate background, the knight an independent transparent sprite, and each move a canvas-keyed video. Boss music is the supplied The Final Lurch track (`/audio/the-final-lurch.mp3`).
+
+| Boss property | Initial tuning |
+| --- | --- |
+| Health | 240 |
+| Armor | 4 flat reduction; Fire Lance still pierces |
+| Energy | 16 maximum; +3 at own turn start; Rest +5 |
+| Dodge | None naturally |
+| Frozen | Caps each application at one skipped turn |
+
+| Move | Cost / cooldown | Health / stance damage | Added effect |
+| --- | --- | --- | --- |
+| Scorn Cleave (video 1) | 5 / none | 14 / 26 | Scorn for 3 player-turn starts |
+| Eclipse of Scorn (video 2) | 12 / 3 own-turn starts | 22 / 50 | Eclipse for 2 player-turn starts |
+| Rest | 0 / none | None | +5 Energy |
+
+The knight opens with Cleave, then uses Eclipse whenever affordable and off cooldown; otherwise it cleaves or rests. Chilled reduces both damage types by 30%. Drained forces Rest; other spell effects remain supported. Guarding halves damage and shields can fully prevent the attached curse. Costs and impacts apply once, including failed-video fallback.
+
+**Scorn** (purple skull): 3 Health lost per player-turn start. **Eclipse** (purple moon): 4 Health lost per player-turn start, zero passive MP recovery, and stance recovery reduced from 35 to 15. Rest still grants its explicit recovery. Effects refresh instead of stacking with themselves; different effects coexist. They tick and count down on the player's turn start and expire normally. Purple hit feedback distinguishes curses from bleeding.
+
+All three source clips are preserved in `client/public/art/boss/`. Attack playback is 0–4.95 seconds at 1.35×; Cleave impacts at source 1.4s and Eclipse at 1.35s. Arrival drops in 0.42 seconds; the landing animation completion synchronizes camera shake, debris, expanding ground rings, dust and the supplied earth-impact sound. The video continues after landing. Skip arrival, reduced-motion static playback and finite video-error fallback prevent the story from getting stuck.
+
+Generated story art and the exact built-in image generator prompts are in `client/public/art/boss/forest-escape.png`, `castle-gate.png`, and `journey-art.prompts.txt`. The full scene fits the viewport; no additional scrolling or runtime generation is introduced. These boss values need playtesting rather than being final difficulty tuning.
+
+### Boss presentation and diagnostic shortcut
+
+Enable diagnostics reveals **Instant kill all**, for either encounter and on any active turn. It clears enemy HP/statuses, cancels pending casts and enemy actions, restores casting stance, and invokes normal victory/Continue flow. Stale callbacks cannot deal further damage. It is ignored once an encounter is won or lost.
+
+The supplied `The Final Lurch.mp3` loops only in the boss fight. `gatekeeper-impact.wav` plays once on landing, with a dry hit and a quieter 2.2-second stereo convolution reverb tail. Audio is prepared before the descent, observes mute and hidden-tab handling, and is released when the scene ends. Skipping before landing does not play the impact.
+
+The landing has a brief strong decaying camera shake, two shock rings, stone debris and dust using existing Kenney textures. Reduced motion removes shake, debris and the drop, retaining a short arrival fade and impact audio. A mild translucent purple tint and slowly drifting smoke sit over the castle scene, below the readable player UI. Smoke is static with reduced motion. No gradients were added.
+
+
+## Scorn Inferno and purple fire
+
+The knight continuously wears a rendered purple flame aura: tinted Kenney flame and smoke sprites rise and curl into thin wisps, separate from the character art. The supplied `scorn-inferno.mp4` is used for **Scorn Inferno** (16 energy, 7-own-turn-start cooldown, impact at source 1.5 seconds). After three actions, when it is off cooldown, he rests to save enough energy, then uses it. Frozen and Drained can still interrupt the setup.
+
+The initial blast deals 10 health / 35 stance (modified by Chilled/Guarding/shields) and applies Scorn. It ignites the battlefield for **five player turns**, dealing 4 health at each player-turn start while active, including the first hand-back after activation. The visible counter counts down when the player ends a turn or Rests. Ice Shield absorbs field damage; the field does not add bleeding or stance damage. Individual spell casts and animation time do not consume its duration. Victory, defeat, a reset, and Instant kill all clear the fire immediately.
+
+Field flames appear across the floor and sides of the screen with drifting smoke and wisps; the player HUD stays readable. Reduced motion keeps a static flame composition. No gradients or runtime asset generation are used.
+
+The supplied samurai-sword AIFF is converted to `axe-swing.wav` and plays once 0.25 source seconds before the impact of Cleave and Eclipse. The supplied fireplace recording is `scorn-flames.wav`: it accents the ultimate and loops quietly for the field's lifetime. Playback respects mute, visibility, and cleanup; skipped/cancelled moves cannot leave audio running.
+
+Boss landing presentation now uses a 1.2-second decaying camera shake peaking at 98px horizontal / 74px vertical, with up to 2.2° roll and a brief 1.28× punch-in to cover frame edges. A damaging direct boss attack draws one broad diagonal, jagged purple axe gash across the view. Ongoing curse/field ticks and fully shielded hits do not draw new gashes. Reduced motion omits both camera movement and the slash animation.

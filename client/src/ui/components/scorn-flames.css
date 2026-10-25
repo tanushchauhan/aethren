@@ -1,0 +1,4 @@
+.scorn-knight-aura { position: absolute; inset: -18% -12% -12%; width: 124%; height: 130%; pointer-events: none; opacity: .85; filter: drop-shadow(0 0 9px #8e3acb); }
+.scorn-field-flames { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; filter: drop-shadow(0 0 7px #852bd8); }
+.scorn-field-label { position: absolute; top: 75px; right: 26px; z-index: 5; color: #e3baff; border: 1px solid #b477dc; background: #1b1028dc; padding: 8px 12px; font-size: 16px; pointer-events: none; }
+.scorn-ultimate-charge { position: absolute; inset: 0; box-shadow: inset 0 0 100px #782ba566; pointer-events: none; z-index: 3; }

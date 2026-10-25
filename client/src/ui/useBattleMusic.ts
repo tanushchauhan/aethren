@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react';
 
-export function useBattleMusic(muted: boolean) {
+export function useBattleMusic(muted: boolean, src = '/audio/final-surge.mp3') {
   const audio = useRef<HTMLAudioElement | null>(null);
   const isMuted = useRef(muted);
   isMuted.current = muted;
   useEffect(() => {
-    const track = new Audio('/audio/final-surge.mp3');
+    const track = new Audio(src);
     audio.current = track;
     track.loop = true;
     track.volume = 0;
@@ -24,6 +24,6 @@ export function useBattleMusic(muted: boolean) {
       window.removeEventListener('keydown', start);
       document.removeEventListener('visibilitychange', visibility);
     };
-  }, []);
+  }, [src]);
   useEffect(() => { if (audio.current) audio.current.muted = muted; }, [muted]);
 }

@@ -1,5 +1,7 @@
 /** Shared vocabulary for active effects; add definitions here as mechanics are implemented. */
 export const STATUS_EFFECTS = {
+  scorn: { label: 'Scorn', description: 'Lose 3 health at the start of your turn.', icon: 'skull', color: '#c597ff' },
+  eclipse: { label: 'Eclipse', description: 'Lose 4 health per turn. No passive Magic Power recovery; stance recovers only 15 per turn. Rest still works.', icon: 'moon', color: '#a883ed' },
   bleeding: { label: 'Bleeding', description: 'Lose 2 health at the start of your turn.', icon: 'droplet', color: '#ff899c' },
   roused: { label: 'Roused', description: 'Damage increased by 25%; armor increased by 2.', icon: 'swords', color: '#ffd585' },
   burning: { label: 'Burning', description: 'Takes fire damage at the start of each of its turns, ignoring armor.', icon: 'flame', color: '#ff9a52' },

@@ -1,9 +1,9 @@
 import { useId, useState } from 'react';
-import { ChevronDown, ChevronUp, Droplet, Flame, Shield, Snowflake, Swords, ThermometerSnowflake, Zap, ZapOff } from 'lucide-react';
+import { Moon, Skull, ChevronDown, ChevronUp, Droplet, Flame, Shield, Snowflake, Swords, ThermometerSnowflake, Zap, ZapOff } from 'lucide-react';
 import { STATUS_EFFECTS, type StatusEffect } from '../../combat/statusEffects';
 import './status-effects.css';
 
-const icons = { droplet: Droplet, swords: Swords, flame: Flame, 'thermometer-snowflake': ThermometerSnowflake, snowflake: Snowflake, 'zap-off': ZapOff, shield: Shield, zap: Zap };
+const icons = { skull: Skull, moon: Moon, droplet: Droplet, swords: Swords, flame: Flame, 'thermometer-snowflake': ThermometerSnowflake, snowflake: Snowflake, 'zap-off': ZapOff, shield: Shield, zap: Zap };
 export function StatusEffectIcon({ effect }: { effect: StatusEffect }) {
   const definition = STATUS_EFFECTS[effect.id], Icon = icons[definition.icon];
   const strength = effect.id === 'shielded' ? ` ${effect.amount} points left.` : effect.id === 'burning' ? ` ${effect.amount} damage per turn.` : '';

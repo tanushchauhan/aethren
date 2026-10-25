@@ -12,12 +12,17 @@ import { PlayerWards, WolfStatusAura } from './components/StatusAuras';
 import { WolfMoveAnimation } from './components/WolfMoveAnimation';
 import { SpellEffect } from './components/SpellEffect';
 import { PlayerStatusPanel } from './components/PlayerStatusPanel';
+import { ScornFlames } from './components/ScornFlames';
+import { useFieldFlamesSound } from './useFieldFlamesSound';
+import { BossAtmosphere } from './components/BossAtmosphere';
 import { RainOverlay } from './components/RainOverlay';
 import './wolf-combat-stage.css';
 import { useBattleMusic } from './useBattleMusic';
 
 export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: boolean; onToggleSound: () => void; onContinue: () => void }) {
-  const { opponents, pending, feedback, activeId, turnNumber, enemyTurn, status } = useSpellBattle();
+  const { opponents, pending, feedback, activeId, turnNumber, enemyTurn, status, encounterId, fieldTurns } = useSpellBattle();
+  useFieldFlamesSound(fieldTurns > 0 && status === 'active', muted);
+  const boss = encounterId === 'knight';
   const hurt = usePlayerState(state => state.hurt);
   const lowHealth = usePlayerState(state => lowHealthIntensity(state.health, state.maxHealth));
   const bleeding = usePlayerState(state => state.statuses.some(effect => effect.id === 'bleeding'));
@@ -49,7 +54,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
   const tick = feedback.find(entry => entry.castId === null && entry.kind === 'hurt');
   useEffect(() => { if (tick && !muted) playImpactSound(SPELLS['ember-bolt'], true); }, [tick?.id]);
   useEffect(() => () => useSpellBattle.getState().cancelCast(), []);
-  useBattleMusic(muted);
+  useBattleMusic(muted, boss ? '/audio/the-final-lurch.mp3' : '/audio/final-surge.mp3');
   useEffect(() => {
     if (!enemyTurn || status !== 'active') return;
     if (!enemyMove) {
@@ -64,22 +69,22 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
   }, [activeId, enemyMove?.id, enemyMove?.phase, reduced, status]);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { heading.current?.focus(); }, []);
-  return <motion.main className="wolf-combat-stage" aria-label="Wolf combat stage"
+  return <motion.main className={`wolf-combat-stage${boss ? ' boss-combat-stage' : ''}`} aria-label={boss ? 'Gatekeeper combat stage' : 'Wolf combat stage'}
     initial={{ opacity: 0 }} animate={{ opacity: leaving ? 0 : 1 }} transition={{ duration: reduced ? .15 : leaving ? .65 : 1.1 }}
     onAnimationComplete={() => { if (leaving) onContinue(); }}>
     <div ref={world} className="combat-world">
-    <img className="wolf-combat-backdrop" src="/art/combat/wolf-clearing.png" alt="A moonlit forest clearing surrounded by wet bushes" />
+    <img className="wolf-combat-backdrop" src={boss ? '/art/boss/castle-gate.png' : '/art/combat/wolf-clearing.png'} alt={boss ? 'The deserted kingdom gate' : 'A moonlit forest clearing surrounded by wet bushes'} />
     {turnNumber === 1 && status === 'active' && <motion.header className="wolf-combat-heading" initial={{ opacity: 1 }} animate={{ opacity: 0 }}
       transition={{ delay: 4.5, duration: reduced ? .15 : 1.5 }}>
-      <p>Encounter I</p><h1 ref={heading} tabIndex={-1}>The wolves of the vale</h1>
+      <p>{boss ? 'Final encounter' : 'Encounter I'}</p><h1 ref={heading} tabIndex={-1}>{boss ? 'The Ruined Gatekeeper' : 'The wolves of the vale'}</h1>
     </motion.header>}
     {status === 'active' && <motion.header key={turnNumber} className="wolf-combat-heading turn-announcement" role="status"
       initial={{ opacity: 0 }} animate={{ opacity: [0, 1, 1, 0] }}
       transition={{ delay: turnNumber === 1 ? 6.2 : 0, duration: reduced ? 1.4 : 2.5, times: [0, .12, .75, 1] }}>
       <p>Turn {turnNumber}</p><h2>{activeId === 'player' ? 'Your turn' : `${combatants.find(actor => actor.id === activeId)?.name}’s turn`}</h2>
     </motion.header>}
-    <div className="wolf-formation" role="group" aria-label="Three wolf combatants">
-      {combatants.filter(actor => actor.side === 'enemy').map((wolf, i) => {
+    <div className="wolf-formation" role="group" aria-label={boss ? 'The Ruined Gatekeeper' : 'Three wolf combatants'}>
+      {combatants.filter(actor => actor.side === 'enemy' && opponents[actor.id]).map((wolf, i) => {
         const stats = opponents[wolf.id];
         const reaction = feedback.find(entry => entry.targetId === wolf.id) ?? null;
         const acting = enemyMove?.actorId === wolf.id;
@@ -92,9 +97,10 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
           transition={{ delay: reduced ? 0 : stats.defeated ? HIT_TIMING.react * .8 : 2.5 + i * .3, duration: reduced ? 0 : stats.defeated ? .6 : 2.8 }}>
           <motion.div key={reaction?.id ?? 0} initial={false}
             animate={struck ? { x: [0, 0, 20 * knock, -7 * knock, 2 * knock, 0], y: [0, 0, -16, 5, 0, 0], scale: [1, 1.07, .9, 1.03, 1, 1] }
-              : { x: forward && !reduced ? `${(1 - i) * 113.043}%` : !reduced && reaction ? [0, i === 2 ? 45 : -45, 0] : 0, y: forward && !reduced ? 40 : 0, scale: !reduced && forward ? 1.15 : 1 }}
+              : { x: forward && !reduced ? `${boss ? 0 : (1 - i) * 113.043}%` : !reduced && reaction ? [0, i === 2 ? 45 : -45, 0] : 0, y: forward && !reduced ? 40 : 0, scale: !reduced && forward ? 1.15 : 1 }}
             transition={struck ? { duration: HIT_TIMING.react, times: [0, stop, stop + .18, stop + .42, stop + .64, 1], ease: 'easeOut' }
               : { duration: reduced ? .1 : .55 }} className={`wolf-combatant ${wolf.kind}${activeId === wolf.id ? ' is-active' : ''}${isRoused(stats) ? ' is-roused' : ''}`}>
+            {boss && !stats.defeated && <ScornFlames reduced={!!reduced} />}
             <div className="wolf-bars">
               {[{ id: 'health', value: stats.hp, max: wolf.maxHp }, { id: 'energy', value: stats.energy, max: wolf.maxEnergy }].map(stat =>
                 <div className={`wolf-stat-bar ${stat.id}`} key={stat.id}>
@@ -128,6 +134,9 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
     <RainOverlay />
     {pending && <SpellEffect key={pending.id} cast={pending} hits={castHits} reduced={!!reduced} />}
     <PlayerWards reduced={!!reduced} />
+    {boss && <BossAtmosphere />}
+    {boss && enemyMove?.moveId === 'scorn-inferno' && <div className="scorn-ultimate-charge" aria-hidden="true" />}
+    {fieldTurns > 0 && status === 'active' && <ScornFlames field reduced={!!reduced} />}
     </div>
     {(lowHealth > 0 || bleeding) && <div className="low-health-overlay" aria-hidden="true" style={{
       backdropFilter: `grayscale(${lowHealth})`, WebkitBackdropFilter: `grayscale(${lowHealth})`,
@@ -137,16 +146,18 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
     </div>}
     {hurt && <motion.div key={hurt.id} className={`player-hurt-overlay ${hurt.kind}`} aria-hidden="true"
       initial={{ opacity: reduced ? .35 : 1 }} animate={{ opacity: 0 }} transition={{ duration: .85 }}>
+      {!reduced && hurt.impact === 'axe' && <div className="player-axe-gash"><i className="gash-glow" /><i className="gash-wound" /><i className="gash-edge" /><i className="gash-splinter" /></div>}
       {!reduced && hurt.kind === 'slash' && <div className="player-slash-marks"><i /><i /><i /></div>}
-      <span>{hurt.kind === 'blocked' ? `Shield blocked ${hurt.absorbed}` : `−${hurt.damage}${hurt.kind === 'bleed' ? ' · Bleeding' : ''}${hurt.absorbed ? ` · ${hurt.absorbed} blocked` : ''}`}</span>
+      <span>{hurt.kind === 'blocked' ? `Shield blocked ${hurt.absorbed}` : `−${hurt.damage}${hurt.kind === 'bleed' ? ' · Bleeding' : hurt.kind === 'curse' ? ' · Scorn' : ''}${hurt.absorbed ? ` · ${hurt.absorbed} blocked` : ''}`}</span>
     </motion.div>}
     {status === 'lost' && <section className="encounter-victory" role="alert">
-      <p>Encounter lost</p><h2>The vale claims another</h2><span>Your health has fallen to zero.</span>
+      <p>Encounter lost</p><h2>{boss ? 'The gate remains sealed' : 'The vale claims another'}</h2><span>Your health has fallen to zero.</span>
       <button autoFocus onClick={() => { playerStore.getState().reset(); useSpellBattle.getState().reset(); }}>Try again</button>
     </section>}
+    {fieldTurns > 0 && status === 'active' && <div className="scorn-field-label" role="status">Scorn Inferno · {fieldTurns} turns</div>}
     <aside className="combat-queue" aria-label="Turn order">
       <ol>
-        {(enemyTurn?.queue ?? ['player', ...combatants.filter(actor => actor.side === 'enemy' && !opponents[actor.id].defeated).map(actor => actor.id)]).map(id => combatants.find(actor => actor.id === id)!).map((actor, index) => <li key={actor.id}
+        {(enemyTurn?.queue ?? ['player', ...combatants.filter(actor => actor.side === 'enemy' && opponents[actor.id] && !opponents[actor.id].defeated).map(actor => actor.id)]).map(id => combatants.find(actor => actor.id === id)!).map((actor, index) => <li key={actor.id}
           className={actor.id === activeId ? 'is-current' : ''} aria-current={index === 0 ? 'step' : undefined}
           aria-label={`${actor.name}, ${index === 0 ? 'ready' : `position ${index + 1}`}`} title={actor.name}>
           <span className={`queue-portrait ${actor.side} ${actor.kind}`}><img src={actor.sprite} alt="" /></span>
@@ -155,8 +166,8 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
     </aside>
     {status === 'active' && <PlayerStatusPanel />}
     {status === 'won' && <motion.section className="encounter-victory" aria-labelledby="victory-title" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: reduced ? .1 : .8 }}>
-      <p>Encounter won</p><h2 id="victory-title">The vale falls silent</h2>
-      <span>The path beyond the clearing is open.</span>
+      <p>Encounter won</p><h2 id="victory-title">{boss ? 'The Scorn is broken' : 'The vale falls silent'}</h2>
+      <span>{boss ? 'The kingdom awaits beyond the gate.' : 'The path beyond the clearing is open.'}</span>
       <button ref={victoryButton} disabled={leaving} onClick={() => setLeaving(true)}>Continue <span aria-hidden="true">➜</span></button>
     </motion.section>}
     <button className="intro-sound" aria-pressed={muted} onClick={onToggleSound}>{muted ? 'Sound off' : 'Sound on'}</button>

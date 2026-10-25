@@ -33,17 +33,23 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onCo
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const video = useRef<HTMLVideoElement | null>(null);
+  const effectAudio = useRef<HTMLAudioElement | null>(null);
   const callbacks = useRef({ onImpact, onComplete });
   callbacks.current = { onImpact, onComplete };
   const mutedRef = useRef(muted); mutedRef.current = muted;
   const [ready, setReady] = useState(false);
   useEffect(() => {
     let done = false, impacted = false, raf = 0, elapsed = 0, previous = performance.now(), lastDraw = -1;
-    const impact = () => { if (!impacted) { impacted = true; callbacks.current.onImpact(); } };
+    const sound = move.sound ? new Audio(move.sound) : null;
+    effectAudio.current = sound;
+    if (sound) { sound.volume = .55; sound.muted = mutedRef.current; sound.preload = 'auto'; }
+    let sounded = false;
+    const playSound = () => { if (sound && !sounded) { sounded = true; if (!document.hidden) void sound.play().catch(() => {}); } };
+    const impact = () => { if (!impacted) { impacted = true; playSound(); callbacks.current.onImpact(); } };
     const finish = () => { if (!done) { done = true; impact(); callbacks.current.onComplete(); } };
     const track = document.createElement('video');
     video.current = track;
-    track.playbackRate = 1.35; track.muted = mutedRef.current; track.volume = .65; track.playsInline = true; track.preload = 'auto';
+    track.playbackRate = 1.35; track.muted = !!move.sound || mutedRef.current; track.volume = .65; track.playsInline = true; track.preload = 'auto';
     const ctx = canvas.current?.getContext('2d', { willReadFrequently: true });
     const width = 768, height = 512;
     const visited = new Uint8Array(width * height), queue = new Int32Array(width * height);
@@ -54,7 +60,7 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onCo
         track.muted = true; void track.play().catch(finish);
       });
     };
-    const visibility = () => { previous = performance.now(); if (document.hidden) track.pause(); else start(); };
+    const visibility = () => { previous = performance.now(); if (document.hidden) { track.pause(); sound?.pause(); } else { start(); if (sounded && sound && !sound.ended) void sound.play().catch(() => {}); } };
     const tick = (now: number) => {
       if (done) return;
       const delta = Math.min(now - previous, 250); previous = now;
@@ -70,10 +76,21 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onCo
               try {
                 ctx.drawImage(track, 0, 0, width, height);
                 const pixels = ctx.getImageData(0, 0, width, height);
-                clearBackdrop(pixels, visited, queue); ctx.putImageData(pixels, 0, 0);
+                clearBackdrop(pixels, visited, queue);
+                // Boss clips also contain white matte islands inside the torn cape/axe.
+                // Remove these neutral whites while retaining the colored Scorn glow.
+                if (move.video?.startsWith('/art/boss/')) {
+                  for (let i = 0; i < pixels.data.length; i += 4) {
+                    const lo = Math.min(pixels.data[i], pixels.data[i + 1], pixels.data[i + 2]);
+                    const hi = Math.max(pixels.data[i], pixels.data[i + 1], pixels.data[i + 2]);
+                    if (lo > 235 && hi - lo < 18) pixels.data[i + 3] = 0;
+                  }
+                }
+                ctx.putImageData(pixels, 0, 0);
                 setReady(true);
               } catch { finish(); }
             }
+            if (track.currentTime >= move.impact - .25) playSound();
             if (track.currentTime >= move.impact) impact();
             if (track.currentTime >= move.end) finish();
           }
@@ -90,11 +107,12 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onCo
     raf = requestAnimationFrame(tick);
     return () => {
       done = true; cancelAnimationFrame(raf); track.onloadedmetadata = null; track.onseeked = null; track.onended = null; track.onerror = null;
+      if (sound) { sound.pause(); sound.removeAttribute('src'); sound.load(); } effectAudio.current = null;
       track.pause(); track.removeAttribute('src'); track.load(); video.current = null;
       document.removeEventListener('visibilitychange', visibility);
     };
   }, [move, reduced]);
-  useEffect(() => { if (video.current) video.current.muted = muted; }, [muted]);
+  useEffect(() => { if (video.current) video.current.muted = !!move.sound || muted; if (effectAudio.current) effectAudio.current.muted = muted; }, [muted, move.sound]);
   return <div className="wolf-move-animation" data-move={move.id}>
     <img className="wolf-sprite" src={sprite} alt="" style={{ opacity: ready ? 0 : 1 }} />
     <canvas ref={canvas} width={768} height={512} aria-label={move.name} role="img" style={{ opacity: ready ? 1 : 0 }} />

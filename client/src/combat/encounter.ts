@@ -1,10 +1,14 @@
 import { hasStatus, withStatus, type StatusEffect } from './statusEffects';
-export type MoveId = 'roar' | 'charge-slash' | 'jaw-grab' | 'rest';
-export type CombatMove = { id: MoveId; name: string; cost: number; cooldown: number; video?: string; start: number; impact: number; end: number };
+export type MoveId = 'roar' | 'charge-slash' | 'jaw-grab' | 'rest' | 'dark-slash' | 'aura-flash' | 'descent' | 'scorn-inferno';
+export type CombatMove = { id: MoveId; name: string; cost: number; cooldown: number; video?: string; sound?: string; start: number; impact: number; end: number };
 export const moves: Record<MoveId, CombatMove> = {
   roar: { id: 'roar', name: 'Roar', cost: 3, cooldown: 3, video: '/art/combat/moves/roar.mp4', start: 0, impact: 1.5, end: 4.8 },
   'charge-slash': { id: 'charge-slash', name: 'Charge and Slash', cost: 4, cooldown: 0, video: '/art/combat/moves/charge-slash.mp4', start: 4.8, impact: 6.2, end: 9.95 },
   'jaw-grab': { id: 'jaw-grab', name: 'Jaw and Grab', cost: 8, cooldown: 3, video: '/art/combat/moves/jaw-grab.mp4', start: 0, impact: 1.8, end: 4.95 },
+  'dark-slash': { id: 'dark-slash', name: 'Scorn Cleave', cost: 5, cooldown: 0, video: '/art/boss/dark-slash.mp4', sound: '/audio/axe-swing.wav', start: 0, impact: 1.4, end: 4.95 },
+  'aura-flash': { id: 'aura-flash', name: 'Eclipse of Scorn', cost: 12, cooldown: 3, video: '/art/boss/aura-flash.mp4', sound: '/audio/axe-swing.wav', start: 0, impact: 1.35, end: 4.95 },
+  'scorn-inferno': { id: 'scorn-inferno', name: 'Scorn Inferno', cost: 16, cooldown: 7, video: '/art/boss/scorn-inferno.mp4', sound: '/audio/scorn-flames.wav', start: 0, impact: 1.5, end: 4.95 },
+  descent: { id: 'descent', name: 'The gatekeeper descends', cost: 0, cooldown: 0, video: '/art/boss/descent.mp4', start: 0, impact: 1.8, end: 4.95 },
   rest: { id: 'rest', name: 'Rest', cost: 0, cooldown: 0, start: 0, impact: .3, end: .8 },
 };
 export type Combatant = {
@@ -17,22 +21,27 @@ export const combatants: Combatant[] = [
   { id: 'center', name: 'Pack leader', side: 'enemy', sprite: '/art/combat/wolf-leader.png', kind: 'leader', maxHp: 60, maxEnergy: 10, damage: 12, armor: 1, moves: ['roar', 'charge-slash', 'jaw-grab', 'rest'] },
   { id: 'right', name: 'Right wolf', side: 'enemy', sprite: '/art/combat/wolf-stalker.png', kind: 'flank mirrored', maxHp: 40, maxEnergy: 10, damage: 8, armor: 0, moves: ['roar', 'charge-slash', 'jaw-grab', 'rest'] },
 ];
+export const knight: Combatant = { id: 'knight', name: 'The Ruined Gatekeeper', side: 'enemy', sprite: '/art/boss/ruined-knight-advancing.png', kind: 'knight', maxHp: 240, maxEnergy: 16, damage: 14, armor: 4, moves: ['dark-slash', 'aura-flash', 'scorn-inferno', 'rest'] };
+combatants.push(knight);
+export type EncounterId = 'wolves' | 'knight';
+export const rosterFor = (id: EncounterId) => combatants.filter(actor => actor.side === 'player' || (id === 'knight' ? actor.id === 'knight' : actor.id !== 'knight'));
 export const definition = (id: string) => combatants.find(actor => actor.id === id)!;
 export type OpponentStatus = StatusEffect<'roused' | 'burning' | 'chilled' | 'frozen' | 'drained'> & { source: string; appliedAction: number };
 /** Player spells are not opponent actions, so their effects start ticking on the target's very next turn. */
 export const PLAYER_ACTION = -1;
 export type ActorState = { hp: number; energy: number; cooldowns: Partial<Record<MoveId, number>>; statuses: OpponentStatus[]; turns: number; defeated: boolean };
 export type PendingMove = { id: number; actorId: string; moveId: MoveId; phase: 'approaching' | 'playing' | 'returning'; resolved: boolean };
-export type AttackEvent = { actionId: number; source: string; target: string; damage: number; stanceDamage: number; type: 'standard' | 'grab' };
+export type AttackEvent = { actionId: number; source: string; target: string; damage: number; stanceDamage: number; type: 'standard' | 'grab' | 'scorn' | 'eclipse' | 'inferno' };
 export type EncounterState = {
   actors: Record<string, ActorState>; queue: string[]; round: number; roundPending: string[];
   serial: number; action: PendingMove | null; lastMove: string; lastAttack: AttackEvent | null;
   /** The latest start-of-turn burn, so the scene can show it once. */
   lastTick: { serial: number; actorId: string; damage: number } | null;
 };
-export function createEncounter(): EncounterState {
-  const queue = combatants.map(actor => actor.id);
-  return { actors: Object.fromEntries(combatants.map(actor => [actor.id, { hp: actor.maxHp, energy: actor.maxEnergy, cooldowns: {}, statuses: [], turns: 0, defeated: false }])),
+export function createEncounter(id: EncounterId = 'wolves'): EncounterState {
+  const roster = rosterFor(id);
+  const queue = roster.map(actor => actor.id);
+  return { actors: Object.fromEntries(roster.map(actor => [actor.id, { hp: actor.maxHp, energy: actor.maxEnergy, cooldowns: {}, statuses: [], turns: 0, defeated: false }])),
     queue, round: 1, roundPending: [...queue], serial: 0, action: null, lastMove: 'The encounter begins.', lastAttack: null, lastTick: null };
 }
 export const isRoused = (actor: ActorState) => hasStatus(actor.statuses, 'roused');
@@ -46,6 +55,12 @@ export function canUseMove(id: string, actor: ActorState, move: MoveId) {
 }
 export function selectMove(id: string, actor: ActorState): MoveId {
   if (hasStatus(actor.statuses, 'drained')) return 'rest';
+  if (id === 'knight') {
+    // Save energy for the ultimate after three actions; Drain and Freeze still interrupt.
+    if (actor.turns >= 3 && !(actor.cooldowns['scorn-inferno'] ?? 0)) return canUseMove(id, actor, 'scorn-inferno') ? 'scorn-inferno' : 'rest';
+    if (actor.turns > 0 && canUseMove(id, actor, 'aura-flash')) return 'aura-flash';
+    return canUseMove(id, actor, 'dark-slash') ? 'dark-slash' : 'rest';
+  }
   if (actor.turns === 0 && id !== 'center' && canUseMove(id, actor, 'charge-slash')) return 'charge-slash';
   if (actor.energy < 4) return 'rest';
   if (actor.turns > 0 && isRoused(actor) && canUseMove(id, actor, 'jaw-grab')) return 'jaw-grab';
@@ -83,6 +98,11 @@ function resolveMove(state: EncounterState): EncounterState {
     // The battle store consumes this event once and applies player health, stance and bleeding.
     lastAttack = { actionId: action.id, source: action.actorId, target: 'player', damage: attackDamage(action.actorId, actor), stanceDamage: Math.floor((action.moveId === 'jaw-grab' ? 55 : action.actorId === 'center' ? 30 : 22) * chill(actor)), type: action.moveId === 'jaw-grab' ? 'grab' : 'standard' };
   }
+  if (action.moveId === 'dark-slash' || action.moveId === 'aura-flash') {
+    const aura = action.moveId === 'aura-flash';
+    lastAttack = { actionId: action.id, source: action.actorId, target: 'player', damage: Math.floor((aura ? 22 : 14) * chill(actor)), stanceDamage: Math.floor((aura ? 50 : 26) * chill(actor)), type: aura ? 'eclipse' : 'scorn' };
+  }
+  if (action.moveId === 'scorn-inferno') lastAttack = { actionId: action.id, source: action.actorId, target: 'player', damage: Math.floor(10 * chill(actor)), stanceDamage: Math.floor(35 * chill(actor)), type: 'inferno' };
   return { ...state, actors: { ...state.actors, [action.actorId]: updated }, lastAttack,
     action: { ...action, resolved: true }, lastMove: `${definition(action.actorId).name} used ${moves[action.moveId].name}.` };
 }

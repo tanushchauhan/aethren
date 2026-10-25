@@ -98,3 +98,13 @@
 .wolf-hit-feedback.effect { font-size: 30px; color: #e6f8ff; text-shadow: 2px 0 #12324a, -2px 0 #12324a, 0 2px #12324a, 0 -2px #12324a, 0 0 14px #7fd8ff; }
 .player-hurt-overlay.blocked { box-shadow: inset 0 0 70px 14px #7fd8ff66; }
 .player-hurt-overlay.blocked > span { color: #d9f6ff; }
+
+/* A single broad axe cut, distinct from wolf claws and ongoing curse ticks. */
+.player-axe-gash { position: absolute; left: 18%; top: 38%; width: 64%; height: 90px; transform: rotate(-28deg); transform-origin: center; filter: drop-shadow(0 0 16px #a743df); animation: axe-gash-cut .18s ease-out both; }
+.player-axe-gash i { position: absolute; inset: 0; display: block; clip-path: polygon(0 51%,18% 40%,34% 45%,47% 28%,58% 38%,75% 29%,100% 39%,83% 53%,68% 59%,53% 76%,40% 61%,21% 66%); transform-origin: left center; }
+.player-axe-gash .gash-glow { background: #bc6ff4; transform: scaleY(1.35); opacity: .8; }
+.player-axe-gash .gash-wound { background: #160817; }
+.player-axe-gash .gash-edge { background: #f6d9ff; inset: 29% 0 48%; filter: drop-shadow(0 0 8px #dc8aff); }
+.player-axe-gash .gash-splinter { background: #c998e9; inset: 68% 22% 14% 42%; transform: rotate(-8deg); opacity: .8; }
+@keyframes axe-gash-cut { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(-40px); } }
+@media (prefers-reduced-motion: reduce) { .player-axe-gash { display: none; } }

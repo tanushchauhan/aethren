@@ -19,11 +19,12 @@ export type AttackRequest = {
 export interface PlayerState extends PlayerStats {
   statuses: PlayerStatus[];
   /** `absorbed` is what an Ice Shield soaked up; a fully absorbed hit is `blocked`. */
-  hurt: { id: number; damage: number; absorbed?: number; kind: 'slash' | 'bleed' | 'blocked' } | null;
+  hurt: { id: number; damage: number; absorbed?: number; impact?: 'axe'; kind: 'slash' | 'bleed' | 'blocked' | 'curse' } | null;
   addStatus: (effect: PlayerStatus) => void;
   removeStatus: (id: PlayerStatus['id']) => void;
-  receiveAttack: (damage: number, stanceDamage: number) => void;
+  receiveAttack: (damage: number, stanceDamage: number, curse?: 'scorn' | 'eclipse') => void;
   startTurn: () => void;
+  receiveFieldDamage: (damage: number) => void;
   setStanceValue: (value: number) => void;
   attackRequestCount: number;
   lastAttackRequest: AttackRequest | null;
@@ -33,7 +34,7 @@ export interface PlayerState extends PlayerStats {
   requestAttack: (source?: AttackRequest['source'], input?: SpellInput) => AttackRequest | null;
   reset: () => void;
 }
-export type PlayerStatus = StatusEffect<'bleeding' | 'shielded' | 'overcharged'>;
+export type PlayerStatus = StatusEffect<'bleeding' | 'shielded' | 'overcharged' | 'scorn' | 'eclipse'>;
 /** Magic Power regained at the start of each of your turns. */
 export const MAGIC_REGEN = 2;
 export const INITIAL_PLAYER_STATS: Readonly<PlayerStats> = {
@@ -66,7 +67,7 @@ export const playerStore = createStore<PlayerState>((set, get) => ({
   },
   addStatus(effect) { set({ statuses: withStatus(get().statuses, effect) }); },
   removeStatus(id) { set({ statuses: get().statuses.filter(status => status.id !== id) }); },
-  receiveAttack(damage, stanceDamage) {
+  receiveAttack(damage, stanceDamage, curse) {
     if (!Number.isFinite(damage) || !Number.isFinite(stanceDamage) || damage <= 0 || get().health <= 0) return;
     const state = get(), guarding = state.stance === 'guarding';
     const incoming = Math.max(1, Math.floor(damage * (guarding ? .5 : 1)));
@@ -79,18 +80,28 @@ export const playerStore = createStore<PlayerState>((set, get) => ({
     const stanceLoss = Math.max(0, stanceDamage) * (guarding ? .5 : 1) * (amount ? 1 : .5);
     const stanceValue = Math.max(0, state.stanceValue - stanceLoss);
     set({ health: state.health - amount, stanceValue, stance: stanceFromValue(stanceValue),
-      statuses: amount ? withStatus(statuses, { id: 'bleeding', remaining: 2 }) : statuses,
-      hurt: { id: ++hurtId, damage: amount, absorbed, kind: amount ? 'slash' : 'blocked' } });
+      statuses: amount ? withStatus(statuses, { id: curse ?? 'bleeding', remaining: curse === 'scorn' ? 3 : 2 }) : statuses,
+      hurt: { id: ++hurtId, damage: amount, absorbed, ...(amount && curse ? { impact: 'axe' as const } : {}), kind: amount ? curse ? 'curse' : 'slash' : 'blocked' } });
+  },
+  receiveFieldDamage(damage) {
+    if (!Number.isFinite(damage) || damage <= 0 || get().health <= 0) return;
+    const state = get(), shield = state.statuses.find(status => status.id === 'shielded');
+    const absorbed = Math.min(damage, shield?.amount ?? 0), left = (shield?.amount ?? 0) - absorbed;
+    const amount = Math.min(state.health, damage - absorbed);
+    const statuses = shield ? left > 0 ? withStatus(state.statuses, { ...shield, amount: left }) : state.statuses.filter(status => status !== shield) : state.statuses;
+    set({ health: state.health - amount, statuses, hurt: { id: ++hurtId, damage: amount, absorbed, kind: amount ? 'curse' : 'blocked' } });
   },
   startTurn() {
     const state = get();
     if (state.health <= 0) return;
-    const damage = state.statuses.some(status => status.id === 'bleeding') ? Math.min(2, state.health) : 0;
-    const stanceValue = Math.min(100, state.stanceValue + 35);
+    const tick = state.statuses.reduce((sum, effect) => sum + (effect.id === 'bleeding' ? 2 : effect.id === 'scorn' ? 3 : effect.id === 'eclipse' ? 4 : 0), 0);
+    const eclipsed = state.statuses.some(effect => effect.id === 'eclipse');
+    const damage = Math.min(tick, state.health);
+    const stanceValue = Math.min(100, state.stanceValue + (eclipsed ? 15 : 35));
     set({ health: state.health - damage, stanceValue, stance: stanceFromValue(stanceValue),
-      magicPower: Math.min(state.maxMagicPower, state.magicPower + MAGIC_REGEN),
+      magicPower: Math.min(state.maxMagicPower, state.magicPower + (eclipsed ? 0 : MAGIC_REGEN)),
       statuses: state.statuses.map(status => ({ ...status, remaining: status.remaining - 1 })).filter(status => status.remaining > 0),
-      ...(damage ? { hurt: { id: ++hurtId, damage, kind: 'bleed' as const } } : {}) });
+      ...(damage ? { hurt: { id: ++hurtId, damage, kind: (state.statuses.some(effect => effect.id === 'scorn' || effect.id === 'eclipse') ? 'curse' : 'bleed') as 'curse' | 'bleed' } } : {}) });
   },
   requestAttack(source = 'diagnostic', input) {
     const state = get();

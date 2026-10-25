@@ -26,7 +26,7 @@ export const useStoryStore = create<StoryStore>((set, get) => ({
     socket.on('disconnect', () => set({ connection: 'disconnected' }));
     socket.on('connect_error', () => set({ lastError: 'Cannot reach the story server. Retry to connect.' }));
     socket.on('story:joined', (room: StoryRoom) => {
-      if (!get().started || get().room?.code !== room.code) { useSpellBattle.getState().reset(); playerStore.getState().reset(); }
+      if (!get().started || get().room?.code !== room.code) { useSpellBattle.getState().reset('wolves'); playerStore.getState().reset(); }
       set({ room, started: true, lastError: null });
     });
     socket.on('story:room', (room: StoryRoom) => set({ room }));
@@ -34,7 +34,7 @@ export const useStoryStore = create<StoryStore>((set, get) => ({
   },
   createRoom(name, mode) {
     if (mode === 'singleplayer') {
-      useSpellBattle.getState().reset();
+      useSpellBattle.getState().reset('wolves');
       playerStore.getState().reset();
       socket?.disconnect(); socket?.removeAllListeners(); socket = null;
       set({ playerName: name, adventureMode: mode, started: true, room: null, lastError: null, connection: 'disconnected' });

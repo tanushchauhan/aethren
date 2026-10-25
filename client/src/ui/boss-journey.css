@@ -1,0 +1,22 @@
+.boss-descent, .boss-waiting { position: absolute; width: min(65vw, 82vh); height: auto; aspect-ratio: 3 / 2; left: 50%; margin-left: max(-32.5vw, -41vh); bottom: 22%; object-fit: contain; image-rendering: pixelated; }
+.boss-descent .wolf-move-animation { position: absolute; inset: 0; }
+.boss-descent .wolf-sprite { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.boss-landing-wave { position: absolute; left: 40%; bottom: 22%; width: 20%; height: 6%; border: 3px solid #b393d8; border-radius: 50%; box-shadow: 0 0 25px #9d65d5; pointer-events: none; }
+.boss-skip { position: absolute; bottom: 35px; right: 5%; color: #eee0ff; background: #0e1229cc; border: 1px solid #b393d8; padding: 10px 20px; font: 18px 'Pixelify Sans', monospace; cursor: pointer; }
+.boss-combat-stage .wolf-formation { inset: 22% 29% 29%; grid-template-columns: minmax(0, 1fr); }
+.boss-combat-stage .wolf-bars { left: 14%; right: 14%; gap: 7px; }
+.boss-combat-stage .wolf-combatant .wolf-sprite { filter: brightness(.88); }
+.boss-combat-stage .wolf-combat-heading { top: 3%; }
+.boss-combat-stage .wolf-combatant { max-height: 45vh; }
+.boss-combat-stage .wolf-move-label { font-size: 19px; }
+@media (max-width: 800px) { .boss-combat-stage .wolf-formation { left: 20%; right: 20%; bottom: 35%; } }
+
+.player-hurt-overlay.curse { border-color: #b18ae8; box-shadow: inset 0 0 90px 24px #58207aaa; }
+.player-hurt-overlay.curse > span { color: #d3adff; }
+
+.boss-combat-stage:has(#diagnostic-spells) .wolf-formation { left: 33%; right: 33%; bottom: 42%; }
+
+.boss-journey-world { position: absolute; inset: -3%; overflow: hidden; }
+.boss-journey-world .novel-dialogue { left: 7%; right: 7%; bottom: 6%; }
+
+.boss-journey-world .boss-skip { bottom: 6%; right: 8%; }
