@@ -32,7 +32,11 @@ async function request(
   try {
     res = await fetch(url, { ...init, signal: combined });
   } catch (err) {
-    const reason = timeout.aborted ? `timeout after ${timeoutMs}ms` : err instanceof Error ? err.message : 'network error';
+    const cause = (err as { cause?: { code?: unknown; message?: unknown } })?.cause;
+    const causeText = cause ? ` (${String(cause.code ?? cause.message ?? '')})` : '';
+    const reason = timeout.aborted
+      ? `timeout after ${timeoutMs}ms`
+      : `${err instanceof Error ? err.message : 'network error'}${causeText}`;
     throw new ProviderError(provider, 0, reason);
   }
   if (!res.ok) {

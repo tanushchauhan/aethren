@@ -69,6 +69,14 @@ describe('tts provider chain', () => {
     expect(calls.map((c) => new URL(c.url).host)).toEqual(['api.elevenlabs.io']);
   });
 
+  it('skips a provider that is down for a while', async () => {
+    const calls = stubFetch((url) => (url.includes('elevenlabs') ? new Response('down', { status: 503 }) : audioResponse()));
+    const tts = createTts(testRuntime({ hasElevenLabs: true, hasOpenAI: true }, { OPENAI_API_KEY: 'test-openai' }));
+    expect((await tts.synthesize('line one', 'narrator'))?.provider).toBe('openai');
+    expect((await tts.synthesize('line two', 'narrator'))?.provider).toBe('openai');
+    expect(calls.filter((c) => c.url.includes('elevenlabs'))).toHaveLength(1);
+  });
+
   it('rejects JSON bodies that pretend to be audio', async () => {
     stubFetch(() => jsonResponse({ detail: 'error' }));
     const rt = testRuntime({ hasElevenLabs: true });

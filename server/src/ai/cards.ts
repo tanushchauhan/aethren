@@ -161,8 +161,8 @@ const MOOD_KEYWORDS: [RegExp, Mood][] = [
   [/\b(remember|back when|miss|those days)\b/i, 'nostalgic'],
   [/\b(proud|did it|finally|won|survived|nailed)\b/i, 'proud'],
   [/\b(cozy|blanket|tea|cocoa|movie night)\b/i, 'cozy'],
-  [/\b(omg|help|again|noise|broke|broken|lost)\b|!!/i, 'chaotic'],
-  [/\b(lol|lmao|haha|hahaha|dead|crying laughing)\b/i, 'silly'],
+  [/\b(lol|lmao|haha|hahaha|karaoke|crying laughing)\b/i, 'silly'],
+  [/\b(omg|help|noise|broke|broken|lost)\b|!!/i, 'chaotic'],
 ];
 
 function guessMood(text: string): Mood {

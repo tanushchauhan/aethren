@@ -18,6 +18,8 @@ import {
 
 export const TTS_PROVIDER_BUDGET_MS = 2500;
 export const TTS_MAX_CHARS = 1000;
+/** A provider that is down, unauthorized or rate limited is skipped for this long. */
+export const TTS_COOLDOWN_MS = 30_000;
 const LRU_MAX_ENTRIES = 300;
 const LRU_MAX_BYTES = 40 * 1024 * 1024;
 
@@ -48,8 +50,8 @@ export function cleanTtsText(text: unknown): string {
 }
 
 export function createTts(rt: AiRuntime) {
-  const cache = createLru<Buffer>(LRU_MAX_ENTRIES, LRU_MAX_BYTES);
-  const providerOf = new Map<string, TtsProvider>();
+  const cache = createLru<{ audio: Buffer; provider: TtsProvider; length: number }>(LRU_MAX_ENTRIES, LRU_MAX_BYTES);
+  const cooldownUntil = new Map<TtsProvider, number>();
   const inflight = new Map<string, Promise<TtsAudio | null>>();
 
   const providers: { name: TtsProvider; enabled: () => boolean; run: (text: string, speaker: Speaker) => Promise<Buffer> }[] = [
@@ -117,14 +119,19 @@ export function createTts(rt: AiRuntime) {
 
   async function runChain(text: string, speaker: Speaker, key: string): Promise<TtsAudio | null> {
     for (const p of providers) {
-      if (!p.enabled()) continue;
+      if (!p.enabled() || (cooldownUntil.get(p.name) ?? 0) > Date.now()) continue;
       try {
         const audio = await p.run(text, speaker);
-        cache.set(key, audio);
-        providerOf.set(key, p.name);
+        cooldownUntil.delete(p.name);
+        cache.set(key, { audio, provider: p.name, length: audio.length });
         return { audio, provider: p.name, key };
       } catch (err) {
-        rt.warn(`tts ${p.name} failed: ${describeError(err)}`);
+        // Down, unauthorized or rate limited: skip this provider for a while instead of
+        // spending its whole budget on every line.
+        const status = err instanceof ProviderError ? err.status : -1;
+        const cool = status === 0 || status === 401 || status === 403 || status === 429 || status >= 500;
+        if (cool) cooldownUntil.set(p.name, Date.now() + TTS_COOLDOWN_MS);
+        rt.warn(`tts ${p.name} failed${cool ? ` (skipping it for ${TTS_COOLDOWN_MS / 1000}s)` : ''}: ${describeError(err)}`);
       }
     }
     return null;
@@ -137,7 +144,7 @@ export function createTts(rt: AiRuntime) {
     const speaker = normalizeSpeaker(rawSpeaker);
     const key = ttsKey(speaker, text);
     const hit = cache.get(key);
-    if (hit) return { audio: hit, provider: providerOf.get(key) ?? 'elevenlabs', key };
+    if (hit) return { audio: hit.audio, provider: hit.provider, key };
     const pending = inflight.get(key);
     if (pending) return pending;
     const job = runChain(text, speaker, key).finally(() => inflight.delete(key));
@@ -147,12 +154,18 @@ export function createTts(rt: AiRuntime) {
 
   const anyProvider = () => providers.some((p) => p.enabled());
 
-  /** Fills the cache one line at a time in the background. Never throws. */
+  /** Fills the cache one line at a time in the background. Stops after 2 misses in a row. Never throws. */
   async function prewarm(lines: { text: string; speaker: Speaker }[]): Promise<number> {
     let ok = 0;
+    let misses = 0;
     for (const line of lines) {
       try {
-        if (await synthesize(line.text, line.speaker)) ok++;
+        if (await synthesize(line.text, line.speaker)) {
+          ok++;
+          misses = 0;
+        } else if (++misses >= 2) {
+          break;
+        }
       } catch {
         // synthesize never throws, but stay safe in a background task
       }
