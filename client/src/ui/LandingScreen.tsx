@@ -4,10 +4,11 @@ const getUiStore = useUiStore.getState;
 import './title-screen.css';
 import { ForestCanvas } from './ForestCanvas';
 import { useGameMode } from '../combat/gameMode';
+import { openDuel } from '../duel/duelGame';
 
 /** Preset names the glove can cycle with T, so nobody has to type to start playing. */
 const NAMES = ['Spellbearer', 'Alden', 'Lyra', 'Rowan', 'Soren'] as const;
-type Choice = 'solo' | 'coop';
+type Choice = 'solo' | 'coop' | 'duel';
 type CoopMode = 'host' | 'join';
 
 export function LandingScreen() {
@@ -49,6 +50,7 @@ export function LandingScreen() {
   const menu = [
     { id: 'solo', label: 'New adventure', key: 'B1', glove: { 'data-glove-b1': 'Play' }, onClick: startSolo },
     { id: 'coop', label: 'Co-op / Online', key: 'B2', glove: { 'data-glove-b2': 'Co-op' }, onClick: () => setOpen(true) },
+    { id: 'duel', label: 'Duel (PvP)', key: 'Dial', glove: {}, onClick: () => openDuel(name) },
   ] as const;
   return <main className="title-screen">
     <ForestCanvas />

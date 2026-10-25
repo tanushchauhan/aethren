@@ -6,6 +6,8 @@ import { GloveGate } from './glove/GloveGate';
 import { GameMusic } from './ui/GameMusic';
 import { DevTools } from './ui/DevTools';
 import { PauseMenu } from './ui/PauseMenu';
+import { DuelArena } from './duel/DuelArena';
+import { useDuel } from './duel/duelGame';
 import { AfterWolfEncounter } from './ui/AfterWolfEncounter';
 import { useStoryStore } from './net/storyStore';
 import { isGamePath, isTestLabPath } from './debugRoutes';
@@ -28,9 +30,10 @@ function StoryApp() {
   const started = useStoryStore(s => s.started);
   const startAt = useStoryStore(s => s.startAt);
   const room = useStoryStore(s => s.room);
+  const duel = useDuel(s => s.active);
   return <GameViewport>
     <GloveGate>
-      {started ? (startAt === 'boss' ? <BossFightEntry /> : <ScriptedIntroduction />) : <><LandingScreen /><GameMusic /><DevTools /></>}
+      {duel ? <DuelArena /> : started ? (startAt === 'boss' ? <BossFightEntry /> : <ScriptedIntroduction />) : <><LandingScreen /><GameMusic /><DevTools /></>}
       {started && <PauseMenu />}
       {started && room && <aside className="room-code">Room {room.code} · {room.players.length}/2 players</aside>}
     </GloveGate>
