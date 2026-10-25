@@ -37,10 +37,9 @@ const STEP_CONFIG: Record<TutorialStep, {
       '12 spells across Fire, Frost & Storm.',
       'Twist the Glove Dial to select a spell.',
     ],
-    requirement: '◆ Turn [Dial] or press ← / →',
+    requirement: '◆ Turn [Dial]',
     keys: [
       { label: 'Dial', action: 'Select spell' },
-      { label: '← / →', action: 'Keyboard' },
     ],
   },
   element: {
@@ -65,10 +64,9 @@ const STEP_CONFIG: Record<TutorialStep, {
       'Tap [T] Touch Pad to switch wolves.',
       'Check each wolf’s next move above its bar.',
     ],
-    requirement: '◆ Tap [T] or press T / Tab',
+    requirement: '◆ Tap [T]',
     keys: [
       { label: 'T', action: 'Switch target' },
-      { label: 'Tab', action: 'Keyboard' },
     ],
   },
   cast: {
@@ -76,13 +74,12 @@ const STEP_CONFIG: Record<TutorialStep, {
     badge: '⏸ GAME PAUSED · GLOVE TRAINING',
     title: 'Begin Casting a Spell',
     lines: [
-      'Press [B1] / [Enter] to open the Spell Maneuver stage.',
+      'Press [B1] to open the Spell Maneuver stage.',
       'Simple spells take 2 or 3 steps; stronger spells take 4 or 5.',
     ],
-    requirement: '◆ Press [B1] / [Enter] or click Begin Ritual',
+    requirement: '◆ Press [B1]',
     keys: [
-      { label: 'B1 / Enter', action: 'Open Spell Maneuver' },
-      { label: 'Click Wedge', action: 'Or click active spell' },
+      { label: 'B1', action: 'Open Spell Maneuver' },
     ],
   },
   ritual: {
@@ -94,10 +91,10 @@ const STEP_CONFIG: Record<TutorialStep, {
       'Act when the white cursor hits ★ PERFECT for 1.45× spell power!',
       'Stronger spells require 4 or 5 steps; unlock ??? runes via hints.',
     ],
-    requirement: '◆ Click Start Casting → (or press Space / Enter) to begin!',
+    requirement: '◆ Press [B1] to begin!',
     keys: [
-      { label: '↑ Arm (W)', action: 'Body Pose (Camera or Key)' },
-      { label: '1: B1 · 2: B2 · 3: T · Space: Swing', action: 'Glove Inputs' },
+      { label: '↑ Arm', action: 'Body Pose (Camera)' },
+      { label: 'B1 · B2 · T · Swing', action: 'Glove Inputs' },
     ],
   },
   parry: {

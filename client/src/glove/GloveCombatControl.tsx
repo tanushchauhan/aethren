@@ -49,7 +49,6 @@ const POSE_HOLD_FOR_STEP_MS = 140;
 /** Total time allowed for the player's turn before it automatically passes. */
 const TURN_DURATION_MS = 80000;
 
-const ALL_RITUAL_STEPS: RitualStep[] = ['raise', 'B1', 'B2', 'T', 'swing'];
 
 /** The wolf the next cast will hit, or null when it is not your turn or the spell targets you. Read by the stage. */
 export const useWheelSelection = create<{ targetId: string | null }>(() => ({ targetId: null }));
@@ -264,6 +263,8 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       : prefixMatch?.exact ?? prefixMatch?.candidates.find((c) => c.element === currentSpell.element) ?? prefixMatch?.candidates[0] ?? null;
 
     if (!resolvedSpell) {
+      // Raising an arm for a body pose also reads as a glove swing, so a stray swing never breaks the ritual.
+      if (step === 'swing') return;
       // Wrong input during timed ritual -> ritual breaks!
       buzz('fizzle');
       const expectedStep = currentSpell.ritual[currentRitual.steps.length]!;
@@ -682,7 +683,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
             {ritual ? `Weaving ${isDiscovered ? spell.name : 'Unknown Rune'}…` : 'Select a rune or perform a pose to begin weaving'}
           </span>
           <button type="button" className="turn-pass-btn" onClick={passTurn}>
-            Pass Turn <kbd>P</kbd>
+            Pass Turn
           </button>
         </div>
         <div className="turn-timer-track">
@@ -739,7 +740,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
             disabled={!canAfford}
             onClick={() => beginRitualMode(spell)}
           >
-            {isDiscovered ? 'Begin Ritual' : 'Attempt Discovery'} <kbd>Enter</kbd>
+            {isDiscovered ? 'Begin Ritual' : 'Attempt Discovery'} <kbd>B1</kbd>
           </button>
         </div>
       </div>
@@ -747,9 +748,9 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       {bannerNotice && <div className="wheel-notice" role="status">{bannerNotice}</div>}
 
       <footer className="wheel-prompts">
-        <span><kbd>⟳ Dial</kbd> / <kbd>←</kbd><kbd>→</kbd> Choose</span>
-        <span><kbd>B1</kbd> / <kbd>Enter</kbd> Open Ritual</span>
-        <span><kbd>T</kbd> Target · <kbd>R</kbd> Rest (+3 MP)</span>
+        <span><kbd>Dial</kbd> Choose</span>
+        <span><kbd>B1</kbd> Open Ritual</span>
+        <span><kbd>T</kbd> Target · <kbd>Hold B2</kbd> Rest (+3 MP)</span>
         {hintedSpell && !battle.discoveredSpells.includes(hintedSpell.id) && (
           <button type="button" className="ritual-hint-btn" onClick={() => {
             const next = battle.cycleHint();
@@ -758,7 +759,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
               if (idx >= 0) moveTo(idx);
             }
           }}>
-            💡 Next Hint <kbd>H</kbd>
+            💡 Next Hint
           </button>
         )}
         {profile && <small className="wheel-glove">{profile.label}</small>}
@@ -777,7 +778,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
           </div>
           {ritual.lastFeedback && <span className="ritual-last-grade">{ritual.lastFeedback}</span>}
           <button type="button" className="ritual-cancel-btn" onClick={() => cancelRitual('Ritual cancelled.')}>
-            Wheel <kbd>Esc</kbd>
+            Wheel
           </button>
         </header>
 
@@ -800,7 +801,6 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
                 <span className="ritual-card-step">#{idx + 1} · {info.kind === 'pose' ? 'POSE' : 'GLOVE'}</span>
                 <div className="ritual-kbd-row">
                   <kbd className="ritual-main-kbd">{reveal ? info.short : '?'}</kbd>
-                  {reveal && <kbd className="ritual-sub-kbd">{info.keyHint}</kbd>}
                 </div>
                 <strong className="ritual-card-action">{reveal ? info.label : '??? Hint'}</strong>
                 <span className="ritual-card-sub">
@@ -819,7 +819,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
             <div className="ritual-timing-instructions">
               <span>
                 Hit <kbd>{isDiscovered || isHinted || currentStepIndex === 0 ? currentStepInfo.short : '?'}</kbd>{' '}
-                {(isDiscovered || isHinted || currentStepIndex === 0) && <kbd>{currentStepInfo.keyHint}</kbd>} in <b>★ PERFECT</b>
+                in <b>★ PERFECT</b>
               </span>
               <span className="ritual-step-clock"><b>{stepRemainingSec}s</b></span>
             </div>
@@ -834,28 +834,6 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
             {!isDiscovered && <p className="ritual-timing-explain">Hint: <b>{spell.hint}</b></p>}
           </div>
         )}
-
-        {/* Interactive Pose + Glove Step kbd Buttons */}
-        <div className="ritual-step-buttons">
-          {ALL_RITUAL_STEPS.map((step) => {
-            const info = RITUAL_LABELS[step];
-            const isExpected = isDiscovered && currentExpectedStep === step;
-            return (
-              <button
-                key={step}
-                type="button"
-                className="ritual-step-btn"
-                data-kind={info.kind}
-                data-expected={isExpected}
-                onClick={() => pushRitualStep(step, step === 'swing' ? 1.25 : 1)}
-                title={`${info.label} (Key: ${info.keyHint})`}
-              >
-                <kbd>{info.short}</kbd>
-                <small>{info.keyHint}</small>
-              </button>
-            );
-          })}
-        </div>
       </section>
     )}
 
