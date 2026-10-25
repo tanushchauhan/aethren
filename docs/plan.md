@@ -386,18 +386,16 @@ Each encounter names the memory it came from and picks one of four fixed templat
 
 In P2, one player joins as the Fairy Godmother. Online play makes this simple: only her screen shows the telegraphs, and the fighters' screens show the enemy winding up without saying which way it will strike. She calls out "Maya, duck! Dev, step left!" over voice chat. It forces constant communication and gives a fourth player an important role without a camera or glove.
 
-## Scope for the roughly 18 hours left
+## Build order
 
-Hacking ends at 11:30 AM Sunday. Build all of P0 before starting anything in P1; the tiers are laid out under Core mechanics, P0 and P1 to P3.
+Build all of P0 before starting anything in P1; the tiers are laid out under Core mechanics, P0 and P1 to P3. See `docs/team-plan.md` for the full tech stack and 3-teammate parallel agent streams.
 
-### Build order
-
-1. **By 9 PM Saturday:** the server creates rooms and syncs clocks, and two laptops show the same telegraph at the same moment; the Arduino streams the dial, button, accelerometer, touch and light readings; pose tracking and the zone work on one laptop; one Muse Voice Transcribe call, one Muse Spark JSON call and one Muse Spark tool call succeed; Muse connects to a test MCP endpoint.
-2. **By 1 AM:** one full round plays on two laptops: telegraph, side step, duck, return to the silhouette, spell wheel by dial and by arm raise, incantation word check, swipe or thrust release, and a parry.
-3. **By 5 AM:** world generation from memories; the boss agent, its ward and Twin Cast; quest setup through Muse; the color token, the noise gate, the buzzer, the servo, Google Home narration and on-screen captions.
-4. **By 8 AM Sunday:** Muse Image art, the cached demo world and the bot fallback; a full run under 4 minutes.
-5. **By 10:30 AM:** rehearse the live run twice and record the video. Start P1 only if P0 is solid.
-6. **By 11:30 AM:** submit.
+1. **Vertical slices:** the server creates rooms and syncs clocks, and two laptops show the same telegraph at the same moment; the Arduino Uno R4 WiFi streams the dial, button, accelerometer, touch and light readings; pose tracking and the zone work on one laptop; one Muse Voice Transcribe call, one Muse Spark JSON call and one Muse Spark tool call succeed; Muse connects to a test MCP endpoint.
+2. **One full combat round:** one full round plays on two laptops: telegraph, side step, duck, return to the silhouette, spell wheel by dial and by arm raise, incantation word check, swipe or thrust release, and a parry.
+3. **World generation & agents:** world generation from memories; the boss agent, its ward and Twin Cast; quest setup through Muse; the color token, the noise gate, the buzzer, the servo, Google Home narration and on-screen captions.
+4. **Art, cache & fallback:** Muse Image art, the cached demo world and the bot fallback; a full run under 4 minutes.
+5. **Rehearsal & demo video:** rehearse the live run twice and record the video. Start P1 only if P0 is solid.
+6. **Submission:** finalize repo README and submit on Devpost.
 
 ## Live demo: noise, space, network and the 5-minute limit
 
