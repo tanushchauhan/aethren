@@ -1,4 +1,10 @@
-import type { AttackType, ElementType, P0ElementType } from './types';
+import type {
+  AttackType,
+  ElementType,
+  EncounterTemplate,
+  P0ElementType,
+  QuestDifficulty,
+} from './types';
 
 /** Combat round phase durations. A full round is their sum (about 16 seconds). */
 export const ROUND_TIMINGS_MS = {
@@ -159,3 +165,41 @@ export const COMBAT = {
   baseSpellDamage: 10,
   parryDamage: 8,
 } as const;
+
+/**
+ * Code-owned stats per encounter template. Muse only picks the template; these set how it fights.
+ * `attackSpeed` scales the telegraph duration (above 1 is a faster wind-up).
+ * `defaultAttacks` is the scripted cycle when the boss agent is unavailable.
+ */
+export const ENEMY_TEMPLATES: Record<
+  EncounterTemplate,
+  { baseHp: number; attackSpeed: number; defaultAttacks: readonly AttackType[] }
+> = {
+  charger: { baseHp: 60, attackSpeed: 1.1, defaultAttacks: ['low_sweep', 'high_swing', 'low_sweep'] },
+  caster: { baseHp: 50, attackSpeed: 1, defaultAttacks: ['projectile', 'high_swing', 'projectile'] },
+  swarm: { baseHp: 45, attackSpeed: 1.2, defaultAttacks: ['low_sweep', 'projectile', 'high_swing'] },
+  guardian: { baseHp: 80, attackSpeed: 0.9, defaultAttacks: ['high_swing', 'projectile', 'low_sweep'] },
+};
+
+/** Tier multipliers on template hit points and attack speed. Bosses are always tier 3. */
+export const TIER_MULTIPLIERS: Record<1 | 2 | 3, { hp: number; attackSpeed: number }> = {
+  1: { hp: 1, attackSpeed: 1 },
+  2: { hp: 1.4, attackSpeed: 1.05 },
+  3: { hp: 2, attackSpeed: 1.1 },
+};
+
+/** Quest difficulty scales enemy hit points only; round timings stay fixed. */
+export const DIFFICULTY_HP_MULTIPLIER: Record<QuestDifficulty, number> = {
+  easy: 0.75,
+  normal: 1,
+  hard: 1.3,
+};
+
+/**
+ * The boss agent must answer within this long of being asked, well before the next telegraph.
+ * Past it, the scripted cycle plans the round.
+ */
+export const BOSS_AGENT_DEADLINE_MS = 4000;
+
+/** Default per-call timeout for Muse requests when `AI_TIMEOUT_MS` is unset. */
+export const AI_DEFAULT_TIMEOUT_MS = 12_000;

@@ -1,0 +1,45 @@
+{
+  "title": "The Wood of Unfinished Roads",
+  "intro": "Once upon a time, two friends set out down a road that would not end. Their old cart groaned, the lanterns of a great stone library flickered behind them, and the trees leaned close to listen. For the wood remembers everything you ever said to each other, and tonight, it has come to collect.",
+  "incantations": {
+    "ember": "forty miles from anything",
+    "frost": "the library is closing",
+    "bloom": "i am a gardener now",
+    "storm": "the car is making the noise",
+    "moon": "nobody has started",
+    "starlight": "the plant survived the week"
+  },
+  "encounters": [
+    {
+      "memory": "card-roadtrip",
+      "name": "The Rusted Iron Steed",
+      "template": "charger",
+      "attacks": ["low_sweep", "high_swing", "projectile"],
+      "weakness": "frost",
+      "tier": 1,
+      "lines": [
+        "The Steed lowers its rusted head and paws the road!",
+        "Gears grind; it rears to swing high!",
+        "It coughs a bolt of hot exhaust your way!",
+        "Forty miles from anything, and still it charges."
+      ],
+      "artPrompt": "A storybook watercolor of a rusted iron horse made from an old road-trip car, steam leaking from its joints, on a moonlit forest road, warm and whimsical"
+    }
+  ],
+  "boss": {
+    "memory": "card-finals",
+    "name": "The Night Librarian",
+    "template": "guardian",
+    "attacks": ["high_swing", "projectile", "low_sweep"],
+    "weakness": "ember",
+    "tier": 3,
+    "ward": "twin_cast",
+    "lines": [
+      "Shhh. The library is closing, little ones.",
+      "Overdue! Overdue! The shelves sweep low!",
+      "She hurls a volume heavy with unwritten essays!",
+      "Not one word written, and the clock strikes three."
+    ],
+    "artPrompt": "A towering storybook librarian made of bookshelves and candlelight, spectacles glowing, holding a giant hourglass at 3am, ink-and-watercolor fairy tale illustration"
+  }
+}
