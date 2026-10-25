@@ -53,7 +53,7 @@ export function LandingScreen() {
   return <main className="title-screen">
     <ForestCanvas />
     <section className="title-content" aria-label="Main menu">
-      <h1 className="game-title"><img src="/art/memory-logo.png" alt="Once in a Memory" /></h1>
+      <h1 className="game-title"><img src="/art/aethren-logo.png" alt="Aethren" /></h1>
       <nav className="title-menu" aria-label="Choose your adventure">
         {menu.map(item => (
           <button key={item.id} data-active={highlighted === item.id} {...item.glove}

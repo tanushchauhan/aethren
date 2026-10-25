@@ -1,6 +1,6 @@
 > Legacy design from the Meta track. The Muse parts (chat memories, world building, boss agent, voice incantations) were removed. The round loop, spells, Twin Cast, hearts and glove controls still apply.
 
-# Once Upon a Memory: HackTX Meta + Hardware Game Design
+# Aethren: HackTX Meta + Hardware Game Design
 
 > Current art direction and Muse asset handoff: [Meta Muse asset-generation instructions](muse-asset-generation.md). Use this guide for the visual-novel presentation and generated artwork.
 
@@ -21,7 +21,7 @@ Last updated October 24, 2026. Design doc for our HackTX 2026 project (Meta trac
 
 ## Pitch
 
-Once Upon a Memory is an online co-op fairy-tale battle game for 2 to 4 players, each at their own laptop, built from real moments in the group's Instagram chat. Each player wears an enchanted glove with a spell wheel on the forearm. Everyone speaks incantations into their mic and dodges with their whole body in front of their own webcam. The magic words come from the group's own stories, and the strongest spells only land when players in different places act at the same moment.
+Aethren is an online co-op fairy-tale battle game for 2 to 4 players, each at their own laptop, built from real moments in the group's Instagram chat. Each player wears an enchanted glove with a spell wheel on the forearm. Everyone speaks incantations into their mic and dodges with their whole body in front of their own webcam. The magic words come from the group's own stories, and the strongest spells only land when players in different places act at the same moment.
 
 It's built for HackTX's fairy-tale theme ("Once upon a time, incredible things were built..."). It targets two tracks: Meta's "Bringing people closer together with AI" and Brick House (Best Hardware Hack). Under Meta's official rules, judges weigh human connection 30%, AI centrality 25%, originality 20% and execution and demo quality 25%.
 

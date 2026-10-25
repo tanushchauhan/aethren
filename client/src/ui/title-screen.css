@@ -34,7 +34,7 @@
 @font-face { font-family: 'Pixelify Sans'; src: url('/fonts/PixelifySans.ttf') format('truetype'); font-weight: 400 700; font-display: swap; }
 .forest-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; background: #071015; }
 .game-title { margin-bottom: 28px; width: min(570px, 44vw); }
-.game-title img { display: block; width: 100%; height: auto; filter: drop-shadow(2px 4px 3px #071015); }
+.game-title img { display: block; width: 100%; height: auto; mix-blend-mode: screen; }
 .title-menu button { font: 36px/1.2 'Pixelify Sans', monospace; letter-spacing: .5px; display: flex; align-items: center; gap: 15px; padding: 12px 24px; width: 100%; box-sizing: border-box; }
 .title-menu button::before { display: none; }
 .menu-diamond { color: #b7b99b; font-size: 13px; text-shadow: none; }

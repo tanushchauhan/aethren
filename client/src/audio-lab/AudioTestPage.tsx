@@ -314,7 +314,7 @@ export function AudioTestPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6" data-testid="audio-test-page">
-      <p className="text-xs uppercase tracking-[0.32em] text-amber-200/70">Once Upon a Memory · {DEBUG_AUDIO_PATH}</p>
+      <p className="text-xs uppercase tracking-[0.32em] text-amber-200/70">Aethren · {DEBUG_AUDIO_PATH}</p>
       <h1 className="mt-2 font-serif text-4xl sm:text-5xl">Narrator &amp; Sound Modes</h1>
       <p className="mt-3 max-w-3xl text-sm leading-relaxed text-amber-100/80">
         Compare local M4 Pro speech against free online neural voices on the lines the storybook actually speaks.

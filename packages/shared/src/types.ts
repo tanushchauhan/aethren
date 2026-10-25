@@ -1,5 +1,5 @@
 /**
- * Shared contract for Once Upon a Memory.
+ * Shared contract for Aethren.
  * Locked in Phase 0 so client, server, and firmware agents share one shape.
  */
 

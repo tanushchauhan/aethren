@@ -1,4 +1,4 @@
-# Once in a Memory
+# Aethren
 
 ## Current scope
 An authored fantasy visual novel with a rainy forest title, singleplayer or online room setup, a scripted rift introduction, Stay/Run choices, and a first-person wolf encounter.

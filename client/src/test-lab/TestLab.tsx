@@ -78,7 +78,7 @@ export default function TestLab() {
   const filtered = events.filter((entry) => `${entry.event} ${JSON.stringify(entry.payload)}`.toLowerCase().includes(filter.toLowerCase()));
   return <div className="lab">
     <div className="workspace">
-      <header className="topbar"><div className="breadcrumb"><BookOpen size={16} /> ONCE IN A MEMORY <ChevronRight size={13} /><strong>Combat lab</strong></div><div className="server-badge"><span className={`status-dot ${online ? 'on' : ''}`} />{online ? 'Server online' : 'Server offline'}</div></header>
+      <header className="topbar"><div className="breadcrumb"><BookOpen size={16} /> AETHREN <ChevronRight size={13} /><strong>Combat lab</strong></div><div className="server-badge"><span className={`status-dot ${online ? 'on' : ''}`} />{online ? 'Server online' : 'Server offline'}</div></header>
       <main>
         <div className="page-heading"><div><h1>Two laptops. One server.</h1><p>Drive a combat run with simulated players and inspect every event the engine sends.</p></div></div>
         <div className="nav-tabs"><button className={tab === 'play' ? 'active' : ''} onClick={() => setTab('play')}>Playground</button><button className={tab === 'events' ? 'active' : ''} onClick={() => setTab('events')}>Events ({events.length})</button></div>

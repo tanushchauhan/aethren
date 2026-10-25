@@ -47,7 +47,7 @@ export function GloveSelect({ lostGlove = false, onBypass }: { lostGlove?: boole
     <section className="glove-panel" aria-labelledby="glove-select-title">
       <h1 id="glove-select-title">{lostGlove ? 'Your glove disconnected' : 'Choose your glove'}</h1>
       <p className="glove-lede">
-        Once in a Memory is played with the enchanted glove. Pick up a glove and press
+        Aethren is played with the enchanted glove. Pick up a glove and press
         {' '}<kbd className="glove-key">{CONTROL_LABELS.touch}</kbd>, <kbd className="glove-key">{CONTROL_LABELS.button1}</kbd> or <kbd className="glove-key">{CONTROL_LABELS.button2}</kbd> to claim it.
       </p>
 

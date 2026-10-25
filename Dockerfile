@@ -1,4 +1,4 @@
-# Once Upon a Memory: one service (Express + Socket.IO + /mcp) that also serves the built client.
+# Aethren: one service (Express + Socket.IO + /mcp) that also serves the built client.
 # Build:  docker build -t once-upon .
 # Run:    docker run --rm -p 3001:3001 --env-file server/.env once-upon
 

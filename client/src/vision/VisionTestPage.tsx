@@ -951,7 +951,7 @@ export function VisionTestPage() {
     <main className="min-h-screen bg-[#07110d] text-amber-50">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-2">
-          <p className="text-xs uppercase tracking-[0.28em] text-amber-200/70">Once Upon a Memory</p>
+          <p className="text-xs uppercase tracking-[0.28em] text-amber-200/70">Aethren</p>
           <h1 className="font-serif text-3xl sm:text-4xl">Vision Lab</h1>
           <p className="max-w-2xl text-sm text-amber-100/75">
             Three quick steps: lock your play zone, try every body move, then survive a few enemy attacks. Works up

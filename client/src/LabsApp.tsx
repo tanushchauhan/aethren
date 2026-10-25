@@ -89,7 +89,7 @@ export default function App() {
       <header className="sticky top-0 z-50 border-b border-amber-100/10 bg-stone-950/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <a href={DEBUG_PATH} onClick={(event) => onNavigate(event, DEBUG_PATH)} className="group">
-            <p className="text-[10px] uppercase tracking-[0.28em] text-amber-200/70">Once Upon a Memory</p>
+            <p className="text-[10px] uppercase tracking-[0.28em] text-amber-200/70">Aethren</p>
             <p className="font-serif text-lg leading-tight group-hover:text-amber-100">Debug Labs</p>
           </a>
           <nav aria-label="Debug labs" data-testid="app-nav" className="flex flex-wrap items-center gap-1">

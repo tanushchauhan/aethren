@@ -2,7 +2,7 @@
   "name": "once-upon-a-memory",
   "private": true,
   "version": "0.0.0",
-  "description": "Once in a Memory \u2014 an authored fantasy story adventure",
+  "description": "Aethren \u2014 an authored fantasy story adventure",
   "packageManager": "pnpm@10.33.4",
   "engines": {
     "node": ">=22"
