@@ -30,3 +30,7 @@ kbd { display: inline-block; min-width: 26px; padding: 0 6px; text-align: center
 .glove-buzz:hover, .glove-buzz:focus-visible { color: #ffe5a1; border-color: #f4dc99; outline: none; }
 
 [data-glove-focus] { outline: 2px solid #f4dc99 !important; outline-offset: 6px; color: #ffe5a1 !important; box-shadow: 0 0 22px #f4dc9988; }
+/* TEMPORARY bypass (see ALLOW_GLOVE_BYPASS in GloveGate.tsx). Deliberately quieter than the glove cards. */
+.glove-bypass { display: block; margin: 22px 0 0 auto; padding: 8px 14px; font: 21px 'VT323', monospace; color: #c9d6d2; background: transparent; border: 1px dashed #6f8a84; cursor: pointer; text-align: right; }
+.glove-bypass small { display: block; font-size: 16px; color: #8da39e; }
+.glove-bypass:hover, .glove-bypass:focus-visible { color: #ffe5a1; border-color: #f4dc99; outline: none; }

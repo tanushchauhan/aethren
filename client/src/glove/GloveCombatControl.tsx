@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useReducedMotion } from 'motion/react';
+import type { BuzzPattern } from '@once-upon/shared';
 import { usePlayerState } from '../combat/playerState';
 import { useSpellBattle } from '../combat/spellBattle';
 import { combatants } from '../combat/encounter';
 import { SPELLS, SPELLS_BY_ELEMENT, type SpellElement } from '../combat/spells';
+import { spellTiming } from '../combat/spellVfx';
 import { dialSlot } from './gloveInput';
 import { useGloveMode } from './gloveMode';
 import { gloveProfile } from './gloveProfile';
@@ -55,13 +58,22 @@ function ActiveGloveCombatControl() {
     }
   }, [glove, hub, element]);
 
+  // The glove's buzzer confirms what the hand just did: a tick per selection step, a rising chirp
+  // as the spell leaves the hand, a falling fizzle when a cast fails or misses, a thud when you are hit.
+  const buzz = (p: BuzzPattern) => { if (glove) hub.send(glove.id, { cmd: 'buzz', p }); };
+  const buzzRef = useRef(buzz);
+  buzzRef.current = buzz;
+
   useGloveInput((event) => {
     if (!live) return;
     if (event.type === 'dial') {
-      slotRef.current = dialSlot(event.value, 4, slotRef.current);
-      setSlot(slotRef.current);
+      const next = dialSlot(event.value, 4, slotRef.current);
+      if (next !== slotRef.current) buzz('tick');
+      slotRef.current = next;
+      setSlot(next);
     } else if (event.type === 'up' && event.button === 'B2' && !heldB2.current) {
       setElement((current) => ELEMENTS[(ELEMENTS.indexOf(current) + 1) % ELEMENTS.length]!);
+      buzz('tick');
     } else if (event.type === 'down' && event.button === 'B2') {
       heldB2.current = false;
     } else if (event.type === 'hold' && event.button === 'B2') {
@@ -69,13 +81,43 @@ function ActiveGloveCombatControl() {
       if (myTurn) useSpellBattle.getState().rest();
     } else if (event.type === 'down' && event.button === 'T') {
       setTargetIndex((index) => (index + 1) % Math.max(1, wolves.length));
+      buzz('tick');
     } else if (event.type === 'down' && event.button === 'B1' && myTurn) {
-      useSpellBattle.getState().castSpell(
+      const cast = useSpellBattle.getState().castSpell(
         spell.target === 'self' ? { spellId: spell.id } : { spellId: spell.id, targetId: target?.id },
         'glove',
       );
+      if (!cast) buzz('fizzle');
     }
   });
+
+  // Chirp when the charged spell is released, and fizzle if every target it reached dodged.
+  const reduced = useReducedMotion();
+  const pending = battle.pending;
+  useEffect(() => {
+    if (!pending) return;
+    const timer = window.setTimeout(() => buzzRef.current('cast'), spellTiming(pending.spell, !!reduced).chargeMs);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending?.id]);
+  useEffect(() => {
+    if (!pending?.resolved) return;
+    const hits = useSpellBattle.getState().feedback.filter((hit) => hit.castId === pending.id);
+    if (hits.length && hits.every((hit) => hit.kind === 'dodge')) buzzRef.current('fizzle');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending?.id, pending?.resolved]);
+
+  // An enemy attack lands on you: a thud for a wound, a light tick when the Ice Shield takes it all.
+  // Turn-start bleed/curse ticks and the Inferno's field flames stay silent; the knight's
+  // attacks are the curse hits that carry an axe impact.
+  const hurt = usePlayerState((s) => s.hurt);
+  const seenHurt = useRef(hurt?.id);
+  useEffect(() => {
+    if (!hurt || hurt.id === seenHurt.current) return;
+    seenHurt.current = hurt.id;
+    if (hurt.kind === 'blocked') buzzRef.current('tick');
+    else if (hurt.kind === 'slash' || hurt.impact === 'axe') buzzRef.current('hit');
+  }, [hurt?.id]);
 
   // Ring the wolf that the next cast will hit.
   useEffect(() => {

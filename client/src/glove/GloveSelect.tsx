@@ -20,8 +20,8 @@ const STATUS_TEXT: Record<Availability, string> = {
   offline: 'Offline',
 };
 
-/** Shown until a glove is claimed. Gloves are required to play, so there is no way past this screen without one. */
-export function GloveSelect({ lostGlove = false }: { lostGlove?: boolean }) {
+/** Shown until a glove is claimed. `onBypass` is the temporary way past it without a glove (see GloveGate). */
+export function GloveSelect({ lostGlove = false, onBypass }: { lostGlove?: boolean; onBypass?: () => void }) {
   const { hub, choose, onInput } = useGloveSession();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -91,6 +91,10 @@ export function GloveSelect({ lostGlove = false }: { lostGlove?: boolean }) {
         <span><kbd>{CONTROL_LABELS.button2}</kbd> button 2</span>
         <span><kbd>{CONTROL_LABELS.dial}</kbd> turn to choose</span>
       </footer>
+
+      {onBypass && <button type="button" className="glove-bypass" onClick={onBypass}>
+        Continue without a glove <small>Temporary: play with the mouse and keyboard</small>
+      </button>}
     </section>
   </main>;
 }

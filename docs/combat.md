@@ -232,3 +232,14 @@ Field flames appear across the floor and sides of the screen with drifting smoke
 The supplied samurai-sword AIFF is converted to `axe-swing.wav` and plays once 0.25 source seconds before the impact of Cleave and Eclipse. The supplied fireplace recording is `scorn-flames.wav`: it accents the ultimate and loops quietly for the field's lifetime. Playback respects mute, visibility, and cleanup; skipped/cancelled moves cannot leave audio running.
 
 Boss landing presentation now uses a 1.2-second decaying camera shake peaking at 98px horizontal / 74px vertical, with up to 2.2° roll and a brief 1.28× punch-in to cover frame edges. A damaging direct boss attack draws one broad diagonal, jagged purple axe gash across the view. Ongoing curse/field ticks and fully shielded hits do not draw new gashes. Reduced motion omits both camera movement and the slash animation.
+
+## Glove buzzer feedback
+
+When a glove is claimed, `GloveCombatControl` sends `{"cmd":"buzz","p":…}` to it during combat (the wolves and the knight boss). Firmware plays each pattern without blocking (`serviceBuzzer` in `enchanted_glove.ino`); a new pattern replaces one still playing. Gloves need reflashing to get the `buzz` command.
+
+| Pattern | Sound | When |
+| --- | --- | --- |
+| `tick` | One short high click | Dial moves to another spell, B2 changes element, T changes target, or the Ice Shield fully blocks a hit |
+| `cast` | Rising three-note chirp | The charged spell leaves the hand (after its charge time) |
+| `fizzle` | Falling three notes | On your turn, a glove cast is refused (not enough MP, staggered, no living target) or every target dodges |
+| `hit` | Two low thuds | An enemy attack wounds you (not bleed, Scorn or Eclipse ticks, or Inferno field flames) |

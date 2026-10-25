@@ -32,7 +32,7 @@ pnpm --dir firmware hub:simulate  # two fake gloves, to try the page without har
 | D3 (v2 glove) or D7 (v4 glove) | Grove Touch Sensor | `d3` / `d7` (1 = touched); the info packet's `tp` says which pin is the touch sensor |
 | D4 | Button 1 | `d4` |
 | D8 | Button 2 | `d8` |
-| D5 | Buzzer | `beep` and `ident` commands |
+| D5 | Buzzer | `beep`, `ident` and `buzz` (game patterns: `tick`, `cast`, `fizzle`, `hit`) commands |
 | A0 | Rotary angle sensor | `dial`, 0 to 1023 |
 | I2C | 3-axis accelerometer (LIS3DHTR, ADXL345 or MMA7660, auto-detected) | `ax`, `ay`, `az` in milli-g |
 | I2C | 16x2 RGB LCD | status display |

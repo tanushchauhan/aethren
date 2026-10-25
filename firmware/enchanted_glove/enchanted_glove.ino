@@ -35,6 +35,7 @@
  * Inbound (one JSON object per packet or per serial line):
  *   {"cmd":"hello"}                         hub announces itself; frames switch to unicast
  *   {"cmd":"beep"}                          short beep
+ *   {"cmd":"buzz","p":"cast"}               game buzzer pattern: tick, cast, fizzle or hit (unknown = tick)
  *   {"cmd":"ident"}                         beep and show "I AM GLOVE n" for 4 s
  *   {"cmd":"lcd","l1":"..","l2":"..","r":255,"g":0,"b":0,"ms":4000}   custom message
  *   {"cmd":"i2c"}                           rescan the I2C buses (result appears in the next info)
@@ -84,6 +85,16 @@ const uint8_t button1Pin = 4;
 const uint8_t button2Pin = 8;
 const uint8_t buzzerPin = 5;
 const uint8_t dialPin = A0;
+
+// Buzzer patterns for {"cmd":"buzz"}. Each is a short run of notes stepped from loop() so nothing
+// blocks; a new pattern or beep replaces one still playing. A zero frequency is a rest. Declared up
+// here because the Arduino builder prototypes every function above the first one.
+struct Note { uint16_t hz; uint16_t ms; };
+const Note TICK_NOTES[] = {{2400, 12}};
+const Note CAST_NOTES[] = {{660, 50}, {880, 50}, {1320, 90}};
+const Note FIZZLE_NOTES[] = {{520, 70}, {0, 20}, {330, 70}, {0, 20}, {220, 120}};
+const Note HIT_NOTES[] = {{150, 120}, {0, 30}, {110, 160}};
+#define NOTE_COUNT(notes) (uint8_t)(sizeof(notes) / sizeof((notes)[0]))
 
 const uint32_t FRAME_MS = 25;            // 40 Hz target; a UDP packet costs ~15 ms on the R4 WiFi
 const uint32_t INFO_MS = 1000;
@@ -473,13 +484,48 @@ void setCustomLcd(const char *line, uint32_t now) {
   lastLcdMs = 0;
 }
 
-void beep(uint16_t hz, uint16_t ms) { tone(buzzerPin, hz, ms); }
+const Note *melody = nullptr;
+uint8_t melodyLength = 0;
+uint8_t melodyIndex = 0;
+uint32_t noteEndsMs = 0;
+
+void playPattern(const Note *notes, uint8_t length, uint32_t now) {
+  melody = notes;
+  melodyLength = length;
+  melodyIndex = 0;
+  noteEndsMs = now;
+}
+
+void serviceBuzzer(uint32_t now) {
+  if (!melody || before(now, noteEndsMs)) return;
+  if (melodyIndex >= melodyLength) {
+    melody = nullptr;
+    noTone(buzzerPin);
+    return;
+  }
+  const Note &note = melody[melodyIndex++];
+  if (note.hz) tone(buzzerPin, note.hz, note.ms);
+  else noTone(buzzerPin);
+  noteEndsMs = now + note.ms;
+}
+
+void beep(uint16_t hz, uint16_t ms) {
+  melody = nullptr;
+  tone(buzzerPin, hz, ms);
+}
 
 void handleLine(const char *line, uint32_t now) {
   char cmd[10];
   if (!extractString(line, "cmd", cmd, sizeof(cmd))) return;
   if (strcmp(cmd, "beep") == 0) {
     beep(880, 120);
+  } else if (strcmp(cmd, "buzz") == 0) {
+    char pattern[8];
+    if (!extractString(line, "p", pattern, sizeof(pattern))) pattern[0] = '\0';
+    if (strcmp(pattern, "cast") == 0) playPattern(CAST_NOTES, NOTE_COUNT(CAST_NOTES), now);
+    else if (strcmp(pattern, "fizzle") == 0) playPattern(FIZZLE_NOTES, NOTE_COUNT(FIZZLE_NOTES), now);
+    else if (strcmp(pattern, "hit") == 0) playPattern(HIT_NOTES, NOTE_COUNT(HIT_NOTES), now);
+    else playPattern(TICK_NOTES, NOTE_COUNT(TICK_NOTES), now);
   } else if (strcmp(cmd, "ident") == 0) {
     snprintf(identText, sizeof(identText), "I AM GLOVE %d", GLOVE_ID);
     identUntil = now + 4000;
@@ -736,6 +782,7 @@ void loop() {
   serviceWifi(now);
   pollUdp(now);
   pollSerial(now);
+  serviceBuzzer(now);
 
   if (rescanI2c) {
     rescanI2c = false;
