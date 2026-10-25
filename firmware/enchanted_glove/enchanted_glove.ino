@@ -80,8 +80,8 @@ const uint8_t dialPin = A0;
 const uint32_t FRAME_MS = 25;            // 40 Hz target; a UDP packet costs ~15 ms on the R4 WiFi
 const uint32_t INFO_MS = 1000;
 const uint32_t HUB_TIMEOUT_MS = 6000;    // no hello for this long: back to broadcast
-const uint32_t WIFI_JOIN_TIMEOUT_MS = 20000;
-const uint32_t WIFI_RETRY_MS = 4000;
+const uint32_t WIFI_JOIN_TIMEOUT_MS = 8000;   // the 3rd attempt joined in 3 s; early begin() calls can be ignored while the radio boots
+const uint32_t WIFI_RETRY_MS = 1000;
 const uint32_t LCD_REFRESH_MS = 200;
 const uint32_t LCD_PAGE_MS = 3000;
 const uint8_t LCD_PAGES = 4;
@@ -208,8 +208,31 @@ bool extractLong(const char *json, const char *key, long *out) {
 
 // --- I2C --------------------------------------------------------------------
 
+// A module can be left holding SDA low when the board resets mid-transaction (every flash does this),
+// and then nothing on the bus answers until power cycles. Clocking SCL up to 9 times lets it finish
+// the byte it thinks it is sending, then a STOP frees the bus.
+void i2cBusClear() {
+  pinMode(SDA, INPUT_PULLUP);
+  pinMode(SCL, OUTPUT);
+  digitalWrite(SCL, HIGH);
+  for (uint8_t i = 0; i < 9 && digitalRead(SDA) == LOW; i++) {
+    digitalWrite(SCL, LOW);
+    delayMicroseconds(10);
+    digitalWrite(SCL, HIGH);
+    delayMicroseconds(10);
+  }
+  pinMode(SDA, OUTPUT);  // STOP: SDA low to high while SCL is high
+  digitalWrite(SDA, LOW);
+  delayMicroseconds(10);
+  digitalWrite(SDA, HIGH);
+  delayMicroseconds(10);
+  pinMode(SDA, INPUT_PULLUP);
+  pinMode(SCL, INPUT_PULLUP);
+}
+
 void resetI2c() {
   Wire.end();
+  i2cBusClear();
   Wire.begin();
   Wire.setClock(100000);
 }
@@ -654,6 +677,7 @@ void setup() {
   digitalWrite(buzzerPin, LOW);
   analogReadResolution(10);
 
+  i2cBusClear();
   Wire.begin();
   Wire.setClock(100000);
   Serial.begin(SERIAL_BAUD);  // no wait: output is dropped when no host is attached

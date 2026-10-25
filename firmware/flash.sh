@@ -17,11 +17,12 @@ fqbn="arduino:renesas_uno:unor4wifi"
 dir="$(cd "$(dirname "$0")" && pwd)/enchanted_glove"
 flags="-DGLOVE_ID=$id -DLCD_VARIANT=$lcd"
 echo "Building glove $id with LCD v$lcd"
-arduino-cli compile --fqbn "$fqbn" --build-property "build.extra_flags=$flags" "$dir"
+build="${TMPDIR:-/tmp}/glove-build-$variant"
+arduino-cli compile --fqbn "$fqbn" --build-property "build.extra_flags=$flags" --build-path "$build" "$dir"
 if [ "$port" = "compile" ]; then exit 0; fi
 if [ -z "$port" ]; then
   port="$(arduino-cli board list | awk '/unor4wifi/ {print $1; exit}')"
 fi
 [ -n "$port" ] || { echo "No Uno R4 WiFi found. Plug it in or pass the port." >&2; exit 1; }
 echo "Flashing $port"
-arduino-cli upload -p "$port" --fqbn "$fqbn" --build-property "build.extra_flags=$flags" "$dir"
+arduino-cli upload -p "$port" --fqbn "$fqbn" --input-dir "$build" "$dir"
