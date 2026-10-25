@@ -36,6 +36,11 @@ pnpm --dir firmware hub:simulate  # two fake gloves, to try the page without har
 | A0 | Rotary angle sensor | `dial`, 0 to 1023 |
 | I2C | 3-axis accelerometer (LIS3DHTR, ADXL345 or MMA7660, auto-detected) | `ax`, `ay`, `az` in milli-g |
 | I2C | 16x2 RGB LCD | status display |
+| D2, D6, D9, A1 to A3 | Nothing (reported anyway) | `d2`, `d6`, `d9`, `a1`, `a2`, `a3`: a part that lights up here is plugged into the wrong socket |
+
+## Finding where a part is plugged in
+
+Open the **Wiring map** tab on `/debug/hardware`. It lists every Grove digital and analog socket with the part the firmware expects there, its live level, press count and time of last change, plus the I2C devices by name and the Wi-Fi, UDP and USB links. Press a button or touch a sensor and the header shows which pin changed (`Last input: D7 ...`). A part on an unused pin is highlighted, and a dial that only reaches about 700 of 1023 is flagged as a probable 3.3V shield supply.
 
 ## The display
 
@@ -59,7 +64,7 @@ While joining, line 1 reads `G<id> WIFI JOINING`. After a failure it shows the W
 Frames are one JSON object per UDP packet, all integers, about 40 per second:
 
 ```
-{"t":"f","id":1,"seq":42,"ms":12345,"ax":12,"ay":-20,"az":998,"d3":0,"d7":0,"d4":0,"d8":0,"dial":512,"rssi":-48}
+{"t":"f","id":1,"seq":42,"ms":12345,"ax":12,"ay":-20,"az":998,"d3":0,"d7":0,"d4":0,"d8":0,"dial":512,"rssi":-48,"d2":0,"d6":0,"d9":0,"a1":3,"a2":9,"a3":4}
 ```
 
 Once a second an info packet carries the glove id, LCD version, firmware tag, IP, SSID, accelerometer chip, whether it sees the hub, uptime, send rate and the I2C address list.

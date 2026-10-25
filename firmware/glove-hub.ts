@@ -33,6 +33,13 @@ interface Frame {
   d8: number;
   dial: number;
   rssi: number;
+  /** Unused pins, only sent by wifi-diag-2 firmware and later. */
+  d2?: number;
+  d6?: number;
+  d9?: number;
+  a1?: number;
+  a2?: number;
+  a3?: number;
 }
 
 interface Glove {
@@ -152,6 +159,9 @@ function handlePacket(text: string, ip: string): void {
       dial: num(data.dial),
       rssi: num(data.rssi),
     };
+    for (const key of ['d2', 'd6', 'd9', 'a1', 'a2', 'a3'] as const) {
+      if (typeof data[key] === 'number') frame[key] = data[key] as number;
+    }
     if (g.lastSeq !== null && frame.seq > g.lastSeq + 1) g.dropped += frame.seq - g.lastSeq - 1;
     g.lastSeq = frame.seq;
     g.received++;
@@ -330,6 +340,12 @@ if (simulate) {
       d8: Math.sin(t * 0.5 + 2) > 0.85 ? 1 : 0,
       dial: Math.round(512 + Math.sin(t * 0.3) * 500),
       rssi: -48 - id * 4,
+      d2: 0,
+      d6: id === 1 && Math.sin(t * 0.7) > 0.9 ? 1 : 0,
+      d9: 0,
+      a1: Math.round(8 + Math.sin(t) * 5),
+      a2: Math.round(300 + Math.sin(t * 0.4) * 280),
+      a3: Math.round(5 + Math.cos(t) * 4),
     };
     handlePacket(JSON.stringify(frame), `172.20.10.${id + 3}`);
   };

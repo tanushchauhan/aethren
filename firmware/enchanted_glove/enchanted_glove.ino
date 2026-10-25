@@ -27,7 +27,9 @@
  *
  * Outbound (one JSON object per packet, every number is an integer):
  *   frame  {"t":"f","id":1,"seq":42,"ms":12345,"ax":12,"ay":-20,"az":998,
- *           "d3":0,"d7":0,"d4":0,"d8":0,"dial":512,"rssi":-48}      ax/ay/az in milli-g
+ *           "d3":0,"d7":0,"d4":0,"d8":0,"dial":512,"rssi":-48,
+ *           "d2":0,"d6":0,"d9":0,"a1":3,"a2":9,"a3":4}              ax/ay/az in milli-g; d2/d6/d9/a1-a3 are
+ *                                                                   unused pins, reported to locate parts
  *   info   {"t":"i","id":1,"v":4,"fw":"wifi-diag-1","ip":"172.20.10.5","ssid":"iPhone","rssi":-48,
  *           "acc":"MMA7660","hub":1,"up":123,"fps":33,"i2c":[62,76,98]}      once a second
  * Inbound (one JSON object per packet or per serial line):
@@ -65,7 +67,7 @@
 
 // --- Config -----------------------------------------------------------------
 
-const char FIRMWARE_TAG[] = "wifi-diag-1";
+const char FIRMWARE_TAG[] = "wifi-diag-2";
 const uint16_t CMD_PORT = 4210;  // the glove listens here
 const uint16_t HUB_PORT = 4211;  // the hub listens here
 const uint32_t SERIAL_BAUD = 115200;
@@ -125,6 +127,8 @@ bool accelEverSeen = false;
 
 int16_t dialRaw = 0;
 uint8_t pinTouch = 0, pinTouchAlt = 0, pinBtn1 = 0, pinBtn2 = 0;
+uint8_t pinD2 = 0, pinD6 = 0, pinD9 = 0;  // not used by this firmware: they show where a part is really plugged in
+int16_t analog1 = 0, analog2 = 0, analog3 = 0;
 bool lastBtn1 = false;
 
 uint8_t i2cList[I2C_SCAN_MAX];
@@ -372,7 +376,13 @@ void readInputs() {
   pinTouchAlt = digitalRead(touchAltPin) == HIGH;
   pinBtn1 = digitalRead(button1Pin) == HIGH;
   pinBtn2 = digitalRead(button2Pin) == HIGH;
+  pinD2 = digitalRead(2) == HIGH;
+  pinD6 = digitalRead(6) == HIGH;
+  pinD9 = digitalRead(9) == HIGH;
   dialRaw = (int16_t)clampi(analogRead(dialPin), 0, 1023);
+  analog1 = (int16_t)clampi(analogRead(A1), 0, 1023);
+  analog2 = (int16_t)clampi(analogRead(A2), 0, 1023);
+  analog3 = (int16_t)clampi(analogRead(A3), 0, 1023);
 }
 
 // --- Wi-Fi ------------------------------------------------------------------
@@ -518,12 +528,13 @@ void sendPacket(const char *buf, size_t len, uint32_t now) {
 }
 
 void sendFrame(uint32_t now) {
-  char buf[200];
+  char buf[260];
   int n = snprintf(buf, sizeof(buf),
                    "{\"t\":\"f\",\"id\":%d,\"seq\":%lu,\"ms\":%lu,\"ax\":%d,\"ay\":%d,\"az\":%d,"
-                   "\"d3\":%u,\"d7\":%u,\"d4\":%u,\"d8\":%u,\"dial\":%d,\"rssi\":%ld}",
+                   "\"d3\":%u,\"d7\":%u,\"d4\":%u,\"d8\":%u,\"dial\":%d,\"rssi\":%ld,"
+                   "\"d2\":%u,\"d6\":%u,\"d9\":%u,\"a1\":%d,\"a2\":%d,\"a3\":%d}",
                    GLOVE_ID, (unsigned long)seq, (unsigned long)now, axMg, ayMg, azMg, pinTouch, pinTouchAlt, pinBtn1,
-                   pinBtn2, dialRaw, (long)rssi);
+                   pinBtn2, dialRaw, (long)rssi, pinD2, pinD6, pinD9, analog1, analog2, analog3);
   if (n <= 0) return;
   sendPacket(buf, (size_t)n, now);
   if (Serial && ++serialFrameCount % SERIAL_FRAME_EVERY == 0) Serial.println(buf);
@@ -669,6 +680,9 @@ void serviceLcd(uint32_t now) {
 // --- Arduino entry points ---------------------------------------------------
 
 void setup() {
+  pinMode(2, INPUT);
+  pinMode(6, INPUT);
+  pinMode(9, INPUT);
   pinMode(touchPin, INPUT);
   pinMode(touchAltPin, INPUT);
   pinMode(button1Pin, INPUT);

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { DEBUG_HARDWARE_PATH } from '../debugRoutes';
+import { WiringMap } from './WiringMap';
 import {
   GLOVE_HUB_URL,
   SAMPLE_WINDOW_MS,
@@ -7,6 +8,7 @@ import {
   type GloveHub,
   type GloveSample,
   type GloveSummary,
+  emptyEdges,
 } from './useGloveHub';
 
 /** The legacy `/hardware-test` URL redirects here. */
@@ -144,7 +146,7 @@ function GloveCard({ glove, hub }: { glove: GloveSummary; hub: GloveHub }) {
   const [windowS, setWindowS] = useState<number>(8);
   const list = hub.samples.current.get(glove.id);
   const last = list?.[list.length - 1];
-  const counts = hub.edges.current.get(glove.id) ?? { d3: 0, d7: 0, d4: 0, d8: 0 };
+  const counts = hub.edges.current.get(glove.id) ?? emptyEdges();
   const mag = last ? Math.sqrt(last.ax ** 2 + last.ay ** 2 + last.az ** 2) : 0;
   let peak = 0;
   if (list) {
@@ -230,10 +232,10 @@ function GloveCard({ glove, hub }: { glove: GloveSummary; hub: GloveHub }) {
       </dl>
 
       <div className="mt-4 flex flex-wrap items-end gap-3">
-        <Chip label="D3 touch" on={!!last?.d3} count={counts.d3} />
-        <Chip label="D7 touch" on={!!last?.d7} count={counts.d7} />
-        <Chip label="D4 button" on={!!last?.d4} count={counts.d4} />
-        <Chip label="D8 button" on={!!last?.d8} count={counts.d8} />
+        <Chip label="D3 touch" on={!!last?.d3} count={counts.hits.d3} />
+        <Chip label="D7 touch" on={!!last?.d7} count={counts.hits.d7} />
+        <Chip label="D4 button" on={!!last?.d4} count={counts.hits.d4} />
+        <Chip label="D8 button" on={!!last?.d8} count={counts.hits.d8} />
         <div className="min-w-48 flex-1">
           <div className="flex justify-between text-xs text-stone-400">
             <span>A0 dial</span>
@@ -312,6 +314,7 @@ function GloveCard({ glove, hub }: { glove: GloveSummary; hub: GloveHub }) {
 
 export function HardwareTestPage() {
   const hub = useGloveHub();
+  const [tab, setTab] = useState<'signals' | 'wiring'>('signals');
   const statusText =
     hub.status === 'open' ? 'Hub connected' : hub.status === 'connecting' ? 'Connecting to hub…' : 'Hub not running';
   return (
@@ -348,9 +351,33 @@ export function HardwareTestPage() {
         </div>
       ) : null}
 
-      {hub.gloves.map((glove) => (
-        <GloveCard key={glove.id} glove={glove} hub={hub} />
-      ))}
+      <nav className="flex gap-2" role="tablist">
+        {(
+          [
+            ['signals', 'Signals'],
+            ['wiring', 'Wiring map'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            className={`rounded border px-3 py-1 text-sm ${
+              tab === id ? 'border-amber-400 bg-amber-400/15 text-amber-200' : 'border-stone-700 text-stone-300 hover:bg-stone-800'
+            }`}
+            onClick={() => setTab(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === 'wiring' ? (
+        <WiringMap hub={hub} />
+      ) : (
+        hub.gloves.map((glove) => <GloveCard key={glove.id} glove={glove} hub={hub} />)
+      )}
     </main>
   );
 }

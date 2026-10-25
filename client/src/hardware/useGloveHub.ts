@@ -17,6 +17,13 @@ export interface GloveSample {
   d8: number;
   dial: number;
   rssi: number;
+  /** Unused pins; absent when the glove runs older firmware. */
+  d2?: number;
+  d6?: number;
+  d9?: number;
+  a1?: number;
+  a2?: number;
+  a3?: number;
 }
 
 export interface GloveSummary {
@@ -40,11 +47,17 @@ export interface GloveSummary {
   conflict: boolean;
 }
 
+export const DIGITAL_PINS = ['d2', 'd3', 'd4', 'd6', 'd7', 'd8', 'd9'] as const;
+export type DigitalPin = (typeof DIGITAL_PINS)[number];
+
+/** Rising edges per digital pin, and the browser time each pin last changed level. */
 export interface GloveEdgeCounts {
-  d3: number;
-  d7: number;
-  d4: number;
-  d8: number;
+  hits: Record<DigitalPin, number>;
+  changedAt: Partial<Record<DigitalPin, number>>;
+}
+
+export function emptyEdges(): GloveEdgeCounts {
+  return { hits: { d2: 0, d3: 0, d4: 0, d6: 0, d7: 0, d8: 0, d9: 0 }, changedAt: {} };
 }
 
 export type HubStatus = 'connecting' | 'open' | 'closed';
@@ -108,12 +121,14 @@ export function useGloveHub(url: string = GLOVE_HUB_URL): GloveHub {
           list.push({ ...f, t: now });
           while (list.length > MAX_SAMPLES || (list[0] && now - list[0].t > SAMPLE_WINDOW_MS)) list.shift();
           samples.current.set(id, list);
-          const counts = edges.current.get(id) ?? { d3: 0, d7: 0, d4: 0, d8: 0 };
+          const counts = edges.current.get(id) ?? emptyEdges();
           if (prev) {
-            if (!prev.d3 && f.d3) counts.d3++;
-            if (!prev.d7 && f.d7) counts.d7++;
-            if (!prev.d4 && f.d4) counts.d4++;
-            if (!prev.d8 && f.d8) counts.d8++;
+            for (const pin of DIGITAL_PINS) {
+              const before = prev[pin] ?? 0;
+              const after = f[pin] ?? 0;
+              if (before !== after) counts.changedAt[pin] = now;
+              if (!before && after) counts.hits[pin]++;
+            }
           }
           edges.current.set(id, counts);
         }
