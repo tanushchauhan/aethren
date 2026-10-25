@@ -7,12 +7,24 @@ import { serverUrl } from './serverUrl';
  * ElevenLabs and holds no API keys — it only asks our server at /api/tts.
  */
 
-const TTS_DEADLINE_MS = 800;
+/** How long to wait for the server's voice before speaking with the browser instead. */
+const TTS_DEADLINE_MS = 3000;
+/** Lines waiting behind the one playing; older waiting lines drop first (never the playing one). */
+const MAX_WAITING = 3;
 
 export interface NarrationRequest {
   text: string;
   audioUrl?: string | null;
   useBrowserTts?: boolean;
+  /** The server tags boss lines so they get the boss voice. */
+  speaker?: 'narrator' | 'boss';
+}
+
+/** What the narrator is doing, for the Skip control. */
+export interface NarrationQueueState {
+  playing: string | null;
+  waiting: number;
+  paused: boolean;
 }
 
 type TtsClip = { kind: 'url'; url: string } | { kind: 'blob'; blob: Blob };
@@ -22,9 +34,16 @@ let currentAudio: HTMLAudioElement | null = null;
 let currentObjectUrl: string | null = null;
 let fallbackTimer = 0;
 let speakTimer = 0;
+let safetyTimer = 0;
 let inflight: AbortController | null = null;
 let active = false;
+let queue: NarrationRequest[] = [];
+let current: NarrationRequest | null = null;
+let paused = false;
+/** A line whose audio arrived while narration was paused (push-to-talk); it starts on resume. */
+let pendingStart: (() => void) | null = null;
 const listeners = new Set<(speaking: boolean) => void>();
+const queueListeners = new Set<(state: NarrationQueueState) => void>();
 
 function setActive(next: boolean): void {
   if (active === next) return;
@@ -40,6 +59,23 @@ export function onNarrationActive(listener: (speaking: boolean) => void): () => 
   };
 }
 
+function queueState(): NarrationQueueState {
+  return { playing: current?.text ?? null, waiting: queue.length, paused };
+}
+
+function notifyQueue(): void {
+  const state = queueState();
+  for (const listener of queueListeners) listener(state);
+}
+
+export function onNarrationQueue(listener: (state: NarrationQueueState) => void): () => void {
+  queueListeners.add(listener);
+  listener(queueState());
+  return () => {
+    queueListeners.delete(listener);
+  };
+}
+
 function releaseAudio(): void {
   if (currentAudio) {
     currentAudio.pause();
@@ -52,39 +88,111 @@ function releaseAudio(): void {
   }
 }
 
-export function stopNarration(): void {
+/** Silences the line in progress without touching the queue. */
+function haltLine(): void {
   generation += 1;
   window.clearTimeout(fallbackTimer);
   window.clearTimeout(speakTimer);
+  window.clearTimeout(safetyTimer);
   fallbackTimer = 0;
   speakTimer = 0;
+  safetyTimer = 0;
+  pendingStart = null;
   inflight?.abort();
   inflight = null;
   releaseAudio();
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+}
+
+/** Stops narration and forgets every waiting line. */
+export function stopNarration(): void {
+  haltLine();
+  queue = [];
+  current = null;
   setActive(false);
+  notifyQueue();
+}
+
+/** Called once per line when it ends for any reason; starts the next waiting line. */
+function finishLine(token: number): void {
+  if (token !== generation) return;
+  haltLine();
+  current = null;
+  setActive(false);
+  playNext();
+}
+
+/** Skips the line playing now; the next waiting line starts. */
+export function skipNarration(): void {
+  if (current) finishLine(generation);
+}
+
+/** Skips the line playing now and every waiting line. */
+export function skipAllNarration(): void {
+  stopNarration();
+}
+
+/** Holds narration (for push-to-talk, so the microphone does not hear it). */
+export function pauseNarration(): void {
+  if (paused) return;
+  paused = true;
+  window.clearTimeout(safetyTimer);
+  currentAudio?.pause();
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.pause();
+  notifyQueue();
+}
+
+export function resumeNarration(): void {
+  if (!paused) return;
+  paused = false;
+  if (current) armSafety(current.text, generation);
+  if (pendingStart) {
+    const start = pendingStart;
+    pendingStart = null;
+    start();
+  } else {
+    void currentAudio?.play().catch(() => undefined);
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.resume();
+  }
+  playNext();
+  notifyQueue();
+}
+
+/** Runs `start` now, or when narration resumes. */
+function whenUnpaused(start: () => void): void {
+  if (paused) pendingStart = start;
+  else start();
+}
+
+/** If a voice never reports its end (a known speechSynthesis issue), move on anyway. */
+function armSafety(text: string, token: number): void {
+  window.clearTimeout(safetyTimer);
+  const words = text.split(/\s+/).filter(Boolean).length;
+  safetyTimer = window.setTimeout(() => finishLine(token), TTS_DEADLINE_MS + 6000 + words * 700);
 }
 
 function browserSpeak(text: string, token: number): void {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    globalThis.setTimeout(() => finishLine(token), 0);
+    return;
+  }
   window.clearTimeout(speakTimer);
   window.speechSynthesis.cancel();
-  window.speechSynthesis.resume();
-  setActive(true);
-  speakTimer = window.setTimeout(() => {
+  whenUnpaused(() => {
     if (token !== generation) return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1;
-    utterance.pitch = 0.92;
-    utterance.lang = 'en-US';
-    utterance.onend = () => {
-      if (token === generation) setActive(false);
-    };
-    utterance.onerror = () => {
-      if (token === generation) setActive(false);
-    };
-    window.speechSynthesis.speak(utterance);
-  }, 60);
+    window.speechSynthesis.resume();
+    setActive(true);
+    speakTimer = window.setTimeout(() => {
+      if (token !== generation) return;
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1;
+      utterance.pitch = 0.92;
+      utterance.lang = 'en-US';
+      utterance.onend = () => finishLine(token);
+      utterance.onerror = () => finishLine(token);
+      window.speechSynthesis.speak(utterance);
+    }, 60);
+  });
 }
 
 function resolveAudioUrl(url: string): string {
@@ -107,12 +215,12 @@ function readString(record: Record<string, unknown>, keys: readonly string[]): s
   return null;
 }
 
-async function fetchTts(text: string, signal: AbortSignal): Promise<TtsClip> {
+async function fetchTts(text: string, speaker: NarrationRequest['speaker'], signal: AbortSignal): Promise<TtsClip> {
   const base = serverUrl();
   let response = await fetch(`${base}/api/tts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'audio/*,application/json' },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(speaker ? { text, speaker } : { text }),
     signal,
   });
   if (response.status === 404 || response.status === 405) {
@@ -148,22 +256,25 @@ function playUrl(url: string, token: number, text: string, ownsUrl: boolean): vo
     browserSpeak(text, token);
   };
   audio.onended = () => {
-    if (token === generation) setActive(false);
     if (ownsUrl && currentObjectUrl === url) {
       URL.revokeObjectURL(url);
       currentObjectUrl = null;
     }
+    finishLine(token);
   };
   audio.onplaying = () => {
     if (token === generation) setActive(true);
   };
   audio.onerror = () => fallback();
-  void audio.play().then(
-    () => {
-      if (token === generation) setActive(true);
-    },
-    () => fallback(),
-  );
+  whenUnpaused(() => {
+    if (token !== generation) return;
+    void audio.play().then(
+      () => {
+        if (token === generation) setActive(true);
+      },
+      () => fallback(),
+    );
+  });
 }
 
 function playBlob(blob: Blob, token: number, text: string): void {
@@ -172,11 +283,10 @@ function playBlob(blob: Blob, token: number, text: string): void {
   playUrl(url, token, text, true);
 }
 
-export function playNarration(request: NarrationRequest): void {
-  const text = request.text.trim();
-  if (!text || typeof window === 'undefined') return;
-  stopNarration();
+function startLine(request: NarrationRequest): void {
+  const text = request.text;
   const token = generation;
+  armSafety(text, token);
 
   if (request.useBrowserTts) {
     browserSpeak(text, token);
@@ -189,23 +299,18 @@ export function playNarration(request: NarrationRequest): void {
 
   const controller = new AbortController();
   inflight = controller;
-  const started = performance.now();
   let usedBrowser = false;
   fallbackTimer = window.setTimeout(() => {
     if (token !== generation) return;
     usedBrowser = true;
-    browserSpeak(text, token);
     controller.abort();
+    browserSpeak(text, token);
   }, TTS_DEADLINE_MS);
 
   void (async () => {
     try {
-      const clip = await fetchTts(text, controller.signal);
-      if (token !== generation) return;
-      if (usedBrowser || performance.now() - started > TTS_DEADLINE_MS) {
-        if (!usedBrowser) browserSpeak(text, token);
-        return;
-      }
+      const clip = await fetchTts(text, request.speaker, controller.signal);
+      if (token !== generation || usedBrowser) return;
       window.clearTimeout(fallbackTimer);
       if (clip.kind === 'url') playUrl(clip.url, token, text, false);
       else playBlob(clip.blob, token, text);
@@ -215,4 +320,31 @@ export function playNarration(request: NarrationRequest): void {
       browserSpeak(text, token);
     }
   })();
+}
+
+function playNext(): void {
+  if (current || paused) {
+    notifyQueue();
+    return;
+  }
+  const next = queue.shift();
+  if (next) {
+    current = next;
+    startLine(next);
+  }
+  notifyQueue();
+}
+
+/**
+ * Queues a line. Lines play one after another and are never cut off by a newer line;
+ * use {@link skipNarration} to move on. A line identical to the one playing or last
+ * queued is ignored (the same line can arrive as an event and in room state).
+ */
+export function playNarration(request: NarrationRequest): void {
+  const text = request.text.trim();
+  if (!text || typeof window === 'undefined') return;
+  if (current?.text === text || queue.at(-1)?.text === text) return;
+  queue.push({ ...request, text });
+  while (queue.length > MAX_WAITING) queue.shift();
+  playNext();
 }

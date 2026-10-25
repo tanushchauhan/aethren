@@ -5,7 +5,7 @@ import { BattleStage } from './BattleStage';
 import { TelegraphOverlay } from './TelegraphOverlay';
 import { useSpellSelection } from './useSpellSelection';
 import { phraseMatches, transcribeClip } from './audio/transcribe';
-import { stopNarration } from './audio/tts';
+import { pauseNarration, resumeNarration } from './audio/tts';
 import styles from './combat.module.css';
 
 export function CombatLayer() {
@@ -79,12 +79,13 @@ function CombatScreen() {
     const element = spell.element;
     const phrase = spell.phrase;
     setReady(null);
-    stopNarration();
+    // Hold narration while the microphone listens; it picks up where it left off.
+    pauseNarration();
     void (async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') throw new Error('Microphone recording needs a supported browser on HTTPS or localhost.');
         const media = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (cancelled || !desired.current || token !== generation.current) { media.getTracks().forEach(t => t.stop()); return; }
+        if (cancelled || !desired.current || token !== generation.current) { media.getTracks().forEach(t => t.stop()); resumeNarration(); return; }
         stream.current = media;
         const rec = new MediaRecorder(media);
         recorder.current = rec;
@@ -95,6 +96,7 @@ function CombatScreen() {
           recorder.current = null;
           stream.current = null;
           setRecording(false);
+          resumeNarration();
           if (token !== generation.current || !chunks.length) return;
           setBusy(true);
           void transcribeClip(new Blob(chunks, { type: rec.mimeType }), element).then(result => {
@@ -113,6 +115,7 @@ function CombatScreen() {
         stream.current?.getTracks().forEach(t => t.stop());
         recorder.current = null;
         setRecording(false);
+        resumeNarration();
         setMessage(error instanceof Error ? error.message : 'Microphone unavailable.');
       }
     })();

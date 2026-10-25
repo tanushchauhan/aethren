@@ -21,7 +21,8 @@ describe('narrate', () => {
     const line = await narrate(createMuseChat(rt), { kind: 'dodge', context: { playerName: 'Maya', secret: { a: 1 } } });
     expect(line.startsWith('The steed stumbles')).toBe(true);
     expect(line.length).toBeLessThanOrEqual(TAUNT_MAX_CHARS);
-    expect(client.calls[0]!.max_tokens).toBe(60);
+    expect(client.calls[0]!.max_tokens).toBe(1084);
+    expect(client.calls[0]!.reasoning_effort).toBe('minimal');
     expect(JSON.stringify(client.calls[0]!.messages)).not.toContain('secret');
   });
 

@@ -180,6 +180,10 @@ export interface PlayerState {
   canCast: boolean;
   selectedElement: P0ElementType | null;
   fistCharged: boolean;
+  /** Latest glove noise reading; absent before hardware reports it. */
+  noiseLevel?: number;
+  /** Whether the Spellbearer's hardware switch is armed. */
+  gloveArmed?: boolean;
 }
 
 /** Authoritative snapshot the server broadcasts on `room:state`. */
@@ -312,9 +316,25 @@ export interface RoomCreateRequest {
 }
 
 export interface RoomJoinRequest {
-  roomCode: string;
+  roomCode?: string;
+  /** Storybook client spelling of `roomCode`; either is accepted. */
+  code?: string;
   playerName: string;
   role: JoinableRole;
+}
+
+/**
+ * Storybook client (`client/src/net`) compatibility. A socket that creates or joins a room
+ * without an ack is treated as a storybook client: the server sends it `room:joined` and a
+ * storybook-shaped `room:state` (see `server/src/engine/storybook.ts`).
+ */
+export interface RoomAdvancePayload {
+  /** The storybook phase the client wants next, e.g. `opening`, `intro` or `encounter`. */
+  phase: string;
+}
+
+export interface OpeningCardPayload {
+  cardId: string;
 }
 
 export interface RoomQuickStartRequest {
@@ -359,6 +379,8 @@ export interface ServerToClientEvents {
   'world:image': (image: WorldImage) => void;
   'memory:cards': (cards: MemoryCard[]) => void;
   'room:error': (payload: RoomErrorPayload) => void;
+  /** Storybook clients only: sent to the joining socket before its first room snapshot. */
+  'room:joined': (payload: { playerId: string }) => void;
 }
 
 export interface ClientToServerEvents {
@@ -367,6 +389,7 @@ export interface ClientToServerEvents {
   'player:dodge_result': (payload: DodgeResultPayload) => void;
   'player:cast': (payload: CastPayload) => void;
   'hardware:event': (event: HardwareEvent) => void;
+  /** Storybook clients omit the ack at runtime; they get `room:joined` / `room:error` instead. */
   'room:create': (payload: RoomCreateRequest, ack: (res: RoomJoinAck) => void) => void;
   'room:join': (payload: RoomJoinRequest, ack: (res: RoomJoinAck) => void) => void;
   /** Creates a room with the cached demo world and saved opening picks. */
@@ -375,6 +398,12 @@ export interface ClientToServerEvents {
   'calibration:done': (payload: CalibrationDonePayload) => void;
   /** Host only. Advances lobby -> opening, and after both picks starts world generation. */
   'game:start': () => void;
+  /** Storybook: requests the next phase; the server maps it onto `game:start` / `calibration:done`. */
+  'room:advance': (payload: RoomAdvancePayload) => void;
+  /** Storybook: keeps a card for the encounter (`opening:pick_card` slot `encounter`). */
+  'opening:select_card': (payload: OpeningCardPayload) => void;
+  /** Storybook: crowns a card as the boss (`opening:pick_card` slot `boss`). */
+  'opening:lock_boss': (payload: OpeningCardPayload) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -391,6 +420,8 @@ export interface TranscribeRequestFields {
   roomCode: string;
   playerId: string;
   element: P0ElementType;
+  /** Development transcript injection; production requires MCP bearer authentication. */
+  transcriptOverride?: string;
 }
 
 export interface TranscribeResponse {
@@ -426,6 +457,7 @@ export interface TtsFallbackResponse {
 /** `POST /api/quest-chat`: the in-app quest box that runs the Quest Master tools. */
 export interface QuestChatRequest {
   prompt: string;
+  hostName?: string;
 }
 
 export interface QuestChatResponse {

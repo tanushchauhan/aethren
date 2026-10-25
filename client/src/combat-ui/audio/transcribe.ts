@@ -1,5 +1,7 @@
 import type { ElementP0 } from '../../net/contract';
+import { useGameStore } from '../../net/store';
 import { serverUrl } from './serverUrl';
+import { toWav16k } from './wav';
 
 export interface TranscribeResult {
   transcript: string;
@@ -47,14 +49,20 @@ function readBool(record: Record<string, unknown>, keys: readonly string[]): boo
 }
 
 function audioName(blob: Blob): string {
+  if (blob.type.includes('wav')) return 'incantation.wav';
   if (blob.type.includes('mp4')) return 'incantation.m4a';
   return 'incantation.webm';
 }
 
 export async function transcribeClip(blob: Blob, element: ElementP0): Promise<TranscribeResult> {
+  // The server credits the incantation to this seat, so the next cast can use it.
+  const { gameState, localPlayerId } = useGameStore.getState();
+  const audio = (await toWav16k(blob)) ?? blob;
   const body = new FormData();
-  body.append('audio', blob, audioName(blob));
+  body.append('audio', audio, audioName(audio));
   body.append('element', element);
+  if (gameState?.roomCode) body.append('roomCode', gameState.roomCode);
+  if (localPlayerId) body.append('playerId', localPlayerId);
 
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), TRANSCRIBE_TIMEOUT_MS);
@@ -69,8 +77,10 @@ export async function transcribeClip(blob: Blob, element: ElementP0): Promise<Tr
     const record = asRecord(payload);
     if (!record) throw new Error('Transcribe response was empty');
     const transcript = readString(record, ['transcript', 'text', 'utterance']);
-    if (!transcript) throw new Error('Transcribe response had no transcript');
-    return { transcript, pass: readBool(record, ['pass', 'matched', 'ok']) };
+    const pass = readBool(record, ['passed', 'pass', 'matched', 'ok']);
+    // A server verdict (including its third-try mercy pass) counts even with no words heard.
+    if (!transcript && pass === null) throw new Error('Transcribe response had no transcript');
+    return { transcript: transcript ?? '', pass };
   } finally {
     window.clearTimeout(timer);
   }

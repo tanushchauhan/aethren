@@ -4,6 +4,7 @@
 import type { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions';
 import type { MuseChat, MuseChatRequest } from '../contracts';
 import { describeError, type AiRuntime } from './runtime';
+import { aiTimings } from './timings';
 
 export function createMuseChat(rt: AiRuntime): MuseChat {
   const client = rt.chatClient;
@@ -19,22 +20,28 @@ export function createMuseChat(rt: AiRuntime): MuseChat {
       const body: ChatCompletionCreateParamsNonStreaming = {
         model: rt.config.muse.sparkModel,
         messages: req.messages,
+        reasoning_effort: 'minimal',
       };
       if (req.tools?.length) body.tools = req.tools;
-      if (req.toolChoice) body.tool_choice = req.toolChoice;
+      // Meta supports only auto, including when callers request required tool use.
+      if (req.tools?.length) body.tool_choice = 'auto';
       if (req.responseFormat) body.response_format = req.responseFormat;
       if (req.temperature !== undefined) body.temperature = req.temperature;
-      if (req.maxTokens !== undefined) body.max_tokens = req.maxTokens;
+      // Muse counts internal reasoning against this budget as well as visible output.
+      body.max_tokens = (req.maxTokens ?? 1024) + 1024;
       const started = Date.now();
       try {
         const res = await client.chat.completions.create(body, { signal, timeout: timeoutMs, maxRetries: 0 });
-        return res.choices?.[0]?.message ?? null;
+        const message = res.choices?.[0]?.message ?? null;
+        aiTimings.record('muse.chat', Date.now() - started, message ? 'ok' : 'error');
+        return message;
       } catch (err) {
         const why = timeout.aborted
           ? `timeout after ${timeoutMs}ms`
           : req.signal?.aborted
             ? 'aborted by caller'
             : describeError(err);
+        aiTimings.record('muse.chat', Date.now() - started, 'error');
         rt.warn(`spark call failed after ${Date.now() - started}ms: ${why}`);
         return null;
       }

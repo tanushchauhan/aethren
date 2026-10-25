@@ -35,6 +35,7 @@ import type {
 import { systemClock, type Clock } from './clock';
 import { GameRoom, type EngineRuntime } from './phases';
 import { generateCode, normalizeCode, toJoinableRole } from './rooms';
+import { storybookRoom } from './storybook';
 
 export interface EngineOptions {
   clock?: Clock;
@@ -132,6 +133,7 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
     socket.data.playerId = undefined;
     if (!roomCode) return;
     void socket.leave(roomCode);
+    void socket.leave(storybookRoom(roomCode));
     if (playerId) getRoom(roomCode)?.detach(playerId, socket.id);
   }
 
@@ -151,12 +153,18 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
           old.data.roomCode = undefined;
           old.data.playerId = undefined;
           void old.leave(code);
+          void old.leave(storybookRoom(code));
         }
       }
     }
     socket.data.roomCode = code;
     socket.data.playerId = seat.player.id;
-    void socket.join(code);
+    // Storybook clients learn their seat first, then get state in their own shape.
+    if (socket.data.storybook) {
+      socket.emit('room:joined', { playerId: seat.player.id });
+      room.holdIntroForNarration = true;
+    }
+    void socket.join(socket.data.storybook ? storybookRoom(code) : code);
     room.broadcast();
     if (room.state.phase === 'opening') socket.emit('memory:cards', room.state.memoryCards ?? []);
     return { ok: true, roomCode: code, playerId: seat.player.id, state: room.snapshot() };
@@ -177,6 +185,17 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
   function registerSocketHandlers(socket: GameSocket): void {
     sockets.set(socket.id, socket);
     const currentRoom = () => getRoom(socket.data.roomCode);
+    /**
+     * Shared-contract clients pass an ack. Storybook clients (`client/src/net`) do not: mark
+     * the socket and answer with `room:error` instead, since `room:joined` follows a success.
+     */
+    const replyTo = (ack: unknown): ((res: RoomJoinAck) => void) => {
+      if (typeof ack === 'function') return ack as (res: RoomJoinAck) => void;
+      socket.data.storybook = true;
+      return (res) => {
+        if (!res.ok) socket.emit('room:error', { message: res.error });
+      };
+    };
 
     socket.on(
       'clock:ping',
@@ -192,8 +211,8 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
 
     socket.on(
       'room:create',
-      safe(async (payload, ack) => {
-        if (typeof ack !== 'function') return;
+      safe(async (payload, rawAck) => {
+        const ack = replyTo(rawAck);
         if (!payload?.playerName) return ack({ ok: false, error: 'playerName is required' });
         try {
           const { roomCode, hostPlayerId } = await createRoom({
@@ -212,8 +231,8 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
 
     socket.on(
       'room:quick_start',
-      safe(async (payload, ack) => {
-        if (typeof ack !== 'function') return;
+      safe(async (payload, rawAck) => {
+        const ack = replyTo(rawAck);
         if (!payload?.playerName) return ack({ ok: false, error: 'playerName is required' });
         try {
           const { roomCode } = await createRoom({
@@ -230,9 +249,10 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
 
     socket.on(
       'room:join',
-      safe((payload, ack) => {
-        if (typeof ack !== 'function') return;
-        const room = typeof payload?.roomCode === 'string' ? getRoom(payload.roomCode) : undefined;
+      safe((payload, rawAck) => {
+        const ack = replyTo(rawAck);
+        const code = typeof payload?.roomCode === 'string' ? payload.roomCode : payload?.code;
+        const room = typeof code === 'string' ? getRoom(code) : undefined;
         if (!room) return ack({ ok: false, error: 'Room not found' });
         if (!payload.playerName) return ack({ ok: false, error: 'playerName is required' });
         ack(seatSocket(socket, room, payload.playerName, toJoinableRole(payload.role)));
@@ -246,7 +266,12 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
         const playerId = socket.data.playerId;
         if (!room || !playerId || !frame || typeof frame !== 'object') return;
         room.pose(playerId, frame);
-        socket.to(room.state.roomCode).emit('player:pose', { ...frame, playerId });
+        const code = room.state.roomCode;
+        socket.to([code, storybookRoom(code)]).emit('player:pose', { ...frame, playerId });
+        // Storybook clients have no calibration event: standing in the zone counts.
+        if (socket.data.storybook && frame.inZone === true && room.state.phase === 'calibration') {
+          room.calibrationDone(playerId);
+        }
       }),
     );
 
@@ -275,6 +300,42 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
       'opening:pick_card',
       safe((payload) => {
         currentRoom()?.pickCard(payload?.cardId, payload?.slot);
+      }),
+    );
+
+    socket.on(
+      'opening:select_card',
+      safe((payload) => {
+        currentRoom()?.storybookKeep(payload?.cardId);
+      }),
+    );
+
+    socket.on(
+      'opening:lock_boss',
+      safe((payload) => {
+        currentRoom()?.storybookCrown(payload?.cardId);
+      }),
+    );
+
+    socket.on(
+      'room:advance',
+      safe((payload) => {
+        const room = currentRoom();
+        const playerId = socket.data.playerId;
+        const wanted = payload?.phase;
+        if (!room || !playerId || typeof wanted !== 'string') return;
+        // The engine owns every transition; a request only maps onto an existing action.
+        const phase = room.state.phase;
+        if (phase === 'lobby' && (wanted === 'opening' || wanted === 'intro' || wanted === 'calibrating')) {
+          room.start(playerId);
+        } else if (phase === 'opening' && (wanted === 'intro' || wanted === 'generating')) {
+          room.start(playerId);
+        } else if (phase === 'intro' && wanted === 'calibrating') {
+          // Sent when the intro narration ends or a player presses Continue.
+          room.continueIntro();
+        } else if (phase === 'calibration' && (wanted === 'encounter' || wanted === 'boss')) {
+          room.calibrationDone(playerId);
+        }
       }),
     );
 

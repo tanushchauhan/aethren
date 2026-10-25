@@ -32,6 +32,7 @@ import type {
   PlayerRole,
 } from '@once-upon/shared';
 import type { AiService, BossPlanner, BossPlannerInput, MuseChat } from '../contracts';
+import { aiTimings } from '../ai/timings';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -543,12 +544,7 @@ export function buildBossUserMessage(input: BossPlannerInput, habits = summarize
 // ---------------------------------------------------------------------------
 
 export interface BossPlannerOptions {
-  /**
-   * First tool-choice mode to try. Defaults to `required`. After 2 `null` replies in a row
-   * with `required`, the planner probes `auto` (the provider may not support `required`):
-   * if `auto` answers, it stays on `auto` and relies on the prompt; if `auto` fails too, the
-   * problem is the network, so it goes back to `required`.
-   */
+  /** Retained for callers; Meta requests always use auto. */
   toolChoice?: 'required' | 'auto';
   /** Optional debug log for fallback reasons. Off by default. */
   log?: (message: string) => void;
@@ -556,13 +552,7 @@ export interface BossPlannerOptions {
 
 export type PlanOutcome = 'agent' | 'unavailable' | 'timeout' | 'null_reply' | 'no_valid_attack' | 'error';
 
-const REQUIRED_FAILURES_BEFORE_AUTO = 2;
-
 export function createBossPlanner(ai: AiService, opts: BossPlannerOptions = {}): BossPlanner {
-  let toolChoice: 'required' | 'auto' = opts.toolChoice ?? 'required';
-  let requiredFailures = 0;
-  /** Set once `auto` answered after `required` kept failing: stay on `auto` from then on. */
-  let autoConfirmed = opts.toolChoice === 'auto';
   const log = opts.log ?? (() => {});
 
   async function askMuse(
@@ -583,14 +573,13 @@ export function createBossPlanner(ai: AiService, opts: BossPlannerOptions = {}):
       { role: 'system', content: buildBossSystemPrompt(input) },
       { role: 'user', content: buildBossUserMessage(input, habits) },
     ];
-    const usedChoice = toolChoice;
     try {
       const request = Promise.resolve()
         .then(() =>
           muse.complete({
             messages,
             tools: buildBossTools(input),
-            toolChoice: usedChoice,
+            toolChoice: 'auto',
             temperature: 0.7,
             maxTokens: 400,
             timeoutMs: deadlineMs,
@@ -601,18 +590,7 @@ export function createBossPlanner(ai: AiService, opts: BossPlannerOptions = {}):
       const winner = await Promise.race([request, timeout]);
       if (winner === 'timeout') return { outcome: 'timeout', reply: null };
       if (winner === 'error') return { outcome: 'error', reply: null };
-      if (winner === null) {
-        if (usedChoice === 'required' && ++requiredFailures >= REQUIRED_FAILURES_BEFORE_AUTO) {
-          toolChoice = 'auto';
-          log('[boss] Muse returned null twice with tool_choice=required; probing auto.');
-        } else if (usedChoice === 'auto' && !autoConfirmed) {
-          toolChoice = 'required';
-          requiredFailures = 0;
-        }
-        return { outcome: 'null_reply', reply: null };
-      }
-      if (usedChoice === 'required') requiredFailures = 0;
-      else autoConfirmed = true;
+      if (winner === null) return { outcome: 'null_reply', reply: null };
       return { outcome: 'agent', reply: winner };
     } finally {
       clearTimeout(timer);
@@ -646,11 +624,16 @@ export function createBossPlanner(ai: AiService, opts: BossPlannerOptions = {}):
         return fallback;
       }
 
+      const started = Date.now();
+      const done = (plan: BossPlan) => {
+        aiTimings.record('boss.plan', Date.now() - started, plan.source === 'agent' ? 'ok' : 'fallback');
+        return plan;
+      };
       try {
         const { outcome, reply } = await askMuse(muse, input, habits, budget);
         if (!reply) {
           log(`[boss] round ${input.roundIndex}: scripted (${outcome})`);
-          return fallback;
+          return done(fallback);
         }
         const calls = extractToolCalls(reply)
           .map((c) => validateToolCall(c, input))
@@ -658,11 +641,11 @@ export function createBossPlanner(ai: AiService, opts: BossPlannerOptions = {}):
         const plan = mergeAgentPlan(calls, fallback);
         if (!plan) {
           log(`[boss] round ${input.roundIndex}: scripted (no_valid_attack)`);
-          return fallback;
+          return done(fallback);
         }
-        return plan;
+        return done(plan);
       } catch {
-        return fallback;
+        return done(fallback);
       }
     },
   };

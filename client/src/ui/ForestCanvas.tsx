@@ -1,7 +1,26 @@
 import { useEffect, useRef } from 'react';
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
-/** Three independently rendered layers: forest, moon/light, rotating clouds. */
+/** Light-shaft layers render at a fraction of the screen; upscaling them is the blur. */
+const SHAFT_GLOW_SCALE = 1 / 6;
+const SHAFT_CORE_SCALE = 1 / 2;
+/** The title is painted art behind a menu: one canvas pixel per CSS pixel is plenty. */
+const MAX_RATIO = 1;
+
+function offscreen(width: number, height: number): [HTMLCanvasElement, CanvasRenderingContext2D | null] {
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width));
+  canvas.height = Math.max(1, Math.round(height));
+  return [canvas, canvas.getContext('2d')];
+}
+
+/**
+ * Three independently rendered layers: forest, moon/light, rotating clouds.
+ *
+ * Performance: everything blurred is cached. Canvas `filter`/`shadowBlur` re-blur a full layer
+ * per draw call, so the moon glow and disc are pre-rendered sprites (rebuilt on resize) and the
+ * shafts are drawn unfiltered into small offscreen canvases that the GPU upscales.
+ */
 export function ForestCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -18,8 +37,73 @@ export function ForestCanvas() {
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     let width = 1, height = 1, ratio = 1, frame = 0, disposed = false;
     let targetX = 0, targetY = 0, cameraX = 0, cameraY = 0, elapsed = 0, previous = 0;
+    let glow: [HTMLCanvasElement, CanvasRenderingContext2D | null] = offscreen(1, 1);
+    let core: [HTMLCanvasElement, CanvasRenderingContext2D | null] = offscreen(1, 1);
+    let bloomSprite: HTMLCanvasElement | null = null;
+    let discSprite: HTMLCanvasElement | null = null;
+    let spriteRadius = 0;
+
     const pointer = (e: PointerEvent) => { if (motion.matches) return; targetX = clamp(e.clientX / width * 2 - 1, -1, 1); targetY = clamp(e.clientY / height * 2 - 1, -1, 1); };
     const reset = () => { targetX = 0; targetY = 0; };
+
+    /** Moon bloom (three soft halos) and the toned disc with its rim light, blurred once. */
+    function buildMoonSprites(moonRadius: number): void {
+      spriteRadius = moonRadius;
+      const pad = 90;
+      const size = (moonRadius + pad) * 2;
+      const [bloom, b] = offscreen(size, size);
+      if (b) {
+        b.globalCompositeOperation = 'screen';
+        for (const blur of [65, 30, 12]) {
+          b.shadowColor = '#9cd9f5'; b.shadowBlur = blur;
+          b.fillStyle = 'rgba(171,221,245,.15)';
+          b.beginPath(); b.arc(size / 2, size / 2, moonRadius, 0, Math.PI * 2); b.fill();
+        }
+      }
+      bloomSprite = bloom;
+      discSprite = null;
+      if (!moonReady) return;
+      const diameter = moonRadius * 2.22;
+      const discPad = 40;
+      const discSize = diameter + discPad * 2;
+      const [disc, d] = offscreen(discSize, discSize);
+      if (d) {
+        const at = discPad;
+        d.filter = 'blur(0.45px)';
+        d.shadowColor = '#89bdce80'; d.shadowBlur = 25;
+        d.globalAlpha = .88;
+        d.drawImage(moonSurface, at, at, diameter, diameter);
+        d.shadowBlur = 0; d.globalCompositeOperation = 'screen';
+        d.globalAlpha = .087; d.filter = 'blur(3px)';
+        d.drawImage(moonSurface, at, at, diameter, diameter);
+      }
+      discSprite = disc;
+    }
+
+    /** Draws the seven shafts, unfiltered, into one low-resolution layer. */
+    function drawShafts(target: CanvasRenderingContext2D, scale: number, isCore: boolean, moonX: number, moonY: number, breath: number): void {
+      target.setTransform(scale, 0, 0, scale, 0, 0);
+      target.clearRect(0, 0, width, height);
+      const spread = (isCore ? 5 : 22) * clamp(width / 1100, .65, 1.4);
+      for (let i = 0; i < 7; i++) {
+        const drift = Math.sin(elapsed * .10 + i * 1.7) * 12;
+        const endX = moonX - width * (.05 + i * .055) + drift - cameraX * 20;
+        const endY = height * (.78 + (i % 3) * .08);
+        const strength = (.26 + .08 * Math.sin(elapsed * .15 + i) ** 2) * breath;
+        for (let step = 0; step < 18; step++) {
+          const t0 = step / 18, t1 = (step + 1) / 18;
+          const x0 = moonX + (endX - moonX) * t0;
+          const y0 = moonY + (endY - moonY) * t0;
+          const x1 = moonX + (endX - moonX) * t1;
+          const y1 = moonY + (endY - moonY) * t1;
+          const w0 = t0 * spread, w1 = t1 * spread;
+          const fade = (1 - t0) ** 1.1;
+          target.fillStyle = `rgba(179,226,248,${strength * fade * (isCore ? .65 : 1)})`;
+          target.beginPath(); target.moveTo(x0 - w0, y0); target.lineTo(x1 - w1, y1 + 1); target.lineTo(x1 + w1, y1 + 1); target.lineTo(x0 + w0, y0); target.closePath(); target.fill();
+        }
+      }
+    }
+
     function render(now: number) {
       frame = 0;
       if (disposed || document.hidden) return;
@@ -51,51 +135,28 @@ export function ForestCanvas() {
         ctx!.drawImage(clouds, -cloudSize * .63, -cloudSize * .63, cloudSize * 1.26, cloudSize * 1.26); ctx!.restore();
       }
       const breath = .87 + Math.sin(elapsed * .22) * .10;
+      if (!bloomSprite || spriteRadius !== moonRadius || (moonReady && !discSprite)) buildMoonSprites(moonRadius);
       ctx!.save(); ctx!.globalCompositeOperation = 'screen';
       // Bloom is emitted from the moon in scene coordinates, not a CSS overlay.
-      for (const blur of [65, 30, 12]) {
-        ctx!.shadowColor = '#9cd9f5'; ctx!.shadowBlur = blur * ratio;
-        ctx!.fillStyle = `rgba(171,221,245,${.15 * breath})`;
-        ctx!.beginPath(); ctx!.arc(moonX, moonY, moonRadius, 0, Math.PI * 2); ctx!.fill();
+      if (bloomSprite) {
+        ctx!.globalAlpha = breath;
+        ctx!.drawImage(bloomSprite, moonX - bloomSprite.width / 2, moonY - bloomSprite.height / 2);
       }
-      ctx!.shadowBlur = 0;
       // Layered soft shafts with brighter cores, fading into the forest mist.
-      // Segment opacity supplies depth without adding gradients to the interface.
-      for (let i = 0; i < 7; i++) {
-        const drift = Math.sin(elapsed * .10 + i * 1.7) * 12;
-        const endX = moonX - width * (.05 + i * .055) + drift - cameraX * 20;
-        const endY = height * (.78 + (i % 3) * .08);
-        const startX = moonX;
-        const startY = moonY;
-        const strength = (.26 + .08 * Math.sin(elapsed * .15 + i) ** 2) * breath;
-        for (const core of [false, true]) {
-          ctx!.filter = core ? 'blur(2px)' : 'blur(8px)';
-          const spread = (core ? 5 : 22) * clamp(width / 1100, .65, 1.4);
-          for (let step = 0; step < 18; step++) {
-            const t0 = step / 18, t1 = (step + 1) / 18;
-            const x0 = startX + (endX - startX) * t0;
-            const y0 = startY + (endY - startY) * t0;
-            const x1 = startX + (endX - startX) * t1;
-            const y1 = startY + (endY - startY) * t1;
-            const w0 = t0 * spread, w1 = t1 * spread;
-            const fade = (1 - t0) ** 1.1;
-            ctx!.fillStyle = `rgba(179,226,248,${strength * fade * (core ? .65 : 1)})`;
-            ctx!.beginPath(); ctx!.moveTo(x0 - w0, y0); ctx!.lineTo(x1 - w1, y1 + 1); ctx!.lineTo(x1 + w1, y1 + 1); ctx!.lineTo(x0 + w0, y0); ctx!.closePath(); ctx!.fill();
-          }
-        }
+      ctx!.globalAlpha = 1;
+      const [glowCanvas, glowCtx] = glow;
+      const [coreCanvas, coreCtx] = core;
+      if (glowCtx) {
+        drawShafts(glowCtx, SHAFT_GLOW_SCALE, false, moonX, moonY, breath);
+        ctx!.drawImage(glowCanvas, 0, 0, width, height);
       }
+      if (coreCtx) {
+        drawShafts(coreCtx, SHAFT_CORE_SCALE, true, moonX, moonY, breath);
+        ctx!.drawImage(coreCanvas, 0, 0, width, height);
+      }
+      ctx!.globalCompositeOperation = 'source-over';
       // Let the surrounding blue atmosphere show through the lunar surface.
-      ctx!.filter = 'blur(0.45px)'; ctx!.globalCompositeOperation = 'source-over';
-      ctx!.shadowColor = '#89bdce80'; ctx!.shadowBlur = 25 * ratio;
-      if (moonReady) {
-        const diameter = moonRadius * 2.22;
-        ctx!.globalAlpha = .88;
-        ctx!.drawImage(moonSurface, moonX - diameter / 2, moonY - diameter / 2, diameter, diameter);
-        // A low-opacity, defocused light pass blends the rim into the cloud haze.
-        ctx!.shadowBlur = 0; ctx!.globalCompositeOperation = 'screen';
-        ctx!.globalAlpha = .10 * breath; ctx!.filter = 'blur(3px)';
-        ctx!.drawImage(moonSurface, moonX - diameter / 2, moonY - diameter / 2, diameter, diameter);
-      }
+      if (discSprite) ctx!.drawImage(discSprite, moonX - discSprite.width / 2, moonY - discSprite.height / 2);
       ctx!.restore();
       if (!motion.matches) {
         ctx!.strokeStyle = '#bad9e633'; ctx!.lineWidth = .8;
@@ -110,7 +171,15 @@ export function ForestCanvas() {
       }
     }
     const redraw = () => { cancelAnimationFrame(frame); previous = 0; frame = requestAnimationFrame(render); };
-    const resize = () => { width = canvas.clientWidth; height = canvas.clientHeight; ratio = Math.min(devicePixelRatio || 1, 1.5); canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio); redraw(); };
+    const resize = () => {
+      width = canvas.clientWidth; height = canvas.clientHeight;
+      ratio = Math.min(devicePixelRatio || 1, MAX_RATIO);
+      canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
+      glow = offscreen(width * SHAFT_GLOW_SCALE, height * SHAFT_GLOW_SCALE);
+      core = offscreen(width * SHAFT_CORE_SCALE, height * SHAFT_CORE_SCALE);
+      bloomSprite = null;
+      redraw();
+    };
     const observer = new ResizeObserver(resize); observer.observe(canvas);
     forest.onload = redraw; clouds.onload = redraw;
     moon.onload = () => {
@@ -123,7 +192,7 @@ export function ForestCanvas() {
       surface.fillStyle = 'rgba(91,153,179,0.28)';
       surface.fillRect(0, 0, 384, 384);
       surface.globalCompositeOperation = 'source-over';
-      moonReady = true; redraw();
+      moonReady = true; bloomSprite = null; redraw();
     };
     const visibility = () => { cancelAnimationFrame(frame); if (!document.hidden) redraw(); };
     window.addEventListener('pointermove', pointer); window.addEventListener('blur', reset); document.documentElement.addEventListener('pointerleave', reset);

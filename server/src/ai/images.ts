@@ -10,6 +10,7 @@ import { museImageGenerate } from './providers';
 import { IMAGE_KINDS, placeholderUrl } from './placeholders';
 import { describeError, type AiRuntime } from './runtime';
 import { createLru } from './lru';
+import { aiTimings } from './timings';
 
 type Kind = WorldImage['kind'];
 
@@ -47,7 +48,7 @@ export function buildImagePrompts(world: WorldSchema): Record<Kind, string> {
   };
 }
 
-export function createImageService(rt: AiRuntime, cachedWorldTitle: string) {
+export function createImageService(rt: AiRuntime, cachedWorldTitle: string, savedImagesDir = CACHED_IMAGES_DIR) {
   const store = createLru<StoredImage>(60, 120 * 1024 * 1024);
   const byPrompt = new Map<string, string>();
   const inflight = new Map<string, Promise<string | null>>();
@@ -61,7 +62,7 @@ export function createImageService(rt: AiRuntime, cachedWorldTitle: string) {
   // Images saved next to the cached world by `save-cached-world.ts --images`.
   for (const kind of IMAGE_KINDS) {
     for (const ext of CACHED_IMAGE_EXTS) {
-      const file = new URL(`${kind}.${ext}`, CACHED_IMAGES_DIR);
+      const file = new URL(`${kind}.${ext}`, savedImagesDir);
       if (!existsSync(file)) continue;
       try {
         const buf = readFileSync(file);
@@ -81,6 +82,7 @@ export function createImageService(rt: AiRuntime, cachedWorldTitle: string) {
     const pending = inflight.get(prompt);
     if (pending) return pending;
     const job = (async () => {
+      const started = Date.now();
       try {
         const img = await museImageGenerate({
           baseUrl: rt.config.muse.baseUrl,
@@ -96,8 +98,10 @@ export function createImageService(rt: AiRuntime, cachedWorldTitle: string) {
           url = put(buf, img.mimeType ?? sniffImageType(buf));
         }
         byPrompt.set(prompt, url);
+        aiTimings.record('image.generate', Date.now() - started, 'ok');
         return url;
       } catch (err) {
+        aiTimings.record('image.generate', Date.now() - started, 'error');
         rt.warn(`muse image failed: ${describeError(err)}`);
         return null;
       } finally {

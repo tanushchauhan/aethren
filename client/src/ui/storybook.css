@@ -904,3 +904,32 @@
 .ouam-title em { color: #dfd6ac; }
 .ouam-caption { border-radius: 0; background: #0b171d; color: #e0dec3; font: 25px/1.2 'VT323', monospace; }
 .ouam-subtitle { font: 24px/1.35 'VT323', monospace; }
+
+/* Narration skip control (combat-ui/Narrator.tsx), shown while the narrator speaks. */
+.ouam-narration-controls {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.5rem 0.4rem 1rem;
+  border: 1px solid var(--ouam-gold-deep);
+  border-radius: 999px;
+  background: rgb(21 14 9 / 88%);
+  color: var(--ouam-cream);
+  max-width: calc(100vw - 32px);
+}
+
+.ouam-narration-controls .ouam-button {
+  min-height: 40px;
+  padding: 0.35rem 1rem;
+  font-size: 1rem;
+}
+
+.ouam-narration-status {
+  font-size: 0.95rem;
+  white-space: nowrap;
+}

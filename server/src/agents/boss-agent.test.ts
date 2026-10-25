@@ -228,7 +228,7 @@ describe('createBossPlanner', () => {
     dodgeHistory: { [DEV.id]: dodges(['left', 'left', 'left']) },
   });
 
-  it('uses valid agent tool calls with source "agent" and sends tools with required choice', async () => {
+  it('uses valid agent tool calls with source "agent" and sends tools with auto choice', async () => {
     let seen: MuseChatRequest | undefined;
     const planner = createBossPlanner(
       fakeAi(async (req) => {
@@ -252,7 +252,7 @@ describe('createBossPlanner', () => {
       effects: ['servo_open'],
       source: 'agent',
     });
-    expect(seen?.toolChoice).toBe('required');
+    expect(seen?.toolChoice).toBe('auto');
     expect(seen?.signal).toBeInstanceOf(AbortSignal);
     expect(seen?.tools?.map((t) => (t.type === 'function' ? t.function.name : ''))).toEqual([
       'choose_attack',
@@ -319,7 +319,7 @@ describe('createBossPlanner', () => {
     expect(complete).not.toHaveBeenCalled();
   });
 
-  it('probes toolChoice "auto" after repeated null replies, and keeps it once it answers', async () => {
+  it('uses auto on every request', async () => {
     const choices: unknown[] = [];
     const planner = createBossPlanner(
       fakeAi(async (req) => {
@@ -330,10 +330,10 @@ describe('createBossPlanner', () => {
       }),
     );
     for (let i = 0; i < 5; i++) await planner.planNextRound(habitInput, 1000);
-    expect(choices).toEqual(['required', 'required', 'auto', 'auto', 'auto']);
+    expect(choices).toEqual(['auto', 'auto', 'auto', 'auto', 'auto']);
   });
 
-  it('goes back to "required" when "auto" fails too (a network problem)', async () => {
+  it('keeps auto after network failures', async () => {
     const choices: unknown[] = [];
     const planner = createBossPlanner(
       fakeAi(async (req) => {
@@ -342,7 +342,7 @@ describe('createBossPlanner', () => {
       }),
     );
     for (let i = 0; i < 4; i++) await planner.planNextRound(habitInput, 1000);
-    expect(choices).toEqual(['required', 'required', 'auto', 'required']);
+    expect(choices).toEqual(['auto', 'auto', 'auto', 'auto']);
   });
 
   it('merges a partially valid reply over fallback defaults', async () => {

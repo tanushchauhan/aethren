@@ -1,8 +1,7 @@
 /**
  * Every external HTTP endpoint the AI module calls, one small function each.
  *
- * The Meta Model API shapes here come from search results and are UNVERIFIED. If
- * `src/ai/live-check.ts` shows one is wrong, fix it in the single function below.
+ * Provider contracts are checked against official documentation and live-check.ts.
  * Each function throws {@link ProviderError} on failure and uses the global `fetch`
  * at call time, so tests can stub it with `vi.stubGlobal('fetch', ...)`.
  */
@@ -42,7 +41,7 @@ async function request(
   if (!res.ok) {
     let detail = '';
     try {
-      detail = (await res.text()).replace(/\s+/g, ' ').slice(0, 160);
+      detail = (await res.text()).replace(/\s+/g, ' ').slice(0, 1000);
     } catch {
       // ignore
     }
@@ -102,17 +101,19 @@ export interface TranscribeCall {
 }
 
 /**
- * Muse Voice Transcribe, native endpoint (assumed):
- * `POST {base}/asr/transcribe`, multipart `file` (WAV, 16-bit PCM mono, 16/24 kHz) + `model`.
+ * https://dev.meta.ai/docs/api-reference/voice/transcribe
+ * Multipart JSON settings in `request`, with the WAV clip in `audio`.
  */
 export async function museAsrTranscribe(c: TranscribeCall): Promise<string> {
   const form = new FormData();
-  form.append('file', audioBlob(c.audio, c.mimeType), c.filename);
-  form.append('model', c.model);
+  form.append('request', new Blob([JSON.stringify({
+    model: c.model, audioEncoding: 'WAV', mode: 'PUSH_TO_TALK',
+  })], { type: 'application/json' }));
+  form.append('audio', audioBlob(c.audio, c.mimeType), c.filename);
   const res = await request(
     'muse-asr',
     `${c.baseUrl}/asr/transcribe`,
-    { method: 'POST', headers: { Authorization: `Bearer ${c.apiKey}` }, body: form },
+    { method: 'POST', headers: { Authorization: `Bearer ${c.apiKey}`, Accept: 'application/json' }, body: form },
     c.timeoutMs,
   );
   return readTranscript('muse-asr', res);

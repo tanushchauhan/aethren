@@ -40,6 +40,7 @@ import type {
   HardwareEvent,
   JoinableRole,
   MemoryCard,
+  NarratorLine,
   OpeningSlot,
   P0ElementType,
   PoseFrame,
@@ -48,6 +49,7 @@ import type {
   RoundResolution,
   ServerToClientEvents,
   TranscribeResponse,
+  TwinCastProgress,
   WorldImage,
   WorldSchema,
 } from '@once-upon/shared';
@@ -84,6 +86,7 @@ import {
   type ClaimResult,
   type Seat,
 } from './rooms';
+import { storybookRoom, toStorybookState } from './storybook';
 import { TwinCastTracker } from './twin-cast';
 
 /** Engine timings that `ROUND_TIMINGS_MS` does not cover. Unscaled ms. */
@@ -96,6 +99,8 @@ export const ENGINE_TIMINGS_MS = {
   introPerWord: 300,
   introMin: 5_000,
   introMax: 20_000,
+  /** Storybook rooms: the story intro waits for its narration to finish (or Continue), up to this long. */
+  introNarrationHold: 90_000,
   calibrationTimeout: 15_000,
   calibrationAllDone: 1_000,
   enemyEntrance: 5_000,
@@ -222,12 +227,21 @@ export class GameRoom {
   private stash: { resume: (() => void) | null; after: (() => void)[] } | null = null;
   private disposed = false;
   private generating = false;
+  /** Storybook clients: last narrator caption and Twin Cast progress (not in `GameState`). */
+  private lastCaption = '';
+  private twinCastCount = 0;
+  readonly quickStart: boolean;
+  /** Set when a storybook client sits down: it reports when the intro narration has finished. */
+  holdIntroForNarration = false;
+  /** Storybook: every card a player kept, newest last. The client keeps several; the engine uses one. */
+  private keptCards: string[] = [];
   private genFallback: (() => void) | null = null;
   private imagesStarted = false;
   private servoOpened = false;
   private openingDeadline = 0;
   private enemyIndex = -1;
   private wardRaisedThisPhase = false;
+  private wardRounds = 0;
   private frostBonusNext = false;
   private roundWindowMs: number = ROUND_TIMINGS_MS.defense;
   private recentElements: P0ElementType[] = [];
@@ -259,6 +273,7 @@ export class GameRoom {
     });
 
     const cards = this.safeCards();
+    this.quickStart = Boolean(init.quickStart);
     const world = init.quickStart ? rt.ai.getCachedWorld() : null;
     const picks = init.quickStart
       ? { ...rt.ai.getCachedPicks() }
@@ -308,10 +323,30 @@ export class GameRoom {
 
   private emit<E extends keyof ServerToClientEvents>(event: E, payload: Parameters<ServerToClientEvents[E]>[0]): void {
     if (this.disposed) return;
-    const target = this.rt.io.to(this.state.roomCode) as unknown as {
-      emit: (ev: string, data: unknown) => boolean;
-    };
-    target.emit(event, payload);
+    type Target = { emit: (ev: string, data: unknown) => boolean };
+    (this.rt.io.to(this.state.roomCode) as unknown as Target).emit(event, payload);
+    // Storybook clients get the same events, with room state in their own shape.
+    if (event === 'narrator:line') this.lastCaption = (payload as NarratorLine).text;
+    if (event === 'combat:twin_cast_progress') this.twinCastCount = (payload as TwinCastProgress).castByPlayerIds.length;
+    const storybookTarget = this.rt.io.to(storybookRoom(this.state.roomCode)) as unknown as Target;
+    storybookTarget.emit(event, event === 'room:state' ? this.storybookSnapshot() : payload);
+    // The caption lives in storybook room state, so a new line refreshes it.
+    if (event === 'narrator:line') storybookTarget.emit('room:state', this.storybookSnapshot());
+  }
+
+  /** True while world generation runs (the room is still in `opening`). */
+  get isGenerating(): boolean {
+    return this.generating;
+  }
+
+  storybookSnapshot() {
+    return toStorybookState(this.snapshot(), {
+      generating: this.generating,
+      quickStart: this.quickStart,
+      caption: this.lastCaption,
+      twinCastCount: this.twinCastCount,
+      keptCardIds: this.keptCards,
+    });
   }
 
   snapshot(): GameState {
@@ -327,6 +362,7 @@ export class GameRoom {
 
   private setPhase(phase: GamePhase, durationMs: number | null, next?: () => void): void {
     this.state.phase = phase;
+    if (phase === 'team_turn') this.twinCastCount = 0;
     this.state.phaseEndsServerMs = durationMs === null ? undefined : this.now() + durationMs;
     if (durationMs !== null && next) this.phaseTimer.set(durationMs, () => this.guard(next));
     else this.phaseTimer.clear();
@@ -588,6 +624,23 @@ export class GameRoom {
     } else if (this.state.phase === 'opening' && this.picksComplete() && !this.generating) {
       this.startGeneration();
     }
+  }
+
+  /** Storybook keep: remembers the card and makes it the encounter, unless it is the crowned boss. */
+  storybookKeep(cardId: unknown): void {
+    if (typeof cardId !== 'string') return;
+    this.keptCards = [...this.keptCards.filter((id) => id !== cardId), cardId];
+    if (this.state.picks?.bossCardId === cardId) this.broadcast();
+    else this.pickCard(cardId, 'encounter');
+  }
+
+  /** Storybook crown: sets the boss; if that was the encounter, the newest other kept card takes over. */
+  storybookCrown(cardId: unknown): void {
+    this.pickCard(cardId, 'boss');
+    const picks = this.state.picks;
+    if (!picks || picks.encounterCardId) return;
+    const fallback = [...this.keptCards].reverse().find((id) => id !== picks.bossCardId);
+    if (fallback) this.pickCard(fallback, 'encounter');
   }
 
   pickCard(cardId: unknown, slot: unknown): void {
@@ -876,10 +929,12 @@ export class GameRoom {
     this.startImages(world);
     this.prepareEnemy(0);
     const words = (world.intro ?? '').split(/\s+/).filter(Boolean).length;
-    const ms = Math.min(
-      ENGINE_TIMINGS_MS.introMax,
-      Math.max(ENGINE_TIMINGS_MS.introMin, ENGINE_TIMINGS_MS.introBase + words * ENGINE_TIMINGS_MS.introPerWord),
-    );
+    const ms = this.holdIntroForNarration
+      ? ENGINE_TIMINGS_MS.introNarrationHold
+      : Math.min(
+          ENGINE_TIMINGS_MS.introMax,
+          Math.max(ENGINE_TIMINGS_MS.introMin, ENGINE_TIMINGS_MS.introBase + words * ENGINE_TIMINGS_MS.introPerWord),
+        );
     this.setPhase('intro', this.scale(ms), () => this.enterCalibration());
     this.hardware({ type: 'servo', servoOpen: false });
     this.updatePause();
@@ -891,6 +946,12 @@ export class GameRoom {
   private allCalibrated(): boolean {
     const humans = this.seats.filter((s) => !s.isBot && s.player.connected);
     return humans.length > 0 && humans.every((s) => s.calibrated);
+  }
+
+  /** Ends the story intro early (narration finished, or a player pressed Continue). Not the boss entrance. */
+  continueIntro(): void {
+    if (this.state.phase !== 'intro' || this.enemyIndex !== 0 || this.stash) return;
+    this.enterCalibration();
   }
 
   private enterCalibration(): void {
@@ -931,6 +992,7 @@ export class GameRoom {
       wardSpell: null,
     });
     this.wardRaisedThisPhase = false;
+    this.wardRounds = 0;
     this.frostBonusNext = false;
     this.requestPlan(this.nextRound);
     return true;
@@ -1039,10 +1101,15 @@ export class GameRoom {
     for (const s of this.seats) s.player.canCast = true;
 
     if (!replay) {
+      if (this.state.wardActive && ++this.wardRounds === 2) {
+        const botHint = this.seats.some((s) => s.isBot) ? ' Your bot partner will copy your spell.' : '';
+        this.say(`The ward blocks every solo strike! Both choose the same element, speak its incantation, then cast within three seconds.${botHint}`, 'narrator');
+      }
       if (plan.raiseWard && wardEligible(this.planContext(roundIndex))) {
         this.state.wardActive = true;
         this.state.wardSpell = this.state.world?.boss.ward ?? 'twin_cast';
         this.wardRaisedThisPhase = true;
+        this.wardRounds = 0;
         this.narrate('ward_raised', { enemyName: enemy.name });
       }
       if (plan.taunt) this.say(truncate(plan.taunt, TAUNT_MAX_CHARS), 'boss');
@@ -1196,7 +1263,9 @@ export class GameRoom {
     if (!turn) return;
     for (const seat of this.seats) {
       if (!seat.isBot || !seat.player.canCast || turn.casts.has(seat.player.id)) continue;
-      // Behind a ward, a bot waits for a teammate to open a Twin Cast (see botsJoinTwinCast).
+      // Never spend the bot's only cast before a human behind the ward. Even a
+      // last-moment human cast must have a matching partner available.
+      if (this.state.wardActive && this.seats.some((s) => !s.isBot && s.player.connected)) continue;
       const delay = this.state.wardActive
         ? Math.round(turnMs * 0.7)
         : Math.min(Math.round(turnMs * 0.8), this.scale(botCastDelayMs(this.rt.rng, ROUND_TIMINGS_MS.teamTurn)));
@@ -1209,7 +1278,7 @@ export class GameRoom {
     if (!turn) return;
     for (const seat of this.seats) {
       if (!seat.isBot || seat.player.id === openerId || !seat.player.canCast || turn.casts.has(seat.player.id)) continue;
-      this.after(this.scale(500 + this.rt.rng() * 700), () => this.botCast(seat, element));
+      this.botCast(seat, element);
     }
   }
 

@@ -1,10 +1,11 @@
 /**
  * HTTP routes for the AI module:
- *   POST /api/chat-upload        Instagram export -> memory cards (raw upload discarded at once)
+ *   POST /api/chat-upload        Instagram export -> memory cards (raw upload discarded at once; `?room=` ok)
  *   POST /api/transcribe         push-to-talk clip -> incantation verdict
  *   POST /api/tts, GET /api/tts  narrator/boss line -> audio/mpeg, or a speechSynthesis fallback
  *   GET  /api/images/:id         base64 Muse images kept in memory
  *   GET  /api/placeholder/:kind.svg
+ *   GET  /api/metrics/ai         AI latency stats (POST .../reset clears them; dev or bearer only)
  */
 import { timingSafeEqual } from 'node:crypto';
 import type { Express, NextFunction, Request, RequestHandler, Response } from 'express';
@@ -23,6 +24,7 @@ import { ChatParseError, parseInstagramExport } from './instagram';
 import { placeholderSvg } from './placeholders';
 import { describeError } from './runtime';
 import { internalsFor } from './service';
+import { aiTimings } from './timings';
 import { cleanTtsText } from './tts';
 
 export const CHAT_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
@@ -119,14 +121,16 @@ export function registerAiRoutes(app: Express, ctx: ServerContext): void {
     }
 
     try {
-      const { cards, source } = await extractMemoryCards(
-        ctx.ai.muse,
-        chat,
-        Math.max(rt.config.aiTimeoutMs, CARD_EXTRACTION_TIMEOUT_FLOOR_MS),
+      const { cards, source } = await aiTimings.time(
+        'cards.extract',
+        () => extractMemoryCards(ctx.ai.muse, chat, Math.max(rt.config.aiTimeoutMs, CARD_EXTRACTION_TIMEOUT_FLOOR_MS)),
+        (r) => (r.source === 'muse' ? 'ok' : 'fallback'),
       );
       if (source !== 'muse') rt.warn(`memory cards came from the ${source} extractor`);
       ai.cards.set(cards);
-      const roomCode = field(req, 'roomCode')?.trim().toUpperCase();
+      // Multipart sends `roomCode`; the storybook client posts raw JSON with `?room=CODE`.
+      const roomQuery = typeof req.query.room === 'string' ? req.query.room : undefined;
+      const roomCode = (field(req, 'roomCode') ?? roomQuery)?.trim().toUpperCase();
       if (roomCode) ctx.io.to(roomCode).emit('memory:cards', ai.cards.list());
       const body: ChatUploadResponse = { cards: ai.cards.list() };
       res.json(body);
@@ -162,7 +166,11 @@ export function registerAiRoutes(app: Express, ctx: ServerContext): void {
         }
         transcript = override.trim().slice(0, 500);
       } else if (audio && audio.buffer.length > 0) {
-        const result = await ai.transcriber.transcribe(audio.buffer, audio.mimetype, audio.originalname);
+        const run = () => ai.transcriber.transcribe(audio.buffer, audio.mimetype, audio.originalname);
+        // Only time real provider attempts; with no provider configured this resolves instantly.
+        const result = ai.transcriber.available()
+          ? await aiTimings.time('asr.transcribe', run, (r) => (r?.text ? 'ok' : 'error'))
+          : await run();
         // No transcript (provider down or missing): the attempt counts as a failure so mercy still applies.
         transcript = result?.text ?? '';
       }
@@ -223,6 +231,19 @@ export function registerAiRoutes(app: Express, ctx: ServerContext): void {
 
   app.get('/api/tts', async (req, res) => {
     await tts(res, req.query.text, req.query.speaker, 'GET', req.headers['if-none-match']);
+  });
+
+  // Latency stats only (op names, counts, durations): no prompts, transcripts or keys.
+  app.get('/api/metrics/ai', (_req, res) => {
+    res.json(aiTimings.snapshot());
+  });
+  app.post('/api/metrics/ai/reset', (req, res) => {
+    if (rt.config.isProduction && !bearerMatches(req, rt.config.mcpBearerToken)) {
+      res.status(403).json({ error: 'Reset is not allowed here' });
+      return;
+    }
+    aiTimings.reset();
+    res.json(aiTimings.snapshot());
   });
 
   app.get('/api/images/:id', (req, res) => {

@@ -9,6 +9,7 @@ import type { RoomService, ServerContext } from '../contracts';
 import { registerAiRoutes } from './routes';
 import { CACHED_WORLD, createAiServiceWith } from './service';
 import { testRuntime } from './test-utils';
+import type { TimingsSnapshot } from './timings';
 
 const sampleExport = readFileSync(new URL('./fixtures/sample-instagram-export.json', import.meta.url));
 
@@ -133,5 +134,19 @@ describe('TTS, images and placeholders', () => {
     expect(await svg.text()).toContain('<svg');
     expect((await fetch(`${base}/api/placeholder/dragon.svg`)).status).toBe(404);
     expect((await fetch(`${base}/api/images/does-not-exist`)).status).toBe(404);
+  });
+});
+
+describe('GET /api/metrics/ai', () => {
+  it('reports AI step timings without content, and reset clears them', async () => {
+    const form = new FormData();
+    form.append('file', new Blob([sampleExport], { type: 'application/json' }), 'message_1.json');
+    expect((await fetch(`${base}/api/chat-upload`, { method: 'POST', body: form })).status).toBe(200);
+    const metrics = (await (await fetch(`${base}/api/metrics/ai`)).json()) as TimingsSnapshot;
+    expect(metrics.operations['cards.extract']).toMatchObject({ fallback: expect.any(Number) });
+    expect(metrics.operations['cards.extract']!.count).toBeGreaterThan(0);
+    expect(JSON.stringify(metrics)).not.toMatch(/goat|waterfall|quote/);
+    const reset = (await (await fetch(`${base}/api/metrics/ai/reset`, { method: 'POST' })).json()) as TimingsSnapshot;
+    expect(reset.operations).toEqual({});
   });
 });

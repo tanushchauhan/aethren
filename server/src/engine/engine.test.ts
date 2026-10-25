@@ -333,6 +333,36 @@ describe('combat round', () => {
 describe('boss ward', () => {
   const bossOnly = testWorld({ encounters: [] });
 
+  it('keeps the bot available to copy a human cast at the very end of a ward turn', async () => {
+    const t = await quickTable({ solo: true, plan: aimAt([]), world: bossOnly });
+    await advanceUntil(t.h.engine, t.code, 'team_turn', adv);
+    t.h.engine.debugRoom(t.code)!.state.enemyHp = 70;
+    await advanceUntil(t.h.engine, t.code, 'telegraph', adv);
+    expect(t.state().wardActive).toBe(true);
+    await advanceUntil(t.h.engine, t.code, 'team_turn', adv);
+    const start = Date.now();
+    await adv(t.state().phaseEndsServerMs! - Date.now() - 1);
+    expect(t.a.all('player:cast').filter((c) => c.serverTimestampMs >= start)).toHaveLength(0);
+    t.h.engine.recordIncantation(t.code, t.maya, 'frost', passed());
+    t.a.send('player:cast', { element: 'frost', gesture: 'thrust', power: 1, serverTimestampMs: Date.now() });
+    expect(t.state().wardActive).toBe(false);
+    expect(t.a.all('player:cast').slice(-2).map((c) => c.element)).toEqual(['frost', 'frost']);
+    expect(t.a.all('hardware:command')).toContainEqual({ type: 'servo', servoOpen: true });
+  });
+
+  it('gives an explicit coordination hint after two rounds with the ward intact', async () => {
+    const t = await quickTable({ world: bossOnly, plan: aimAt([]) });
+    await advanceUntil(t.h.engine, t.code, 'team_turn', adv);
+    t.h.engine.debugRoom(t.code)!.state.enemyHp = 70;
+    await advanceUntil(t.h.engine, t.code, 'telegraph', adv);
+    for (let i = 0; i < 2; i++) {
+      await advanceUntil(t.h.engine, t.code, 'team_turn', adv);
+      t.h.engine.debugRoom(t.code)!.state.hearts = 5;
+      await advanceUntil(t.h.engine, t.code, 'telegraph', adv);
+    }
+    expect(t.a.all('narrator:line').some((line) => line.text.includes('Both choose the same element'))).toBe(true);
+  });
+
   it('rises below half HP; only a twin cast hurts it, shatters it and opens the servo', async () => {
     const t = await quickTable({ plan: aimAt([]), world: bossOnly });
     expect(t.state().fightingBoss).toBe(true);

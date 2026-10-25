@@ -4,8 +4,10 @@
  * Each provider gets its own short budget. MP3 bytes are kept in a small LRU.
  */
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import type { TtsRequest } from '@once-upon/shared';
 import { createLru } from './lru';
+import { aiTimings } from './timings';
 import { elevenLabsTts, openAiCompatSpeech, ProviderError } from './providers';
 import {
   describeError,
@@ -22,6 +24,7 @@ export const TTS_MAX_CHARS = 1000;
 export const TTS_COOLDOWN_MS = 30_000;
 const LRU_MAX_ENTRIES = 300;
 const LRU_MAX_BYTES = 40 * 1024 * 1024;
+export const CACHED_AUDIO_DIR = new URL('./cached-audio/', import.meta.url);
 
 export type Speaker = TtsRequest['speaker'];
 export type TtsProvider = 'muse' | 'elevenlabs' | 'openai';
@@ -49,8 +52,19 @@ export function cleanTtsText(text: unknown): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, TTS_MAX_CHARS);
 }
 
-export function createTts(rt: AiRuntime) {
+export function createTts(rt: AiRuntime, savedAudioDir = CACHED_AUDIO_DIR) {
   const cache = createLru<{ audio: Buffer; provider: TtsProvider; length: number }>(LRU_MAX_ENTRIES, LRU_MAX_BYTES);
+  // Ship demo narration with the server so a cold, offline start still has audio.
+  try {
+    const entries: unknown = JSON.parse(readFileSync(new URL('manifest.json', savedAudioDir), 'utf8'));
+    if (Array.isArray(entries)) for (const entry of entries.slice(0, LRU_MAX_ENTRIES)) {
+      if (!entry || !/^[a-f0-9]{40}$/.test(entry.key) || !['muse', 'elevenlabs', 'openai'].includes(entry.provider)) continue;
+      try {
+        const audio = readFileSync(new URL(`${entry.key}.mp3`, savedAudioDir));
+        if (audio.length) cache.set(entry.key, { audio, provider: entry.provider, length: audio.length });
+      } catch { /* A missing optional clip uses the normal fallback chain. */ }
+    }
+  } catch { /* A fresh checkout may not have generated cached audio yet. */ }
   const cooldownUntil = new Map<TtsProvider, number>();
   const inflight = new Map<string, Promise<TtsAudio | null>>();
 
@@ -118,12 +132,16 @@ export function createTts(rt: AiRuntime) {
   ];
 
   async function runChain(text: string, speaker: Speaker, key: string): Promise<TtsAudio | null> {
+    const started = Date.now();
+    let tried = false;
     for (const p of providers) {
       if (!p.enabled() || (cooldownUntil.get(p.name) ?? 0) > Date.now()) continue;
+      tried = true;
       try {
         const audio = await p.run(text, speaker);
         cooldownUntil.delete(p.name);
         cache.set(key, { audio, provider: p.name, length: audio.length });
+        aiTimings.record('tts.provider', Date.now() - started, 'ok');
         return { audio, provider: p.name, key };
       } catch (err) {
         // Down, unauthorized or rate limited: skip this provider for a while instead of
@@ -134,6 +152,7 @@ export function createTts(rt: AiRuntime) {
         rt.warn(`tts ${p.name} failed${cool ? ` (skipping it for ${TTS_COOLDOWN_MS / 1000}s)` : ''}: ${describeError(err)}`);
       }
     }
+    if (tried) aiTimings.record('tts.provider', Date.now() - started, 'error');
     return null;
   }
 
@@ -144,7 +163,10 @@ export function createTts(rt: AiRuntime) {
     const speaker = normalizeSpeaker(rawSpeaker);
     const key = ttsKey(speaker, text);
     const hit = cache.get(key);
-    if (hit) return { audio: hit.audio, provider: hit.provider, key };
+    if (hit) {
+      aiTimings.record('tts.cache_hit', 0);
+      return { audio: hit.audio, provider: hit.provider, key };
+    }
     const pending = inflight.get(key);
     if (pending) return pending;
     const job = runChain(text, speaker, key).finally(() => inflight.delete(key));

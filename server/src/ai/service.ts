@@ -13,6 +13,7 @@ import { narrate } from './narrate';
 import { createDefaultRuntime, type AiRuntime } from './runtime';
 import { createMuseChat } from './spark';
 import { createTranscriber } from './transcribe';
+import { aiTimings } from './timings';
 import { createTts, type Speaker } from './tts';
 import { clampWorld, generateWorldDetailed, StrictWorldSchema, withPlayerNames } from './world';
 
@@ -76,11 +77,16 @@ export function createAiServiceWith(rt: AiRuntime): AiService {
   const service: AiService = {
     listMemoryCards: () => internals.cards.list(),
     generateWorld: async (input) => {
-      const result = await generateWorldDetailed(muse, input, {
-        cached: CACHED_WORLD,
-        useCachedWorld: rt.config.useCachedWorld,
-        timeoutMs: rt.config.aiTimeoutMs,
-      });
+      const result = await aiTimings.time(
+        'world.generate',
+        () =>
+          generateWorldDetailed(muse, input, {
+            cached: CACHED_WORLD,
+            useCachedWorld: rt.config.useCachedWorld,
+            timeoutMs: rt.config.aiTimeoutMs,
+          }),
+        (r) => (r.source === 'muse' ? 'ok' : 'fallback'),
+      );
       if (result.source === 'cached' && !rt.config.useCachedWorld) {
         rt.warn(`world generation fell back to the cached world: ${result.reason}`);
       }

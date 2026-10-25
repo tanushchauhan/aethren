@@ -6,6 +6,9 @@ import { defineConfig } from 'vite';
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
+// Override with VITE_API_TARGET to point the dev client at another local server.
+const api = process.env.VITE_API_TARGET ?? 'http://localhost:3001';
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -18,9 +21,10 @@ export default defineConfig({
     // Dev only: forward server routes to the local server so the client can always use
     // same-origin URLs (`io()`, `fetch('/api/...')`), which is what production serves.
     proxy: {
-      '/api': 'http://localhost:3001',
-      '/mcp': 'http://localhost:3001',
-      '/socket.io': { target: 'http://localhost:3001', ws: true },
+      '/health': api,
+      '/api': api,
+      '/mcp': api,
+      '/socket.io': { target: api, ws: true },
     },
   },
 });

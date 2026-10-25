@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { WorldImage } from '@once-upon/shared';
 import { createImageService } from './images';
 import { parseTranscript } from './providers';
@@ -6,7 +10,7 @@ import { ELEVENLABS_BOSS_VOICE_ID } from './runtime';
 import { CACHED_WORLD } from './service';
 import { audioResponse, jsonResponse, requestUrl, testRuntime } from './test-utils';
 import { createTranscriber } from './transcribe';
-import { createTts } from './tts';
+import { createTts, ttsKey } from './tts';
 import { makeToneWav } from './wav';
 
 type FetchArgs = [input: unknown, init?: RequestInit];
@@ -29,6 +33,19 @@ afterEach(() => {
 const allTts = { spark: false, transcribe: false, image: false, tts: true };
 
 describe('tts provider chain', () => {
+  it('loads saved narration on a cold start with every provider offline', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'storybook-audio-'));
+    try {
+      const key = ttsKey('narrator', 'A saved story.');
+      writeFileSync(join(dir, 'manifest.json'), JSON.stringify([{ key, provider: 'elevenlabs' }]));
+      writeFileSync(join(dir, `${key}.mp3`), Buffer.from('saved mp3 fixture'));
+      const calls = stubFetch(() => { throw new Error('No network allowed'); });
+      const tts = createTts(testRuntime(), pathToFileURL(dir + '/'));
+      expect((await tts.synthesize('A saved story.', 'narrator'))?.audio.toString()).toBe('saved mp3 fixture');
+      expect(await tts.synthesize('An uncached story.', 'narrator')).toBeNull();
+      expect(calls).toHaveLength(0);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
   it('tries Muse TTS first when the capability is on', async () => {
     const calls = stubFetch(() => audioResponse());
     const rt = testRuntime(
@@ -122,14 +139,19 @@ describe('transcription chain', () => {
   const wav = makeToneWav({ seconds: 0.2 });
   const museOn = { spark: false, transcribe: true, image: false, tts: false };
 
-  it('uses Muse /asr/transcribe with file + model, reading results[0].text', async () => {
+  it('uses the documented Muse request + audio multipart contract', async () => {
     const calls = stubFetch(() => jsonResponse({ results: [{ text: 'forty miles from anything' }] }));
     const out = await createTranscriber(testRuntime({ caps: museOn })).transcribe(wav, 'audio/wav', 'clip.wav');
     expect(out).toEqual({ text: 'forty miles from anything', provider: 'muse-asr' });
     expect(calls[0]!.url).toBe('https://api.meta.ai/v1/asr/transcribe');
     const form = calls[0]!.init?.body as FormData;
-    expect(form.get('model')).toBe('muse-voice-transcribe-1.0');
-    expect((form.get('file') as File).name).toBe('audio.wav');
+    expect(JSON.parse(await (form.get('request') as Blob).text())).toEqual({
+      model: 'muse-voice-transcribe-1.0', audioEncoding: 'WAV', mode: 'PUSH_TO_TALK',
+    });
+    expect((form.get('request') as Blob).type).toBe('application/json');
+    expect((form.get('audio') as File).name).toBe('audio.wav');
+    expect(form.has('file')).toBe(false);
+    expect((calls[0]!.init?.headers as Record<string, string>).Accept).toBe('application/json');
     expect((calls[0]!.init?.headers as Record<string, string>).Authorization).toBe('Bearer test-muse-key');
   });
 
@@ -216,7 +238,7 @@ describe('images', () => {
 
   it('retries once without size on a 400, then falls back to placeholders on failure', async () => {
     const calls = stubFetch(() => new Response('bad', { status: 400 }));
-    const svc = createImageService(testRuntime({ caps: imageOn }), 'x');
+    const svc = createImageService(testRuntime({ caps: imageOn }), 'x', new URL('./fixtures/no-cached-images/', import.meta.url));
     const got: WorldImage[] = [];
     await svc.generateImages(CACHED_WORLD, (img) => got.push(img));
     expect(calls).toHaveLength(6);
@@ -224,6 +246,19 @@ describe('images', () => {
     expect(bodies.filter((b) => 'size' in b)).toHaveLength(3);
     expect(bodies.filter((b) => !('size' in b))).toHaveLength(3);
     expect(got.find((g) => g.kind === 'boss')?.url).toBe('/api/placeholder/boss.svg');
+  });
+
+  it('serves all three shipped demo images with the network unavailable', async () => {
+    const calls = stubFetch(() => { throw new Error('No network allowed'); });
+    const svc = createImageService(testRuntime(), CACHED_WORLD.title);
+    const got: WorldImage[] = [];
+    await svc.generateImages(CACHED_WORLD, (image) => got.push(image));
+    expect(got).toHaveLength(3);
+    for (const image of got) {
+      expect(image.url).toBe(`/api/images/cached-${image.kind}`);
+      expect(svc.getImage(`cached-${image.kind}`)!.length).toBeGreaterThan(100);
+    }
+    expect(calls).toHaveLength(0);
   });
 
   it('uses placeholders straight away when Muse Image is off, and survives a throwing callback', async () => {

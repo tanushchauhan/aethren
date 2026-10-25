@@ -24,7 +24,7 @@ describe('MuseChat', () => {
       maxTokens: 50,
     });
     expect(msg?.tool_calls?.[0]).toMatchObject({ function: { name: 'taunt' } });
-    expect(client.calls[0]).toMatchObject({ model: 'muse-spark-1.3', tool_choice: 'required', temperature: 0.2, max_tokens: 50 });
+    expect(client.calls[0]).toMatchObject({ model: 'muse-spark-1.3', tool_choice: 'auto', temperature: 0.2, max_tokens: 1074, reasoning_effort: 'minimal' });
   });
 
   it('resolves null on errors and logs one line without the key', async () => {

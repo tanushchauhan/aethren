@@ -71,7 +71,8 @@ await check('spark json_schema', `POST ${muse.baseUrl}/chat/completions`, museCa
           },
         },
       },
-      max_tokens: 40,
+      reasoning_effort: 'minimal',
+      max_tokens: 1024,
     })
     .withResponse();
   const content = data.choices[0]?.message?.content ?? '';
@@ -100,8 +101,9 @@ await check('spark tool call', `POST ${muse.baseUrl}/chat/completions`, museCapa
           },
         },
       ],
-      tool_choice: 'required',
-      max_tokens: 60,
+      tool_choice: 'auto',
+      reasoning_effort: 'minimal',
+      max_tokens: 1024,
     })
     .withResponse();
   const call = data.choices[0]?.message?.tool_calls?.[0];

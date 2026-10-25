@@ -7,10 +7,9 @@
  *
  * The fake Muse reads the same JSON user message Spark would get and answers with tool calls,
  * including one malformed reply (round 3) and one that misses the deadline (round 4), so both
- * fallback paths show up. The real Muse client here is a minimal stand-in built from config;
- * the game itself uses `ai.muse` from the `ai/` module.
+ * fallback paths show up. Live runs use the game's actual Muse adapter.
  */
-import OpenAI from 'openai';
+import { createAiService } from '../ai';
 import type { ChatCompletionMessage } from 'openai/resources/chat/completions';
 import { BOSS_AGENT_DEADLINE_MS } from '@once-upon/shared';
 import type { BossPlan, P0ElementType } from '@once-upon/shared';
@@ -79,32 +78,9 @@ function fakeMuse(): MuseChat {
   };
 }
 
-/** Minimal live Spark client for the sim only. Never logs the key. */
+/** Use the same provider adapter as the running game. */
 function realMuse(): MuseChat {
-  const client = new OpenAI({ apiKey: config.muse.apiKey, baseURL: config.muse.baseUrl, maxRetries: 0 });
-  return {
-    available: true,
-    async complete(req) {
-      try {
-        const res = await client.chat.completions.create(
-          {
-            model: config.muse.sparkModel,
-            messages: req.messages,
-            tools: req.tools,
-            tool_choice: req.toolChoice,
-            temperature: req.temperature,
-            max_tokens: req.maxTokens,
-          },
-          { signal: req.signal, timeout: req.timeoutMs ?? config.aiTimeoutMs },
-        );
-        return res.choices[0]?.message ?? null;
-      } catch (err) {
-        const status = (err as { status?: number }).status;
-        console.log(`  (live Muse call failed: ${err instanceof Error ? err.name : 'error'}${status ? ` ${status}` : ''})`);
-        return null;
-      }
-    },
-  };
+  return createAiService().muse;
 }
 
 /** Six rounds: Dev keeps side-stepping left, the team spams ember, HP and hearts fall. */

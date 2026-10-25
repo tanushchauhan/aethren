@@ -63,6 +63,8 @@ export type InterServerEvents = Record<string, never>;
 export interface SocketData {
   roomCode?: string;
   playerId?: string;
+  /** Set for storybook clients (`client/src/net`), which get storybook-shaped room state. */
+  storybook?: boolean;
 }
 
 export type GameServer = Server<

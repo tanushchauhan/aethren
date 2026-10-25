@@ -6,6 +6,7 @@ import { TAUNT_MAX_CHARS } from '@once-upon/shared';
 import type { MuseChat, NarrationEvent } from '../contracts';
 import { fallbackLine } from './lines';
 import { clipText } from './text';
+import { aiTimings } from './timings';
 
 export const NARRATE_TIMEOUT_MS = 1500;
 
@@ -40,6 +41,7 @@ export async function narrate(muse: MuseChat, event: NarrationEvent, timeoutMs =
   const fallback = () => fallbackLine(event);
   try {
     if (!muse.available) return fallback();
+    const started = Date.now();
     const msg = await muse.complete({
       messages: [
         { role: 'system', content: NARRATE_SYSTEM },
@@ -49,7 +51,9 @@ export async function narrate(muse: MuseChat, event: NarrationEvent, timeoutMs =
       maxTokens: 60,
       timeoutMs,
     });
-    return cleanNarration(msg?.content) ?? fallback();
+    const line = cleanNarration(msg?.content);
+    aiTimings.record('narrate', Date.now() - started, line ? 'ok' : 'fallback');
+    return line ?? fallback();
   } catch {
     return fallback();
   }

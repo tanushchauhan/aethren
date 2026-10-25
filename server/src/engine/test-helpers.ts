@@ -13,6 +13,7 @@ import type {
 } from '@once-upon/shared';
 import type { AiService, BossPlanner, BossPlannerInput, GameServer, GameSocket } from '../contracts';
 import { createEngine, type Engine, type EngineOptions } from './index';
+import { STORYBOOK_ROOM_SUFFIX } from './storybook';
 
 type Handler = (...args: any[]) => unknown; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -43,8 +44,9 @@ export class FakeIo {
     return this as unknown as GameServer;
   }
 
+  /** Broadcasts to shared-contract rooms (storybook copies are in `log` under `CODE#storybook`). */
   events(event: string): any[] { // eslint-disable-line @typescript-eslint/no-explicit-any
-    return this.log.filter((e) => e.event === event).map((e) => e.payload);
+    return this.log.filter((e) => e.event === event && !e.room.endsWith(STORYBOOK_ROOM_SUFFIX)).map((e) => e.payload);
   }
 }
 
@@ -52,7 +54,7 @@ let nextSocketId = 1;
 
 export class FakeSocket {
   readonly id = `sock-${nextSocketId++}`;
-  data: { roomCode?: string; playerId?: string } = {};
+  data: { roomCode?: string; playerId?: string; storybook?: boolean } = {};
   readonly handlers = new Map<string, Handler>();
   readonly received: Received[] = [];
   connected = true;
@@ -72,10 +74,11 @@ export class FakeSocket {
     return true;
   }
 
-  to(room: string) {
+  to(rooms: string | string[]) {
     return {
       emit: (event: string, payload: unknown) => {
-        for (const id of this.io.members.get(room) ?? []) {
+        const ids = new Set([rooms].flat().flatMap((room) => [...(this.io.members.get(room) ?? [])]));
+        for (const id of ids) {
           if (id !== this.id) this.io.sockets.get(id)?.deliver(event, payload);
         }
         return true;

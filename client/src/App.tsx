@@ -29,6 +29,8 @@ function GameApp() {
 }
 
 const LabsApp = lazy(() => import('./LabsApp'));
+// Server developer dashboard: two simulated laptops against the real server.
+const TestLab = lazy(() => import('./test-lab/TestLab'));
 
 export default function App() {
   const [path, setPath] = useState(window.location.pathname);
@@ -37,7 +39,11 @@ export default function App() {
     window.addEventListener('popstate', update);
     return () => window.removeEventListener('popstate', update);
   }, []);
-  if (path.replace(/\/+$/, '') !== '') {
+  const route = path.replace(/\/+$/, '');
+  if (route === '/test-lab') {
+    return <ScreenBoundary><Suspense fallback={<p>Opening the test lab…</p>}><TestLab /></Suspense></ScreenBoundary>;
+  }
+  if (route !== '') {
     return <ScreenBoundary><Suspense fallback={<p>Opening the lab…</p>}><LabsApp /></Suspense></ScreenBoundary>;
   }
   return <GameApp />;

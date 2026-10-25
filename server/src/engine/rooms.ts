@@ -40,7 +40,7 @@ function sameName(a: string, b: string): boolean {
 }
 
 /** `PlayerState` plus glove fields the contract does not carry yet (see report). */
-export type EnginePlayerState = PlayerState & { noiseLevel?: number; gloveArmed?: boolean };
+export type EnginePlayerState = PlayerState;
 
 export interface IncantationRecord {
   power: number;

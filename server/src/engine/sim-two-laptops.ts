@@ -23,6 +23,12 @@ import type {
 } from '@once-upon/shared';
 
 process.env.ENGINE_TIME_SCALE ??= '0.2';
+if (process.argv.includes('--offline')) {
+  process.env.MUSE_API_KEY = '';
+  process.env.ELEVENLABS_API_KEY = '';
+  process.env.OPENAI_API_KEY = '';
+  process.env.USE_CACHED_WORLD = 'true';
+}
 if (process.argv.includes('--verbose')) process.env.ENGINE_LOG ??= '1';
 
 type ClientSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

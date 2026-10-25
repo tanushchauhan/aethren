@@ -20,6 +20,7 @@ import {
   questToolsForMuse,
   type QuestToolResult,
 } from './quest-tools';
+import { aiTimings } from '../ai/timings';
 
 export const MAX_TOOL_ITERATIONS = 4;
 /** The whole Muse loop gives up after this long and the parser answers instead. */
@@ -174,6 +175,7 @@ export async function runQuestChat(
   prompt: string,
   hostName?: string,
 ): Promise<QuestChatResponse> {
+  const started = Date.now();
   const text = prompt.slice(0, MAX_PROMPT_CHARS);
   const toolCalls: ToolCallRecord[] = [];
   let links: QuestLinks = {};
@@ -242,6 +244,7 @@ export async function runQuestChat(
       c.name !== 'list_memory_cards' &&
       !(c.result && typeof c.result === 'object' && 'error' in c.result),
   );
+  if (muse?.available) aiTimings.record('quest.chat', Date.now() - started, museSucceeded ? 'ok' : 'fallback');
   if (!museSucceeded) {
     // Muse unavailable, failed, or produced no useful call: parse the prompt ourselves.
     const parsed = parseQuestPrompt(text, hostName);
