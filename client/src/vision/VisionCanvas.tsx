@@ -123,7 +123,7 @@ function primeSilhouetteAudio(): void {
   if (audioContext.state === 'suspended') void audioContext.resume();
 }
 
-function playSilhouetteChime(): void {
+export function playSilhouetteChime(): void {
   try {
     primeSilhouetteAudio();
     if (!audioContext || audioContext.state !== 'running') return;

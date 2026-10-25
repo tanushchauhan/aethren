@@ -3,6 +3,7 @@ import { Activity, ArrowRight, BookOpen, Check, ChevronRight, FlaskConical, Hear
 import type { NarratorLine } from '@once-upon/shared';
 import { useSeat, type Seat } from './useSeat';
 import { startMicrophone } from './audio';
+import { serverUrl } from '../combat-ui/audio/serverUrl';
 import './lab.css';
 
 type Entry = { id: number; time: string; event: string; payload: unknown; seat?: string };
@@ -110,7 +111,8 @@ export default function TestLab() {
   const [audioNote, setAudioNote] = useState('');
   const playVoice = useCallback(async (text: string, speaker: 'narrator' | 'boss') => {
     try {
-      const response = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, speaker }) });
+      // The game server's TTS chain, not the dev server's /api/tts (which /debug/audio provides).
+      const response = await fetch(`${serverUrl()}/api/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, speaker }) });
       if (!response.ok) throw new Error(`TTS HTTP ${response.status}`);
       audio.current?.pause(); speechSynthesis.cancel();
       if (response.headers.get('Content-Type')?.includes('audio')) {
@@ -177,7 +179,7 @@ export default function TestLab() {
   const art = state?.images?.[state.fightingBoss ? 'boss' : state.currentEncounter ? 'monster' : 'cover'] ?? '/api/images/cached-cover';
   const filtered = events.filter((entry) => `${entry.event} ${JSON.stringify(entry.payload)}`.toLowerCase().includes(filter.toLowerCase()));
   return <div className="lab">
-    <aside className="rail"><a className="brand" href="/test-lab" aria-label="Once Upon a Memory test lab"><BookOpen size={25} /></a><button className={tab === 'play' ? 'active' : ''} onClick={() => setTab('play')} title="Playground"><WandSparkles size={21} /></button><button className={tab === 'tools' ? 'active' : ''} onClick={() => setTab('tools')} title="Provider tests"><FlaskConical size={21} /></button><button className={tab === 'events' ? 'active' : ''} onClick={() => setTab('events')} title="Event stream"><Terminal size={21} /></button><span className="rail-bottom">P0</span></aside>
+    <aside className="rail"><a className="brand" href="/debug/server" aria-label="Once Upon a Memory test lab"><BookOpen size={25} /></a><button className={tab === 'play' ? 'active' : ''} onClick={() => setTab('play')} title="Playground"><WandSparkles size={21} /></button><button className={tab === 'tools' ? 'active' : ''} onClick={() => setTab('tools')} title="Provider tests"><FlaskConical size={21} /></button><button className={tab === 'events' ? 'active' : ''} onClick={() => setTab('events')} title="Event stream"><Terminal size={21} /></button><span className="rail-bottom">P0</span></aside>
     <div className="workspace">
       <header className="topbar"><div className="breadcrumb">ONCE UPON A MEMORY <ChevronRight size={13} /><strong>Developer lab</strong></div><div className="server-badge"><span className={`status-dot ${health ? 'on' : ''}`} />{health ? 'Server online' : 'Server unavailable'}<button className="icon-button" aria-label="Refresh server health" onClick={() => void refresh()}><RefreshCw size={13} /></button></div></header>
       <main>

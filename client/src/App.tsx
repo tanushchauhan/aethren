@@ -5,6 +5,7 @@ import { AppRoutes } from './ui/AppRoutes';
 import { CombatLayer } from './combat-ui/CombatLayer';
 import { GameMusic } from './combat-ui/audio/GameMusic';
 import { Narrator } from './combat-ui/Narrator';
+import { isGamePath, isTestLabPath } from './debugRoutes';
 function StoryPlaceholder() { return <main role="alert">The story could not load. Reload to try again.</main>; }
 class ScreenBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -39,11 +40,11 @@ export default function App() {
     window.addEventListener('popstate', update);
     return () => window.removeEventListener('popstate', update);
   }, []);
-  const route = path.replace(/\/+$/, '');
-  if (route === '/test-lab') {
+  if (isTestLabPath(path)) {
     return <ScreenBoundary><Suspense fallback={<p>Opening the test lab…</p>}><TestLab /></Suspense></ScreenBoundary>;
   }
-  if (route !== '') {
+  // /debug/*, the legacy lab URLs, and any other unknown path open the labs; only / is the game.
+  if (!isGamePath(path)) {
     return <ScreenBoundary><Suspense fallback={<p>Opening the lab…</p>}><LabsApp /></Suspense></ScreenBoundary>;
   }
   return <GameApp />;

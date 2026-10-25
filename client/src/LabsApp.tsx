@@ -1,17 +1,24 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { CALIBRATION_DURATION_MS, ELEMENT_META, POSE_SEND_HZ, POSE_TRACK_HZ } from '@once-upon/shared';
+import { AudioTestPage } from './audio-lab/AudioTestPage';
 import {
-  GloveSimulatorPanel,
-  HARDWARE_TEST_PATH,
-  HardwareTestPage,
-  useGloveHardware,
-} from './hardware';
+  DEBUG_AUDIO_PATH,
+  DEBUG_COMBINED_PATH,
+  DEBUG_HARDWARE_PATH,
+  DEBUG_PATH,
+  DEBUG_ROUTES,
+  DEBUG_VISION_PATH,
+  GAME_PATH,
+  canonicalPath,
+  matchDebugRoute,
+  resolveLabPath,
+} from './debugRoutes';
+import { GloveSimulatorPanel, HardwareTestPage, useGloveHardware } from './hardware';
 import {
   ArmRaiseHoldDetector,
   PoseLandmarkerService,
   SYNTHETIC_PRESET_LABEL,
   SYNTHETIC_PRESETS,
-  VISION_TEST_PATH,
   VisionCanvas,
   VisionTestPage,
   WristVelocityTracker,
@@ -26,17 +33,6 @@ import {
   type VisionSourceMode,
   type WristGesture,
 } from './vision';
-
-const COMBINED_PATH = '/combined';
-
-const ROUTES = [
-  { href: '/labs', label: 'Command' },
-  { href: VISION_TEST_PATH, label: 'Vision' },
-  { href: HARDWARE_TEST_PATH, label: 'Glove' },
-  { href: COMBINED_PATH, label: 'Combined' },
-] as const;
-
-type AppRoute = (typeof ROUTES)[number]['href'];
 
 type HomeLab = 'vision' | 'hardware' | 'both';
 
@@ -54,16 +50,6 @@ const EMPTY_POSE: DodgeClassification = {
   isRightArmRaised: false,
   confidence: 0,
 };
-
-function canonicalPath(pathname: string): string {
-  if (pathname.length > 1 && pathname.endsWith('/')) return pathname.replace(/\/+$/, '');
-  return pathname || '/';
-}
-
-function matchRoute(pathname: string): AppRoute | null {
-  const path = canonicalPath(pathname);
-  return ROUTES.some((route) => route.href === path) ? (path as AppRoute) : null;
-}
 
 function navigate(href: string): void {
   if (canonicalPath(window.location.pathname) === href) return;
@@ -84,30 +70,46 @@ function usePathname(): string {
     window.addEventListener('popstate', sync);
     return () => window.removeEventListener('popstate', sync);
   }, []);
+  // Legacy lab URLs (/labs, /vision-test, /hardware-test, /combined) are rewritten to /debug in place.
+  useEffect(() => {
+    const resolved = resolveLabPath(pathname);
+    if (resolved !== canonicalPath(pathname)) {
+      window.history.replaceState(null, '', `${resolved}${window.location.search}${window.location.hash}`);
+    }
+  }, [pathname]);
   return pathname;
 }
 
 export default function App() {
   const pathname = usePathname();
-  const route = matchRoute(pathname);
+  const route = matchDebugRoute(pathname);
 
   return (
     <div className="min-h-screen bg-stone-950 text-amber-50">
       <header className="sticky top-0 z-50 border-b border-amber-100/10 bg-stone-950/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <a href="/labs" onClick={(event) => onNavigate(event, '/labs')} className="group">
+          <a href={DEBUG_PATH} onClick={(event) => onNavigate(event, DEBUG_PATH)} className="group">
             <p className="text-[10px] uppercase tracking-[0.28em] text-amber-200/70">Once Upon a Memory</p>
-            <p className="font-serif text-lg leading-tight group-hover:text-amber-100">Teammate 3</p>
+            <p className="font-serif text-lg leading-tight group-hover:text-amber-100">Debug Labs</p>
           </a>
-          <nav aria-label="Teammate 3 labs" data-testid="app-nav" className="flex flex-wrap gap-1">
-            {ROUTES.map((item) => {
+          <nav aria-label="Debug labs" data-testid="app-nav" className="flex flex-wrap items-center gap-1">
+            {/* A full page load gives the game a fresh store and socket. */}
+            <a
+              href={GAME_PATH}
+              data-testid="nav-game"
+              className="mr-1 rounded-full border border-amber-100/20 px-3 py-1.5 text-sm text-amber-100/80 hover:bg-white/5 hover:text-amber-50"
+            >
+              ← Back to Game
+            </a>
+            {DEBUG_ROUTES.map((item) => {
               const active = route === item.href;
               return (
                 <a
                   key={item.href}
                   href={item.href}
                   aria-current={active ? 'page' : undefined}
-                  data-testid={`nav-${item.label.toLowerCase()}`}
+                  data-testid={`nav-${item.id}`}
+                  title={item.href}
                   onClick={(event) => onNavigate(event, item.href)}
                   className={
                     active
@@ -123,10 +125,11 @@ export default function App() {
         </div>
       </header>
 
-      {route === VISION_TEST_PATH ? <VisionTestPage /> : null}
-      {route === HARDWARE_TEST_PATH ? <HardwareTestPage /> : null}
-      {route === COMBINED_PATH ? <CombinedLab /> : null}
-      {route === '/labs' ? <CommandCenter /> : null}
+      {route === DEBUG_VISION_PATH ? <VisionTestPage /> : null}
+      {route === DEBUG_HARDWARE_PATH ? <HardwareTestPage /> : null}
+      {route === DEBUG_COMBINED_PATH ? <CombinedLab /> : null}
+      {route === DEBUG_AUDIO_PATH ? <AudioTestPage /> : null}
+      {route === DEBUG_PATH ? <CommandCenter /> : null}
       {route === null ? <CommandCenter unmatchedPath={canonicalPath(pathname)} /> : null}
     </div>
   );
@@ -144,27 +147,32 @@ function CommandCenter({ unmatchedPath }: { unmatchedPath?: string }) {
           </p>
         ) : null}
         <p className="text-xs uppercase tracking-[0.32em] text-amber-200/70">HackTX 2026 · Laptop A</p>
-        <h1 className="mt-2 max-w-3xl font-serif text-4xl sm:text-5xl">Teammate 3 Command Center</h1>
+        <h1 className="mt-2 max-w-3xl font-serif text-4xl sm:text-5xl">Debug Command Center</h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-amber-100/80">
-          Combined Vision and Enchanted Glove lab. Switch the full diagnostic pages here, or open a route when the
-          Spellbearer wants the pose camera and the Grove glove on their own.
+          Every testing lab lives under <span className="font-mono">/debug</span>. Switch the Vision and Enchanted Glove
+          diagnostics inline below, or open a lab on its own.
         </p>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-3">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <QuickLink
-            href={VISION_TEST_PATH}
+            href={DEBUG_VISION_PATH}
             title="Vision test"
             body="Webcam or cloud puppet, zone box, dodge badges, and the spell-wheel arm raise."
           />
           <QuickLink
-            href={HARDWARE_TEST_PATH}
+            href={DEBUG_HARDWARE_PATH}
             title="Enchanted Glove bench"
             body="Grove port map, Web Serial, the local bridge, and the keyboard simulator."
           />
           <QuickLink
-            href={COMBINED_PATH}
+            href={DEBUG_COMBINED_PATH}
             title="Combined spellbearer"
             body="Full-body dodge on the vision canvas beside live glove casting."
+          />
+          <QuickLink
+            href={DEBUG_AUDIO_PATH}
+            title="Audio & Narrator"
+            body="Local M4 Pro and free online TTS side by side, the FX rack, music, and glove cues."
           />
         </div>
 
@@ -408,7 +416,7 @@ function CombinedLab() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-      <p className="text-xs uppercase tracking-[0.32em] text-amber-200/70">Spellbearer · {COMBINED_PATH}</p>
+      <p className="text-xs uppercase tracking-[0.32em] text-amber-200/70">Spellbearer · {DEBUG_COMBINED_PATH}</p>
       <h1 className="mt-2 font-serif text-4xl sm:text-5xl">Dodge and cast</h1>
       <p className="mt-3 max-w-2xl text-sm leading-relaxed text-amber-100/80">
         The body on the left answers a telegraph. The Enchanted Glove on the right turns the wheel, charges a fist,

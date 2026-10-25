@@ -54,7 +54,7 @@ Every AI step the server runs (Muse requests, world generation, card extraction,
 speech-to-text, voice, narration, boss plans, Quest Master) is timed in memory. Read the
 stats at `GET /api/metrics/ai` (counts and durations only, no content), clear them with
 `POST /api/metrics/ai/reset` (dev, or bearer token in production), or watch the
-**AI timings** panel in `/test-lab` → Providers & tools.
+**AI timings** panel in the server test lab (`/debug/server`, formerly `/test-lab`) → Providers & tools.
 
 For repeatable numbers, run the benchmark from the repository root:
 
