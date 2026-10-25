@@ -1,0 +1,15 @@
+{
+  "name": "once-upon-a-memory",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Once Upon a Memory — HackTX 2026 co-op fairy-tale battle game",
+  "packageManager": "pnpm@10.33.4",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @once-upon/client dev",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "build": "pnpm -r --if-present build"
+  }
+}
