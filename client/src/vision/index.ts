@@ -16,12 +16,16 @@ export {
   judgeTelegraphDefense,
   normalizeGesturePower,
   resolveActiveAction,
+  resolveTorso,
+  VIRTUAL_HIP_DROP,
+  VIRTUAL_HIP_MAX_Y,
 } from './poseClassifiers';
 export type {
   ArmRaiseHoldState,
   DefenseJudgment,
   DodgeClassification,
   P0AttackType,
+  ResolvedTorso,
   WristGesture,
   WristSample,
   WristTrackerOptions,

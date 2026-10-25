@@ -19,6 +19,9 @@ import {
   computeCalibrationBaseline,
   getZoneBounds,
   judgeTelegraphDefense,
+  resolveTorso,
+  VIRTUAL_HIP_DROP,
+  VIRTUAL_HIP_MAX_Y,
 } from '../poseClassifiers';
 import {
   SYNTHETIC_BODY,
@@ -284,6 +287,73 @@ describe('WristVelocityTracker', () => {
       .map((frame) => thrust.update(frame.landmarks, frame.timestampMs))
       .filter((gesture) => gesture.action === 'thrust');
     expect(Math.max(...thrustHits.map((gesture) => gesture.speed))).toBeGreaterThan(THRUST_SPEED_THRESHOLD);
+  });
+});
+
+describe('close-up webcam with hips off screen', () => {
+  /** Zoom the standing puppet the way a laptop camera sees someone 1 m away. Anything below the frame fades out. */
+  function closeUp(landmarks: NormalizedLandmark[], shiftX = 0, shiftY = 0): NormalizedLandmark[] {
+    return landmarks.map((landmark) => {
+      const x = 0.5 + (landmark.x - 0.5) * 2.2 + shiftX;
+      const y = 0.05 + landmark.y * 2 + shiftY;
+      return { ...landmark, x, y, visibility: y > 1 ? 0.05 : landmark.visibility };
+    });
+  }
+
+  const standing = closeUp(sampleSyntheticPose('standing_in_zone', 0, { breathe: false }));
+  const baseline = computeCalibrationBaseline([standing], 7);
+
+  it('places virtual hips under the shoulders when the real hips are below the frame', () => {
+    const torso = resolveTorso(standing);
+    expect(torso?.hipsEstimated).toBe(true);
+    const leftShoulder = standing[POSE_LANDMARK.leftShoulder];
+    const rightShoulder = standing[POSE_LANDMARK.rightShoulder];
+    if (!leftShoulder || !rightShoulder || !torso) throw new Error('missing shoulders');
+    const midY = (leftShoulder.y + rightShoulder.y) / 2;
+    const width = Math.abs(leftShoulder.x - rightShoulder.x);
+    expect(torso.leftHip.y).toBeCloseTo(Math.min(VIRTUAL_HIP_MAX_Y, midY + width * VIRTUAL_HIP_DROP), 5);
+    expect(torso.leftHip.x).toBeGreaterThan(Math.min(leftShoulder.x, rightShoulder.x));
+    expect(torso.leftHip.x).toBeLessThan(Math.max(leftShoulder.x, rightShoulder.x));
+  });
+
+  it('calibrates, sits in the zone, and reports upper-body confidence', () => {
+    expect(baseline).not.toBeNull();
+    if (!baseline) return;
+    expect(baseline.hipY).toBeLessThanOrEqual(VIRTUAL_HIP_MAX_Y);
+    const zone = checkInZone(standing, baseline);
+    expect(zone.inZone).toBe(true);
+    expect(zone.overlapScore).toBeGreaterThan(0.85);
+    const pose = classifyDodgeAndPose(standing, baseline);
+    expect(pose.hipsEstimated).toBe(true);
+    expect(pose.confidence).toBeGreaterThan(0.9);
+  });
+
+  it('still reads side steps and ducks', () => {
+    if (!baseline) throw new Error('no close-up baseline');
+    const left = classifyDodgeAndPose(closeUp(sampleSyntheticPose('standing_in_zone', 0, { breathe: false }), 0.48), baseline);
+    const right = classifyDodgeAndPose(closeUp(sampleSyntheticPose('standing_in_zone', 0, { breathe: false }), -0.48), baseline);
+    const duck = classifyDodgeAndPose(
+      closeUp(sampleSyntheticPose('standing_in_zone', 0, { breathe: false }), 0, DUCK_THRESHOLD + 0.03),
+      baseline,
+    );
+    expect(left.isSideStepLeft).toBe(true);
+    expect(right.isSideStepRight).toBe(true);
+    expect(duck.isDucking).toBe(true);
+    expect(classifyDodgeAndPose(standing, baseline).isDucking).toBe(false);
+    expect(checkInZone(closeUp(sampleSyntheticPose('standing_in_zone', 0, { breathe: false }), 0.48), baseline).inZone).toBe(false);
+  });
+
+  it('keeps using the real hips when the full body is in frame', () => {
+    const full = sampleSyntheticPose('standing_in_zone', 0, { breathe: false });
+    expect(resolveTorso(full)?.hipsEstimated).toBe(false);
+    expect(classifyDodgeAndPose(full, standingBaseline()).hipsEstimated).toBe(false);
+  });
+
+  it('still needs both shoulders', () => {
+    const noShoulder = withLandmark(standing, POSE_LANDMARK.leftShoulder, { visibility: 0.1 });
+    expect(resolveTorso(noShoulder)).toBeNull();
+    expect(computeCalibrationBaseline([noShoulder], 1)).toBeNull();
+    expect(classifyDodgeAndPose(noShoulder, standingBaseline()).confidence).toBe(0);
   });
 });
 

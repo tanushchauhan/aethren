@@ -36,19 +36,27 @@ export const ARM_RAISE_COOLDOWN_MS = 250;
 /** One gesture per burst, so a single swipe does not retrigger while the hand recovers. */
 export const GESTURE_COOLDOWN_MS = 400;
 
-const TORSO_INDICES = [
+/**
+ * When the hips sit below a close-up laptop camera, a virtual hip line is placed this many
+ * shoulder widths under the shoulder midpoint.
+ */
+export const VIRTUAL_HIP_DROP = 1.45;
+
+/** Virtual hips never go lower than this, so the zone stays mostly on screen. */
+export const VIRTUAL_HIP_MAX_Y = 0.95;
+
+/** Virtual hips sit a little inside the shoulders, like a real torso. */
+const VIRTUAL_HIP_INSET = 0.85;
+
+const UPPER_BODY_INDICES = [
+  POSE_LANDMARK.nose,
   POSE_LANDMARK.leftShoulder,
   POSE_LANDMARK.rightShoulder,
-  POSE_LANDMARK.leftHip,
-  POSE_LANDMARK.rightHip,
-] as const;
-
-const CLASSIFIER_INDICES = [
-  ...TORSO_INDICES,
-  POSE_LANDMARK.nose,
   POSE_LANDMARK.leftWrist,
   POSE_LANDMARK.rightWrist,
 ] as const;
+
+const HIP_INDICES = [POSE_LANDMARK.leftHip, POSE_LANDMARK.rightHip] as const;
 
 export interface ZoneBounds {
   minX: number;
@@ -69,6 +77,16 @@ export interface DodgeClassification {
   isDucking: boolean;
   isRightArmRaised: boolean;
   confidence: number;
+  /** True when the hips were off screen and the torso used virtual hips under the shoulders. */
+  hipsEstimated?: boolean;
+}
+
+export interface ResolvedTorso {
+  leftShoulder: NormalizedLandmark;
+  rightShoulder: NormalizedLandmark;
+  leftHip: NormalizedLandmark;
+  rightHip: NormalizedLandmark;
+  hipsEstimated: boolean;
 }
 
 export type P0AttackType = Extract<AttackType, 'low_sweep' | 'high_swing' | 'projectile'>;
@@ -133,14 +151,56 @@ function landmarkAt(
   return usableLandmark(landmark) ? landmark : null;
 }
 
-function torsoOf(landmarks: NormalizedLandmark[]): NormalizedLandmark[] | null {
-  const points: NormalizedLandmark[] = [];
-  for (const index of TORSO_INDICES) {
-    const point = landmarkAt(landmarks, index);
-    if (!point) return null;
-    points.push(point);
+/** A hip below the bottom edge is a guess, even when MediaPipe reports it as visible. */
+function onScreenHip(landmarks: NormalizedLandmark[], index: number): NormalizedLandmark | null {
+  const hip = landmarkAt(landmarks, index);
+  return hip && hip.y <= 1 ? hip : null;
+}
+
+/**
+ * Shoulders are required. Hips are optional: when either hip is off screen or faint, both are
+ * replaced with virtual hips {@link VIRTUAL_HIP_DROP} shoulder widths below the shoulders.
+ * This keeps a close-up laptop webcam and a full-body stand two meters back on the same rules.
+ */
+export function resolveTorso(landmarks: NormalizedLandmark[]): ResolvedTorso | null {
+  const leftShoulder = landmarkAt(landmarks, POSE_LANDMARK.leftShoulder);
+  const rightShoulder = landmarkAt(landmarks, POSE_LANDMARK.rightShoulder);
+  if (!leftShoulder || !rightShoulder) return null;
+
+  const leftHip = onScreenHip(landmarks, POSE_LANDMARK.leftHip);
+  const rightHip = onScreenHip(landmarks, POSE_LANDMARK.rightHip);
+  if (leftHip && rightHip) {
+    return { leftShoulder, rightShoulder, leftHip, rightHip, hipsEstimated: false };
   }
-  return points;
+
+  const shoulderMidX = (leftShoulder.x + rightShoulder.x) / 2;
+  const shoulderMidY = (leftShoulder.y + rightShoulder.y) / 2;
+  const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x);
+  const hipY = Math.min(VIRTUAL_HIP_MAX_Y, shoulderMidY + shoulderWidth * VIRTUAL_HIP_DROP);
+  const virtualHip = (shoulder: NormalizedLandmark): NormalizedLandmark => ({
+    x: shoulderMidX + (shoulder.x - shoulderMidX) * VIRTUAL_HIP_INSET,
+    y: hipY,
+    z: shoulder.z,
+    visibility: 0,
+  });
+
+  return {
+    leftShoulder,
+    rightShoulder,
+    leftHip: virtualHip(leftShoulder),
+    rightHip: virtualHip(rightShoulder),
+    hipsEstimated: true,
+  };
+}
+
+function torsoPoints(torso: ResolvedTorso): NormalizedLandmark[] {
+  return [torso.leftShoulder, torso.rightShoulder, torso.leftHip, torso.rightHip];
+}
+
+/** Upper body always counts. Hips only count when they are really in frame. */
+function classifierConfidence(landmarks: NormalizedLandmark[], hipsEstimated: boolean): number {
+  const indices: readonly number[] = hipsEstimated ? UPPER_BODY_INDICES : [...UPPER_BODY_INDICES, ...HIP_INDICES];
+  return averageVisibility(landmarks, indices);
 }
 
 function averageVisibility(landmarks: NormalizedLandmark[], indices: readonly number[]): number {
@@ -157,8 +217,9 @@ function averageVisibility(landmarks: NormalizedLandmark[], indices: readonly nu
 
 /**
  * Average a standing clip into shoulder height, shoulder width, hip height, and center x.
- * The caller collects the clip for {@link CALIBRATION_DURATION_MS} (3 seconds).
- * Returns null when no frame contains both shoulders and both hips.
+ * The caller collects the clip for {@link CALIBRATION_DURATION_MS} (3 seconds), or passes a
+ * single recent frame for an instant lock. Hips off screen fall back to {@link resolveTorso}.
+ * Returns null when no frame contains both shoulders.
  */
 export function computeCalibrationBaseline(
   samples: NormalizedLandmark[][],
@@ -171,11 +232,9 @@ export function computeCalibrationBaseline(
   let count = 0;
 
   for (const frame of samples) {
-    const leftShoulder = landmarkAt(frame, POSE_LANDMARK.leftShoulder);
-    const rightShoulder = landmarkAt(frame, POSE_LANDMARK.rightShoulder);
-    const leftHip = landmarkAt(frame, POSE_LANDMARK.leftHip);
-    const rightHip = landmarkAt(frame, POSE_LANDMARK.rightHip);
-    if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) continue;
+    const torso = resolveTorso(frame);
+    if (!torso) continue;
+    const { leftShoulder, rightShoulder, leftHip, rightHip } = torso;
 
     shoulderY += (leftShoulder.y + rightShoulder.y) / 2;
     shoulderWidth += Math.abs(leftShoulder.x - rightShoulder.x);
@@ -224,26 +283,21 @@ function pointInside(point: NormalizedLandmark, bounds: ZoneBounds): boolean {
 }
 
 /**
- * Both shoulders and both hips must sit inside the zone.
+ * Both shoulders and both hips (real or virtual) must sit inside the zone.
  * Overlap fades from 1 to 0 as the torso center leaves the silhouette, so the outline can fill in on the way back.
  */
 export function checkInZone(
   landmarks: NormalizedLandmark[],
   baseline: CalibrationBaseline,
 ): ZoneCheck {
-  const torso = torsoOf(landmarks);
-  if (!torso || baseline.shoulderWidth <= 0.001) {
+  const resolved = resolveTorso(landmarks);
+  if (!resolved || baseline.shoulderWidth <= 0.001) {
     return { inZone: false, overlapScore: 0 };
   }
 
   const bounds = getZoneBounds(baseline);
-  const leftShoulder = torso[0];
-  const rightShoulder = torso[1];
-  const leftHip = torso[2];
-  const rightHip = torso[3];
-  if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) {
-    return { inZone: false, overlapScore: 0 };
-  }
+  const { leftShoulder, rightShoulder, leftHip, rightHip } = resolved;
+  const torso = torsoPoints(resolved);
 
   const inZone = torso.every((point) => pointInside(point, bounds));
   const playerCenterX = (leftShoulder.x + rightShoulder.x) / 2;
@@ -276,6 +330,7 @@ const EMPTY_DODGE: DodgeClassification = {
   isDucking: false,
   isRightArmRaised: false,
   confidence: 0,
+  hipsEstimated: false,
 };
 
 /**
@@ -288,14 +343,12 @@ export function classifyDodgeAndPose(
   landmarks: NormalizedLandmark[],
   baseline: CalibrationBaseline,
 ): DodgeClassification {
-  const leftShoulder = landmarkAt(landmarks, POSE_LANDMARK.leftShoulder);
-  const rightShoulder = landmarkAt(landmarks, POSE_LANDMARK.rightShoulder);
-  const leftHip = landmarkAt(landmarks, POSE_LANDMARK.leftHip);
-  const rightHip = landmarkAt(landmarks, POSE_LANDMARK.rightHip);
-  if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) return EMPTY_DODGE;
+  const resolved = resolveTorso(landmarks);
+  if (!resolved) return EMPTY_DODGE;
 
+  const { leftShoulder, rightShoulder } = resolved;
   const bounds = getZoneBounds(baseline);
-  const torso = [leftShoulder, rightShoulder, leftHip, rightHip];
+  const torso = torsoPoints(resolved);
   const isSideStepLeft = torso.every((point) => point.x > bounds.maxX);
   const isSideStepRight = torso.every((point) => point.x < bounds.minX);
   const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
@@ -310,7 +363,8 @@ export function classifyDodgeAndPose(
     isSideStepRight,
     isDucking,
     isRightArmRaised,
-    confidence: averageVisibility(landmarks, CLASSIFIER_INDICES),
+    confidence: classifierConfidence(landmarks, resolved.hipsEstimated),
+    hipsEstimated: resolved.hipsEstimated,
   };
 }
 
@@ -337,14 +391,14 @@ export function judgeTelegraphDefense(
       attackType,
       dodged,
       action: dodged ? 'duck' : 'none',
-      detail: dodged ? 'Duck slipped the high swing.' : 'Still standing — the high swing lands.',
+      detail: dodged ? 'Duck slipped the high swing.' : 'Still standing. The high swing lands.',
     };
   }
 
   if (attackType === 'projectile') {
     const dodged = parried || stepped;
     const action: PoseActionType = parried ? 'none' : stepAction;
-    let detail = 'Still in the path — step aside, or parry with the glove.';
+    let detail = 'Still in the path. Step aside, or parry with the glove.';
     if (parried) detail = 'Parry sends the projectile back.';
     else if (stepped) detail = 'Side step left the projectile’s path.';
     return { attackType, dodged, action, detail };
