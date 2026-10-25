@@ -1,10 +1,14 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2023"],
+    "lib": [
+      "ES2023"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -12,5 +16,7 @@
     "noUnusedParameters": true,
     "isolatedModules": true
   },
-  "include": ["vite.config.ts", "vite/**/*.ts", "src/audio-lab/voiceCatalog.ts"]
+  "include": [
+    "vite.config.ts"
+  ]
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { getUiStore, useUiStore } from './storeBindings';
+import { useStoryStore as useUiStore } from '../net/storyStore';
+const getUiStore = useUiStore.getState;
 import './title-screen.css';
 import { ForestCanvas } from './ForestCanvas';
 
@@ -19,20 +20,22 @@ export function LandingScreen() {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     setError('');
-    if (menu) { dialog.current?.showModal(); getUiStore().connect(); }
+    if (menu) dialog.current?.showModal();
     else dialog.current?.close();
   }, [menu]);
+  const needsServer = menu === 'join' || mode === 'online';
+  useEffect(() => { if (menu && needsServer) getUiStore().connect(); }, [menu, needsServer]);
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
     if (!name.trim()) { setError('Every spellbearer needs a name.'); return; }
     if (menu === 'join' && !/^[A-Z]{4}$/.test(code)) { setError('Enter the four-letter room code.'); return; }
-    if (connection !== 'connected') { setError('Waiting for the game server.'); return; }
+    if (needsServer && connection !== 'connected') { setError('Waiting for the game server.'); return; }
     setBusy(true); setError('');
     try {
       const store = getUiStore();
-      if (menu === 'create') store.createRoom(name.trim(), 'spellbearer', mode);
-      else if (menu === 'join') store.joinRoom(code, name.trim(), 'spellbearer');
+      if (menu === 'create') store.createRoom(name.trim(), mode);
+      else if (menu === 'join') store.joinRoom(code, name.trim());
     } catch { setError('The path is closed for now. Please try again.'); }
     finally { setBusy(false); }
   }
@@ -66,13 +69,13 @@ export function LandingScreen() {
           <legend>Choose your adventure</legend>
           <label><input type="radio" name="mode" checked={mode === 'singleplayer'} onChange={() => setMode('singleplayer')} />Singleplayer</label>
           <label><input type="radio" name="mode" checked={mode === 'online'} onChange={() => setMode('online')} />Play online</label>
-          <p>{mode === 'singleplayer' ? 'Journey with an enchanted companion.' : 'Invite a friend with your room code.'} Face the minions, then challenge the boss.</p>
+          <p>{mode === 'singleplayer' ? 'Enter the forest on your own.' : 'Invite a friend with your room code.'} A story waits beyond the trees.</p>
         </fieldset>}
         <label>Your name<input value={name} maxLength={32} autoComplete="nickname" onChange={e => setName(e.target.value)} /></label>
         {menu === 'join' && <label>Room code<input value={code} maxLength={4} autoCapitalize="characters" autoComplete="off" onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))} /></label>}
-        {connection !== 'connected' && <div className="title-connection"><span>{connection === 'connecting' ? 'Connecting…' : 'Game server unavailable'}</span><button type="button" onClick={() => getUiStore().connect()}>Retry</button></div>}
-        <button className="title-confirm" disabled={busy || connection !== 'connected'}>{busy ? 'Summoning…' : menu === 'join' ? 'Join' : 'Begin adventure'}</button>
-        {(error || networkError) && <p className="title-error" role="status">{error || networkError}</p>}
+        {needsServer && connection !== 'connected' && <div className="title-connection"><span>{connection === 'connecting' ? 'Connecting…' : 'Game server unavailable'}</span><button type="button" onClick={() => getUiStore().connect()}>Retry</button></div>}
+        <button className="title-confirm" disabled={busy || (needsServer && connection !== 'connected')}>{busy ? 'Summoning…' : menu === 'join' ? 'Join' : 'Begin adventure'}</button>
+        {(error || (needsServer && networkError)) && <p className="title-error" role="status">{error || (needsServer && networkError)}</p>}
 
       </form>
     </dialog>

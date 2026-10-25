@@ -2,7 +2,7 @@ import { RainOverlay } from './components/RainOverlay';
 import { useForestSound } from './useForestSound';
 import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { useGameStore } from '../net/store';
+import { useStoryStore } from '../net/storyStore';
 import { VisualNovelDialogue, type DialogueLine } from './components/VisualNovelDialogue';
 import { WolfEncounter } from './WolfEncounter';
 import './scripted-introduction.css';
@@ -10,7 +10,7 @@ import './scripted-introduction.css';
 const ART = ['/art/intro/rift-dark.png', '/art/intro/rift-crack.png', '/art/intro/rift-open.png', '/art/intro/shadow-voices.png'];
 
 export function ScriptedIntroduction() {
-  const multiplayer = useGameStore(s => s.adventureMode === 'online');
+  const multiplayer = useStoryStore(s => s.adventureMode === 'online');
   const [line, setLine] = useState(0);
   const [frame, setFrame] = useState(0);
   const [riftFinished, setRiftFinished] = useState(false);

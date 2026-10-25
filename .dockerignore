@@ -21,6 +21,5 @@
 
 # Not needed in the image
 docs
-firmware
 Dockerfile
 .dockerignore
