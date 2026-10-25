@@ -1,0 +1,261 @@
+{
+  "participants": [
+    {
+      "name": "Maya"
+    },
+    {
+      "name": "Dev"
+    },
+    {
+      "name": "Priya"
+    }
+  ],
+  "messages": [
+    {
+      "sender_name": "Dev",
+      "timestamp_ms": 1777745160000,
+      "content": "the goat was the waterfall all along",
+      "is_geoblocked_for_viewer": false,
+      "reactions": [
+        {
+          "reaction": "\u00f0\u009f\u0098\u0082",
+          "actor": "Maya"
+        }
+      ]
+    },
+    {
+      "sender_name": "Maya",
+      "timestamp_ms": 1777745100000,
+      "content": "remember when we got lost looking for the waterfall and found a goat instead",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Priya",
+      "timestamp_ms": 1777744800000,
+      "content": "Priya missed an audio call.",
+      "call_duration": 0,
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Maya",
+      "timestamp_ms": 1776676680000,
+      "content": "You sent a sticker.",
+      "sticker": {
+        "uri": "stickers/tomato.png"
+      },
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Dev",
+      "timestamp_ms": 1776676620000,
+      "content": "one tomato is a harvest if you believe hard enough \u00f0\u009f\u008c\u00b1",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Priya",
+      "timestamp_ms": 1776676560000,
+      "content": "proud of you. also it is one tomato. one.",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Maya",
+      "timestamp_ms": 1776676500000,
+      "content": "the tomato plant survived the week, i am a gardener now",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Instagram User",
+      "timestamp_ms": 1772366400000,
+      "content": "hey is this the karaoke group",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Dev",
+      "timestamp_ms": 1771039380000,
+      "audio_files": [
+        {
+          "uri": "audio/high_note.m4a"
+        }
+      ],
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Maya",
+      "timestamp_ms": 1771039320000,
+      "content": "that high note was a crime and i would commit it again \u00f0\u009f\u008e\u00a4",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Priya",
+      "timestamp_ms": 1771039260000,
+      "content": "my voice is gone. i sound like a haunted kettle",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Dev",
+      "timestamp_ms": 1771039200000,
+      "content": "we are never doing karaoke again. by never i mean thursday",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Dev",
+      "timestamp_ms": 1768680360000,
+      "content": "the snowman has more structural integrity than my sleep schedule",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Maya",
+      "timestamp_ms": 1768680300000,
+      "videos": [
+        {
+          "uri": "videos/snow.mp4"
+        }
+      ],
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Priya",
+      "timestamp_ms": 1768680000000,
+      "content": "Priya changed the group photo.",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Maya",
+      "timestamp_ms": 1765270800000,
+      "content": "Maya named the group THE ESSAY SURVIVORS.",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Dev",
+      "timestamp_ms": 1765269000000,
+      "content": "the essay has three words now and two of them are my name",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Dev",
+      "timestamp_ms": 1765267560000,
+      "content": "Liked a message",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Dev",
+      "timestamp_ms": 1765267500000,
+      "content": "Dev unsent a message",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Priya",
+      "timestamp_ms": 1765267440000,
+      "content": "go to bed both of you, the caf\u00c3\u00a9 opens at 7 \u00e2\u0098\u0095",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Maya",
+      "timestamp_ms": 1765267380000,
+      "content": "i have written the title. it is a very strong title",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Dev",
+      "timestamp_ms": 1765267320000,
+      "content": "it is 3am, the library is closing and nobody has started the essay",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Maya",
+      "timestamp_ms": 1761866400000,
+      "content": "Maya started a video chat",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Priya",
+      "timestamp_ms": 1761865980000,
+      "content": "me but i am holding the big blanket and nobody can take it",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Dev",
+      "timestamp_ms": 1761865920000,
+      "content": "who wants to watch the scary movie with the haunted lighthouse",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Maya",
+      "timestamp_ms": 1756893660000,
+      "content": "for next time lol https://example.com/car-noises",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Maya",
+      "timestamp_ms": 1756893600000,
+      "content": "https://example.com/best-road-trip-playlists",
+      "share": {
+        "link": "https://example.com/best-road-trip-playlists"
+      },
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Dev",
+      "timestamp_ms": 1752354600000,
+      "content": "update: a very kind farmer named Gus saved us. Gus is our god now",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Priya",
+      "timestamp_ms": 1752348600000,
+      "content": "Reacted \u00f0\u009f\u0098\u0082 to your message ",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Dev",
+      "timestamp_ms": 1752346020000,
+      "content": "Dev sent an attachment.",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Maya",
+      "timestamp_ms": 1752345900000,
+      "photos": [
+        {
+          "uri": "photos/engine.jpg",
+          "creation_timestamp": 1752345900
+        }
+      ],
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Priya",
+      "timestamp_ms": 1752345840000,
+      "content": "do NOT let it sing. pull over",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Dev",
+      "timestamp_ms": 1752345720000,
+      "content": "the noise is just the car singing to us \u00f0\u009f\u008e\u00b6",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Maya",
+      "timestamp_ms": 1752345660000,
+      "content": "the car is making the noise again and we are 40 miles from anything",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Dev",
+      "timestamp_ms": 1752332640000,
+      "content": "i packed one (1) bag of pretzels and my hopes",
+      "is_geoblocked_for_viewer": false
+    },
+    {
+      "sender_name": "Maya",
+      "timestamp_ms": 1752332520000,
+      "content": "ok who packed the snacks because it was not me",
+      "is_geoblocked_for_viewer": false
+    }
+  ],
+  "title": "the essay survivors \u00e2\u009c\u00a8",
+  "is_still_participant": true,
+  "thread_path": "inbox/theessaysurvivors_1234567890",
+  "magic_words": []
+}
