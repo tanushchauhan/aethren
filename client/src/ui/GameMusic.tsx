@@ -17,16 +17,16 @@ export function GameMusic() {
   }, []);
   useEffect(() => {
     const audio = player.current!;
-    const play = () => { if (enabled && unlocked && !document.hidden) void audio.play().then(() => setFailed(false)).catch(() => setFailed(true)); else audio.pause(); };
+    const play = () => { if (enabled && !document.hidden) void audio.play().then(() => setFailed(false)).catch(() => setFailed(true)); else audio.pause(); };
     if (audio.getAttribute('src') !== TRACKS[track]) { audio.src = TRACKS[track]; audio.load(); }
     play(); document.addEventListener('visibilitychange', play);
     return () => { document.removeEventListener('visibilitychange', play); audio.pause(); };
   }, [track, enabled, unlocked]);
   function toggle() {
-    const next = !unlocked || failed ? true : !enabled;
+    const next = failed ? true : !enabled;
     setUnlocked(true); setEnabled(next); setFailed(false);
     try { localStorage.setItem('ouam-music', next ? 'on' : 'off'); } catch { /* Storage can be unavailable in private contexts. */ }
     if (next) void player.current?.play().catch(() => setFailed(true));
   }
-  return <button className="music-control" onClick={toggle} aria-label={!unlocked || failed ? 'Enable music' : enabled ? 'Mute music' : 'Enable music'} aria-pressed={enabled && unlocked && !failed} data-track={track}>{!unlocked || failed ? '♪ Enable music' : enabled ? '♪ Music on' : '♪ Music off'}</button>;
+  return <button className="music-control" onClick={toggle} aria-label={failed ? 'Enable music' : enabled ? 'Mute music' : 'Enable music'} aria-pressed={enabled && !failed} data-track={track}>{failed ? '♪ Enable music' : enabled ? '♪ Music on' : '♪ Music off'}</button>;
 }

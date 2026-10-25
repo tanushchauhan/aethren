@@ -4,6 +4,9 @@ import { LandingScreen } from './ui/LandingScreen';
 import { ScriptedIntroduction } from './ui/ScriptedIntroduction';
 import { GloveGate } from './glove/GloveGate';
 import { GameMusic } from './ui/GameMusic';
+import { DevTools } from './ui/DevTools';
+import { PauseMenu } from './ui/PauseMenu';
+import { AfterWolfEncounter } from './ui/AfterWolfEncounter';
 import { useStoryStore } from './net/storyStore';
 import { isGamePath, isTestLabPath } from './debugRoutes';
 import './ui/visual-novel.css';
@@ -15,12 +18,20 @@ class ScreenBoundary extends Component<{ children: ReactNode }, { failed: boolea
   render() { return this.state.failed ? <main role="alert">The story could not load. Reload to try again.</main> : this.props.children; }
 }
 
+/** Starts at the Gatekeeper's gate, for testing and demos. */
+function BossFightEntry() {
+  const [muted, setMuted] = useState(false);
+  return <AfterWolfEncounter muted={muted} onToggleSound={() => setMuted(!muted)} initialStage="gather" />;
+}
+
 function StoryApp() {
   const started = useStoryStore(s => s.started);
+  const startAt = useStoryStore(s => s.startAt);
   const room = useStoryStore(s => s.room);
   return <GameViewport>
     <GloveGate>
-      {started ? <ScriptedIntroduction /> : <><LandingScreen /><GameMusic /></>}
+      {started ? (startAt === 'boss' ? <BossFightEntry /> : <ScriptedIntroduction />) : <><LandingScreen /><GameMusic /><DevTools /></>}
+      {started && <PauseMenu />}
       {started && room && <aside className="room-code">Room {room.code} · {room.players.length}/2 players</aside>}
     </GloveGate>
   </GameViewport>;

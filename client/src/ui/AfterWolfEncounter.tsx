@@ -15,8 +15,8 @@ import { useSpellBattle } from '../combat/spellBattle';
 import './boss-journey.css';
 
 type Stage = 'escape' | 'castle' | 'descent' | 'warning' | 'gather' | 'battle' | 'ending';
-export function AfterWolfEncounter({ muted, onToggleSound }: { muted: boolean; onToggleSound: () => void }) {
-  const [stage, setStage] = useState<Stage>('escape');
+export function AfterWolfEncounter({ muted, onToggleSound, initialStage = 'escape' }: { muted: boolean; onToggleSound: () => void; initialStage?: Stage }) {
+  const [stage, setStage] = useState<Stage>(initialStage);
   const [landed, setLanded] = useState(false);
   const reduced = useReducedMotion();
   const landingPlayed = useRef(false);

@@ -1,3 +1,4 @@
+import { usePause } from '../pause/pauseStore';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { create } from 'zustand';
 import { useReducedMotion } from 'motion/react';
@@ -517,7 +518,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   useEffect(() => {
     if (!session || !glove) return;
     const id = glove.id;
-    return session.onInput((event, gloveId) => { if (gloveId === id) latest.current.onGlove(event); });
+    return session.onInput((event, gloveId) => { if (gloveId === id && !usePause.getState().open) latest.current.onGlove(event); });
   }, [session?.onInput, glove?.id]);
   useEffect(() => {
     if (!live) return;

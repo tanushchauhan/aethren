@@ -1,0 +1,5 @@
+.dev-tools { position: fixed; z-index: 30; bottom: 56px; right: 20px; display: flex; gap: 8px; }
+.dev-tools button { padding: 8px 12px; border: 1px solid #8b9c7c70; background: #081317d9; color: #dfd9b8; font: 15px 'Pixelify Sans', monospace; cursor: pointer; }
+.dev-tools button:hover, .dev-tools button:focus-visible { border-color: #ffe5ad; color: #ffe5ad; outline: none; }
+.game-surface .dev-tools { position: absolute; bottom: 44px; right: 16px; }
+.game-surface .dev-tools button { font-size: 12px; padding: 5px 8px; }

@@ -1,0 +1,10 @@
+.pause-button { position: absolute; z-index: 70; top: 8px; left: 50%; translate: -50% 0; padding: 4px 12px; border: 1px solid #8b9c7c70; background: #081317d9; color: #dfd9b8; font: 14px 'Pixelify Sans', monospace; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+.pause-button:hover, .pause-button:focus-visible { border-color: #ffe5ad; color: #ffe5ad; outline: none; }
+.pause-dialog { width: min(380px, calc(100% - 32px)); }
+.pause-dialog h2 { margin: 0 0 18px; }
+.pause-note { margin: 0 0 16px; color: #e1c29b; font-size: 20px; line-height: 1.2; }
+.pause-actions { display: grid; gap: 10px; }
+.pause-actions button { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 14px; color: #e7dfb9; background: #1a2f30; border: 1px solid #87a38d; font: 22px 'Pixelify Sans', monospace; cursor: pointer; }
+.pause-actions button b { color: #ffe5ad; font-weight: 400; }
+.pause-actions button:hover, .pause-actions button:focus-visible, .pause-actions button[data-glove-focus] { border-color: #ffe5ad; color: #ffe5ad; outline: none; }
+.pause-actions .pause-leave { margin-top: 8px; background: #2c1d1d; border-color: #a98585; }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { dialSlot } from './gloveInput';
 import { useGloveMode } from './gloveMode';
+import { usePause } from '../pause/pauseStore';
 import { useGloveInput, useGloveSession } from './GloveSession';
 
 const FOCUS_ATTR = 'data-glove-focus';
@@ -116,7 +117,7 @@ export function GloveMenuNav() {
   }
 
   useGloveInput((event) => {
-    if (combatControl) return;
+    if (combatControl && !usePause.getState().open) return;
     if (event.type === 'dial') {
       const items = candidates();
       if (items.length === 0) return;
