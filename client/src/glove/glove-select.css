@@ -24,3 +24,7 @@ kbd { display: inline-block; min-width: 26px; padding: 0 6px; text-align: center
 .glove-badge button { margin-top: 4px; font: inherit; color: #d6d6af; background: transparent; border: 0; text-decoration: underline; cursor: pointer; text-align: left; padding: 0; }
 .glove-lost { position: fixed; z-index: 60; inset: 0; display: grid; place-content: center; gap: 4px; text-align: center; background: #040b10d9; color: #efe9c9; font: 28px 'VT323', monospace; }
 @media (max-width: 600px) { .glove-panel { padding: 22px 18px; } }
+
+.glove-list li { display: grid; gap: 8px; align-content: start; }
+.glove-buzz { padding: 6px 10px; font: 20px 'VT323', monospace; color: #e7dfb9; background: #28453e; border: 1px solid #87a38d; box-shadow: 3px 3px #06100d; cursor: pointer; }
+.glove-buzz:hover, .glove-buzz:focus-visible { color: #ffe5a1; border-color: #f4dc99; outline: none; }

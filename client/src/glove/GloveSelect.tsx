@@ -72,6 +72,9 @@ export function GloveSelect({ lostGlove = false }: { lostGlove?: boolean }) {
               <span className="glove-note">{profile.note}</span>
               {glove.online && <span className="glove-signal">Signal {glove.rssi} dBm</span>}
             </button>
+            {usable && <button type="button" className="glove-buzz" onClick={() => hub.send(glove.id, { cmd: 'ident' })}>
+              Buzz this glove
+            </button>}
           </li>;
         })}
       </ul>
