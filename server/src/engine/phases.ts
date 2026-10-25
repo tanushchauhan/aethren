@@ -224,6 +224,7 @@ export class GameRoom {
   private generating = false;
   private genFallback: (() => void) | null = null;
   private imagesStarted = false;
+  private servoOpened = false;
   private openingDeadline = 0;
   private enemyIndex = -1;
   private wardRaisedThisPhase = false;
@@ -402,6 +403,7 @@ export class GameRoom {
   }
 
   private hardware(command: HardwareCommand): void {
+    if (command.type === 'servo') this.servoOpened = Boolean(command.servoOpen);
     this.emit('hardware:command', command);
   }
 
@@ -941,12 +943,11 @@ export class GameRoom {
     }
     this.setPhase('intro', this.scale(ENGINE_TIMINGS_MS.enemyEntrance), () => this.startRound());
     this.broadcast();
+    // The entrance uses the world's own words: a scene line, then the enemy's first line.
     const enemy = this.state.currentEncounter!;
-    this.narrate(this.state.fightingBoss ? 'boss_entrance' : 'enemy_entrance', {
-      enemyName: enemy.name,
-      memory: enemy.memory,
-      line: enemy.lines?.[0],
-    });
+    this.say(fallbackLine('boss_entrance', { enemyName: enemy.name }));
+    const line = enemy.lines?.find((l) => typeof l === 'string' && l.trim() !== '');
+    if (line) this.say(truncate(line.trim(), TAUNT_MAX_CHARS), 'boss');
   }
 
   private planContext(roundIndex: number): PlanContext {
@@ -1307,7 +1308,7 @@ export class GameRoom {
     this.state.paused = false;
     this.state.pausedReason = undefined;
     this.setPhase('ending', null);
-    if (victory) this.hardware({ type: 'servo', servoOpen: true });
+    if (victory && !this.servoOpened) this.hardware({ type: 'servo', servoOpen: true });
     this.rt.log(`[engine ${this.state.roomCode}] ending (${victory ? 'victory' : 'defeat'})`);
     this.broadcast();
     this.narrate(victory ? 'victory' : 'defeat', {

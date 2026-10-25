@@ -32,7 +32,7 @@ export function fallbackLine(kind: NarrationEvent['kind'], facts: Facts = {}): s
     case 'enemy_defeated':
       return `${enemy} crumbles into leaves and moonlight.`;
     case 'boss_entrance':
-      return `The path darkens. ${enemy} awaits.`;
+      return `The path darkens, and ${enemy} steps out of the trees.`;
     case 'victory':
       return 'And they lived happily ever after.';
     case 'defeat':
