@@ -77,7 +77,7 @@ const STEP_CONFIG: Record<TutorialStep, {
     title: 'Begin Casting a Spell',
     lines: [
       'Press [B1] / [Enter] to open the Spell Maneuver stage.',
-      'Simple spells take 3 steps; stronger spells take 4–5 steps.',
+      'Simple spells take 2 or 3 steps; stronger spells take 4 or 5.',
     ],
     requirement: '◆ Press [B1] / [Enter] or click Begin Ritual',
     keys: [
@@ -92,7 +92,7 @@ const STEP_CONFIG: Record<TutorialStep, {
     lines: [
       'Do each <kbd> step in order (↑ Arm + Glove buttons).',
       'Act when the white cursor hits ★ PERFECT for 1.45× spell power!',
-      'Stronger spells require 4–5 steps; unlock ??? runes via hints.',
+      'Stronger spells require 4 or 5 steps; unlock ??? runes via hints.',
     ],
     requirement: '◆ Click Start Casting → (or press Space / Enter) to begin!',
     keys: [
