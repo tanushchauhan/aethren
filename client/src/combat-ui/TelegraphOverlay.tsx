@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type RefObject } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { getServerNow } from '../net/clock';
 import { ROUND_TIMINGS, type AttackTypeP0, type PlayerPublic } from '../net/contract';
 import { useGameStore } from '../net/store';
