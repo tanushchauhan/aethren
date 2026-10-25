@@ -1,0 +1,9 @@
+.prefetch-dialog { width: min(480px, calc(100% - 32px)); }
+.prefetch-dialog h2 { margin: 0 0 20px; }
+.prefetch-bar { height: 16px; border: 1px solid #748d83; background: #071116; padding: 2px; }
+.prefetch-bar span { display: block; height: 100%; background: linear-gradient(90deg, #c9a15a, #ffe5a1); transition: width .2s linear; }
+.prefetch-numbers { margin: 12px 0 4px; color: #e6dfbd; font-size: 22px; }
+.prefetch-current { margin: 0 0 16px; color: #9fb5b0; font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prefetch-warn { margin: 8px 0 16px; color: #e1c29b; font-size: 20px; line-height: 1.2; }
+.prefetch-cancel { padding: 6px 14px; color: #dfd9b8; background: transparent; border: 1px solid #8b9c7c70; font: 20px 'Pixelify Sans', monospace; cursor: pointer; }
+.prefetch-cancel:hover, .prefetch-cancel:focus-visible { border-color: #ffe5ad; color: #ffe5ad; outline: none; }

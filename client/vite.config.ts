@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { readdirSync, statSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -174,8 +176,65 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
   }
 }
 
+// --- Asset preloading -----------------------------------------------------------------------------------------
+// The home menu can download every art, audio, video and font file ahead of play. This lists them (path and size)
+// so the page knows what to fetch, and lets the browser keep them between visits.
+const PRELOAD_EXTENSIONS = /\.(png|jpe?g|webp|gif|svg|mp3|wav|ogg|mp4|webm|ttf|woff2?)$/i;
+
+function listPublicAssets(dir: string, base = ''): { path: string; size: number }[] {
+  const found: { path: string; size: number }[] = [];
+  for (const name of readdirSync(path.join(dir, base))) {
+    const relative = base ? `${base}/${name}` : name;
+    const stats = statSync(path.join(dir, relative));
+    if (stats.isDirectory()) found.push(...listPublicAssets(dir, relative));
+    else if (PRELOAD_EXTENSIONS.test(name)) found.push({ path: `/${relative}`, size: stats.size });
+  }
+  return found.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function assetManifestBody(): string {
+  const files = listPublicAssets(path.join(rootDir, 'public'));
+  const version = createHash('sha1').update(files.map((f) => `${f.path}:${f.size}`).join('|')).digest('hex').slice(0, 12);
+  return JSON.stringify({ version, files });
+}
+
+function assetPreloadPlugin(): Plugin {
+  return {
+    name: 'asset-preload',
+    configureServer(server) {
+      server.middlewares.use('/asset-manifest.json', (_req: IncomingMessage, res: ServerResponse) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end(assetManifestBody());
+      });
+      // The dev server tells browsers to re-check every public file on every request. Let big art and audio stay cached
+      // (for a day) so a second visit, or the preload button, does not download them again.
+      server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: Connect.NextFunction) => {
+        if (req.method !== 'GET' || !/^\/(art|audio|fonts)\//.test(req.url ?? '')) return next();
+        const keep = 'public, max-age=86400';
+        const setHeader = res.setHeader.bind(res);
+        res.setHeader = ((name: string, value: unknown) => setHeader(name, name.toLowerCase() === 'cache-control' ? keep : (value as string))) as typeof res.setHeader;
+        const writeHead = res.writeHead.bind(res);
+        res.writeHead = ((status: number, ...rest: unknown[]) => {
+          for (const arg of rest) {
+            if (arg && typeof arg === 'object' && !Array.isArray(arg)) {
+              const headers = arg as Record<string, unknown>;
+              for (const key of Object.keys(headers)) if (key.toLowerCase() === 'cache-control') headers[key] = keep;
+            }
+          }
+          return (writeHead as (...a: unknown[]) => ServerResponse)(status, ...rest);
+        }) as typeof res.writeHead;
+        next();
+      });
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'asset-manifest.json', source: assetManifestBody() });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), debugTtsPlugin()],
+  plugins: [react(), tailwindcss(), debugTtsPlugin(), assetPreloadPlugin()],
   resolve: {
     alias: {
       '@': path.resolve(rootDir, 'src'),

@@ -3,3 +3,5 @@
 .dev-tools button:hover, .dev-tools button:focus-visible { border-color: #ffe5ad; color: #ffe5ad; outline: none; }
 .game-surface .dev-tools { position: absolute; bottom: 44px; right: 16px; }
 .game-surface .dev-tools button { font-size: 12px; padding: 5px 8px; }
+.dev-tools button[data-ready='false'] { border-color: #c9a15a; color: #ffe5ad; }
+.dev-tools button[data-ready='true'] { color: #9fd7a8; }

@@ -48,7 +48,15 @@ export async function startServer(opts: { port?: number } = {}): Promise<Started
   });
 
   if (existsSync(path.join(CLIENT_DIST, 'index.html'))) {
-    app.use(express.static(CLIENT_DIST));
+    // Hashed build files never change, and the art, audio and video are big, so let browsers keep them.
+    app.use(express.static(CLIENT_DIST, {
+      setHeaders(res, filePath) {
+        const name = filePath.replace(/\\/g, '/');
+        if (name.includes('/assets/')) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        else if (/\.(png|jpe?g|webp|gif|svg|mp3|wav|ogg|mp4|webm|ttf|woff2?)$/i.test(name)) res.setHeader('Cache-Control', 'public, max-age=86400');
+        else res.setHeader('Cache-Control', 'no-cache');
+      },
+    }));
     app.use((req, res, next) => {
       const isSpaRequest =
         (req.method === 'GET' || req.method === 'HEAD') &&

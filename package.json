@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "pnpm --parallel --filter @aethren/client --filter @aethren/server dev",
     "dev:server": "pnpm --filter @aethren/server dev",
+    "demo": "pnpm --filter @aethren/client build && pnpm --filter @aethren/server start",
     "typecheck": "pnpm -r --if-present typecheck",
     "build": "pnpm -r --if-present build",
     "test": "pnpm -r --if-present test"
