@@ -2,7 +2,8 @@
  * Spellbearer glove controller.
  *
  * 1. Web Serial (`navigator.serial`) at {@link SERIAL_BAUD} when Chrome or Edge can see the Uno R4.
- * 2. Local bridge at {@link SERIAL_BRIDGE_URL} (`firmware/serial-bridge.ts`) for other browsers.
+ * 2. Local bridge at {@link SERIAL_BRIDGE_URL} (`firmware/serial-bridge.ts`) for other browsers,
+ *    or when the glove streams wirelessly over Wi-Fi UDP (`--udp <arduino-ip>`).
  * 3. Keyboard and on-screen simulator when no board is attached. This is the default.
  */
 
@@ -27,6 +28,8 @@ import {
   DEFAULT_GLOVE_FRAME,
   GloveEdgeTracker,
   LineBufferProcessor,
+  buildLcdCommand,
+  buildWifiCommand,
   createIdleGloveEdges,
   elementForDialSlot,
   normalizeGloveCommand,
@@ -34,7 +37,7 @@ import {
   serializeGloveCommand,
   toHardwareEvent,
 } from './serialProtocol';
-import type { GloveEdges, SwipeRelease } from './serialProtocol';
+import type { GloveEdges, GloveLcdMessage, GloveWifiStatus, SwipeRelease } from './serialProtocol';
 import { GloveSoundSynthesizer } from './soundSynthesizer';
 
 export const SERIAL_BRIDGE_URL = 'ws://localhost:8765';
@@ -42,12 +45,13 @@ export const SERIAL_BRIDGE_URL = 'ws://localhost:8765';
 export const SIMULATOR_HOTKEYS: readonly { readonly keys: string; readonly action: string }[] = [
   { keys: '1 / 2 / 3', action: 'Turn the rotary dial to Ember, Frost, or Bloom and play the tick buzzer' },
   { keys: '[ / ]', action: 'Step the rotary dial backward or forward and play the tick buzzer' },
-  { keys: 'Hold E', action: 'Finger button — a short tap locks the element; a hold opens push-to-talk' },
-  { keys: 'Hold F', action: `Cover the palm light sensor (fist charge, ${FIST_CHARGE_MULTIPLIER}× power)` },
-  { keys: 'Arrow Left / Right / Up', action: 'Accelerometer swipe left, swipe right, or thrust (speed 1.0×–1.5×)' },
-  { keys: 'Q', action: 'Thumb touch sensor — parry a projectile' },
-  { keys: 'C', action: 'Cycle the color token: none → ember → frost → bloom → boss' },
-  { keys: 'M', action: 'Toggle the forearm hardware arm / disarm switch' },
+  { keys: 'Hold E', action: 'D4 Button 1 — hold opens push-to-talk (a short tap also locks the element)' },
+  { keys: 'L', action: 'D8 Button 2 — click locks the element under the dial' },
+  { keys: 'Hold F', action: `D8 Button 2 held — charge the spell (fist, ${FIST_CHARGE_MULTIPLIER}× power)` },
+  { keys: 'Arrow Left / Right / Up', action: 'I2C accelerometer swipe left, swipe right, or thrust (speed 1.0×–1.5×)' },
+  { keys: 'Q', action: 'D3 touch sensor — parry a projectile' },
+  { keys: 'C', action: 'Cycle the color token: none → ember → frost → bloom → boss (simulator only)' },
+  { keys: 'M', action: 'Arm / disarm the glove (sends {"cmd":"arm"} to a live board)' },
 ];
 
 export type HardwareLinkMode = 'simulator' | 'web-serial' | 'ws-bridge';
@@ -80,6 +84,10 @@ export interface GloveHardwareController {
   /** True for a short beat after a parry edge so the badge can be seen. */
   parryLit: boolean;
   lastCommand: string | null;
+  /** The last custom message sent to the forearm LCD, or null after a clear. */
+  lcdMessage: GloveLcdMessage | null;
+  /** Latest `{"event":"wifi"}` report from the board (USB serial only). */
+  wifiStatus: GloveWifiStatus | null;
   keyboardEnabled: boolean;
   webSerialSupported: boolean;
   simulatorActive: boolean;
@@ -95,6 +103,7 @@ export interface GloveHardwareController {
   setDial: (slot: number) => void;
   stepDial: (delta: number) => void;
   setButton: (pressed: boolean) => void;
+  setButton2: (pressed: boolean) => void;
   setFist: (covered: boolean) => void;
   setSwipe: (swipe: GloveSensorFrame['swipe']) => void;
   releaseSwipe: (direction: SwipeRelease['direction']) => void;
@@ -110,6 +119,13 @@ export interface GloveHardwareController {
   sendCommand: (cmd: GloveCommand | HardwareCommand) => void;
   setServoOpen: (open: boolean) => void;
   playBuzz: (pattern: BuzzPattern) => void;
+  /** Show custom text and an optional RGB backlight on the forearm 16x2 LCD. */
+  sendLcd: (message: GloveLcdMessage) => void;
+  /** Drop the custom message so the LCD returns to the spell wheel. */
+  clearLcd: () => void;
+  /** Send hotspot credentials over the open link. An empty SSID asks for status. */
+  configureWifi: (ssid: string, pass: string) => void;
+  requestWifiStatus: () => void;
   setKeyboardEnabled: (enabled: boolean) => void;
 }
 
@@ -136,6 +152,7 @@ interface SimulatorApi {
   setDial: (slot: number) => void;
   stepDial: (delta: number) => void;
   setButton: (pressed: boolean) => void;
+  tapButton2: () => void;
   setFist: (covered: boolean) => void;
   releaseSwipe: (direction: SwipeRelease['direction']) => void;
   tapParry: () => void;
@@ -150,11 +167,13 @@ const LOG_LIMIT = 8;
 const PARRY_LAMP_MS = 520;
 const SWIPE_PULSE_MS = 140;
 const PARRY_PULSE_MS = 120;
+const LOCK_PULSE_MS = 120;
 
 const IDLE_API: SimulatorApi = {
   setDial: () => undefined,
   stepDial: () => undefined,
   setButton: () => undefined,
+  tapButton2: () => undefined,
   setFist: () => undefined,
   releaseSwipe: () => undefined,
   tapParry: () => undefined,
@@ -222,6 +241,8 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
   const [lastRelease, setLastRelease] = useState<SwipeRelease | null>(null);
   const [parryLit, setParryLit] = useState(false);
   const [lastCommand, setLastCommand] = useState<string | null>(null);
+  const [lcdMessage, setLcdMessage] = useState<GloveLcdMessage | null>(null);
+  const [wifiStatus, setWifiStatus] = useState<GloveWifiStatus | null>(null);
   const [keyboardEnabled, setKeyboardEnabledState] = useState(true);
   const [bridgeUrl, setBridgeUrlState] = useState(options?.bridgeUrl ?? SERIAL_BRIDGE_URL);
   const [webSerialSupported] = useState(() => getWebSerial() !== null);
@@ -244,13 +265,15 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
   const linesRef = useRef<string[]>([]);
   const lastFlushRef = useRef(0);
   const trackerRef = useRef(new GloveEdgeTracker());
-  const linesBufferRef = useRef(new LineBufferProcessor());
+  const wifiListenerRef = useRef<(status: GloveWifiStatus) => void>(() => undefined);
+  const linesBufferRef = useRef(new LineBufferProcessor((status) => wifiListenerRef.current(status)));
   const synthRef = useRef<GloveSoundSynthesizer | null>(null);
   const serialRef = useRef<SerialSession | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const encoderRef = useRef(new TextEncoder());
   const swipeTimerRef = useRef(0);
   const parryTimerRef = useRef(0);
+  const lockTimerRef = useRef(0);
   const connectLockRef = useRef(false);
   const ingestRef = useRef<(next: GloveSensorFrame, countSample: boolean) => void>(() => undefined);
   const sendCommandRef = useRef<(cmd: GloveCommand | HardwareCommand) => void>(() => undefined);
@@ -268,6 +291,9 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
   onFrameRef.current = options?.onFrame;
   onEdgesRef.current = options?.onEdges;
   onPushToTalkRef.current = options?.onPushToTalk;
+  wifiListenerRef.current = (status) => {
+    if (mountedRef.current) setWifiStatus(status);
+  };
 
   const noteSample = (now: number) => {
     countRef.current += 1;
@@ -317,7 +343,7 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
       pttRef.current = ptt;
     }
 
-    if (nextEdges.buttonClicked) {
+    if (nextEdges.buttonClicked || nextEdges.lockPressed) {
       const element = elementForDialSlot(stored.dial);
       if (element) lockedRef.current = element;
     }
@@ -372,15 +398,31 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
     synthRef.current?.playCommand(glove);
     setLastCommand(line.trim());
     if (glove.cmd === 'servo') setServoOpenState(glove.open);
+    if (glove.cmd === 'lcd') {
+      const hasText = Boolean(glove.l1 || glove.l2);
+      const hasRgb = glove.r !== undefined && glove.g !== undefined && glove.b !== undefined;
+      setLcdMessage(
+        hasText || hasRgb
+          ? {
+              l1: glove.l1 ?? '',
+              l2: glove.l2 ?? '',
+              rgb: hasRgb ? [glove.r ?? 0, glove.g ?? 0, glove.b ?? 0] : undefined,
+              ms: glove.ms,
+            }
+          : null,
+      );
+    }
   };
   sendCommandRef.current = sendCommand;
 
   const releaseMomentary = () => {
     window.clearTimeout(swipeTimerRef.current);
     window.clearTimeout(parryTimerRef.current);
+    window.clearTimeout(lockTimerRef.current);
     const next: GloveSensorFrame = {
       ...frameRef.current,
       btn: 0,
+      btn2: 0,
       fist: false,
       swipe: 'none',
       parry: false,
@@ -465,7 +507,18 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
   };
 
   const setButton = (pressed: boolean) => {
-    patchSimulator({ btn: pressed ? 1 : 0 });
+    patchSimulator({ btn: pressed ? 1 : 0, d4: pressed ? 1 : 0 });
+  };
+
+  const setButton2 = (pressed: boolean) => {
+    patchSimulator({ btn2: pressed ? 1 : 0, d8: pressed ? 1 : 0 });
+  };
+
+  const tapButton2 = () => {
+    if (modeRef.current !== 'simulator') return;
+    window.clearTimeout(lockTimerRef.current);
+    setButton2(true);
+    lockTimerRef.current = window.setTimeout(() => setButton2(false), LOCK_PULSE_MS);
   };
 
   const setFist = (covered: boolean) => {
@@ -508,7 +561,8 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
   };
 
   const setArmed = (armed: boolean) => {
-    patchSimulator({ armed });
+    if (modeRef.current === 'simulator') patchSimulator({ armed });
+    else sendCommandRef.current({ cmd: 'arm', open: armed });
   };
 
   const toggleArmed = () => {
@@ -538,7 +592,7 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
     keyboardRef.current = enabled;
     setKeyboardEnabledState(enabled);
     if (!enabled && modeRef.current === 'simulator') {
-      ingestRef.current({ ...frameRef.current, btn: 0, fist: false }, false);
+      ingestRef.current({ ...frameRef.current, btn: 0, btn2: 0, fist: false }, false);
     }
   };
 
@@ -548,6 +602,22 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
 
   const setServoOpen = (open: boolean) => {
     sendCommandRef.current({ cmd: 'servo', open });
+  };
+
+  const sendLcd = (message: GloveLcdMessage) => {
+    sendCommandRef.current(buildLcdCommand(message));
+  };
+
+  const clearLcd = () => {
+    sendCommandRef.current({ cmd: 'lcd' });
+  };
+
+  const configureWifi = (ssid: string, pass: string) => {
+    sendCommandRef.current(buildWifiCommand(ssid, pass));
+  };
+
+  const requestWifiStatus = () => {
+    sendCommandRef.current({ cmd: 'wifi' });
   };
 
   const useSimulator = () => {
@@ -769,6 +839,7 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
     setDial,
     stepDial,
     setButton,
+    tapButton2,
     setFist,
     releaseSwipe,
     tapParry,
@@ -838,6 +909,12 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
         api.setFist(true);
         return;
       }
+      if (lower === 'l') {
+        event.preventDefault();
+        api.unlockAudio();
+        api.tapButton2();
+        return;
+      }
       if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'ArrowUp') {
         event.preventDefault();
         api.unlockAudio();
@@ -890,6 +967,7 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
       mountedRef.current = false;
       window.clearTimeout(swipeTimerRef.current);
       window.clearTimeout(parryTimerRef.current);
+      window.clearTimeout(lockTimerRef.current);
       void closeSerialRef.current();
       closeSocketRef.current();
       synthRef.current?.dispose();
@@ -916,6 +994,8 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
     lastRelease,
     parryLit,
     lastCommand,
+    lcdMessage,
+    wifiStatus,
     keyboardEnabled,
     webSerialSupported,
     simulatorActive: mode === 'simulator',
@@ -929,6 +1009,7 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
     setDial,
     stepDial,
     setButton,
+    setButton2,
     setFist,
     setSwipe,
     releaseSwipe,
@@ -943,6 +1024,10 @@ export function useGloveHardware(options?: UseGloveHardwareOptions): GloveHardwa
     sendCommand,
     setServoOpen,
     playBuzz,
+    sendLcd,
+    clearLcd,
+    configureWifi,
+    requestWifiStatus,
     setKeyboardEnabled,
   };
 }

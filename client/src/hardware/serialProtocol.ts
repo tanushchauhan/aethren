@@ -1,15 +1,20 @@
 /**
- * Pure glove wire protocol: newline-delimited JSON at {@link SERIAL_BAUD}.
+ * Pure glove wire protocol: newline-delimited JSON at {@link SERIAL_BAUD} over USB,
+ * or one JSON object per packet over Wi-Fi UDP {@link GLOVE_UDP_PORT}.
  * Safe to run in Vitest — no Web Serial, WebSocket, or React.
  *
- * Outbound (50 Hz): {"dial":1,"btn":1,"fist":true,"swipe":"thrust","accel":1.35,"parry":false,"armed":true,"noise":310,"color":"ember"}
- * Inbound: {"cmd":"buzz","p":"cast"} or {"cmd":"servo","open":true}
+ * Outbound (50 Hz): {"dial":0,"btn":0,"btn2":0,"fist":false,"swipe":"none","accel":1.00,"parry":false,
+ *   "armed":true,"noise":0,"color":"none","d3":0,"d4":0,"d8":0,"rawDial":512}
+ * Status: {"event":"wifi","status":"connected","ssid":"...","ip":"172.20.10.4","port":4210}
+ * Inbound: {"cmd":"buzz","p":"cast"}, {"cmd":"lcd","l1":"...","l2":"...","r":255,"g":80,"b":0},
+ *   {"cmd":"wifi","ssid":"...","pass":"..."}, {"cmd":"arm","open":true}, {"cmd":"servo","open":true}, {"cmd":"hello"}
  */
 
 import {
   ACCEL_POWER,
   DIAL_SLOT_COUNT,
   FIST_CHARGE_MULTIPLIER,
+  GLOVE_LCD_COLS,
   NOISE_TOO_LOUD_THRESHOLD,
   P0_ELEMENTS,
 } from '@once-upon/shared';
@@ -31,6 +36,50 @@ export const BUTTON_CLICK_MAX_MS = 250;
 
 const MAX_PENDING_CHARS = 4096;
 const NOISE_MAX = 1023;
+const RAW_DIAL_MAX = 1023;
+const WIFI_SSID_MAX = 32;
+const WIFI_PASS_MAX = 63;
+const WIFI_STATUS_VALUES = [
+  'off',
+  'joining',
+  'connected',
+  'failed',
+  'lost',
+  'no-module',
+  'udp-failed',
+] as const;
+
+/** Backlight per dial slot, the same table the firmware uses. */
+export const GLOVE_LCD_ELEMENT_RGB: Readonly<Record<P0ElementType, readonly [number, number, number]>> = {
+  ember: [255, 70, 0],
+  frost: [30, 180, 255],
+  bloom: [40, 255, 110],
+};
+const GLOVE_LCD_DISARMED_RGB = [40, 40, 40] as const;
+
+export type GloveWifiState = (typeof WIFI_STATUS_VALUES)[number];
+
+/** `{"event":"wifi",...}` line the board prints on USB serial after a `wifi` command. */
+export interface GloveWifiStatus {
+  status: GloveWifiState;
+  ssid: string;
+  ip: string;
+  port: number;
+}
+
+/** A custom forearm LCD message. Missing RGB keeps the element backlight. */
+export interface GloveLcdMessage {
+  l1: string;
+  l2: string;
+  rgb?: readonly [number, number, number];
+  /** How long the board keeps it. Default 4000; 0 keeps it until replaced. */
+  ms?: number;
+}
+
+export interface GloveLcdPreview {
+  lines: readonly [string, string];
+  rgb: readonly [number, number, number];
+}
 
 export const DEFAULT_GLOVE_FRAME: GloveSensorFrame = Object.freeze({
   dial: 0,
@@ -61,6 +110,8 @@ export interface GloveEdges {
   buttonClicked: boolean;
   pushToTalkStart: boolean;
   pushToTalkStop: boolean;
+  /** Rising edge of D8 Button 2 (`btn2`): lock the element under the dial. */
+  lockPressed: boolean;
   parryTriggered: boolean;
   swipeReleased: SwipeRelease | null;
   /** The new token, including `'none'` when the well is cleared. Null when the token did not change. */
@@ -86,6 +137,7 @@ export function createIdleGloveEdges(): GloveEdges {
     buttonClicked: false,
     pushToTalkStart: false,
     pushToTalkStop: false,
+    lockPressed: false,
     parryTriggered: false,
     swipeReleased: null,
     colorTokenChanged: null,
@@ -156,10 +208,33 @@ function readNoise(value: unknown): number | null {
   return Math.round(clamp(raw, 0, NOISE_MAX));
 }
 
+function readRawDial(value: unknown): number | null {
+  const raw = readFinite(value);
+  if (raw === null) return null;
+  return Math.round(clamp(raw, 0, RAW_DIAL_MAX));
+}
+
+/** The optional 7-part debug fields. A missing or malformed one is left out. */
+function readPinFields(parsed: Record<string, unknown>): Partial<GloveSensorFrame> {
+  const extra: Partial<GloveSensorFrame> = {};
+  const btn2 = readButton(parsed.btn2);
+  if (btn2 !== null) extra.btn2 = btn2;
+  const d3 = readButton(parsed.d3);
+  if (d3 !== null) extra.d3 = d3;
+  const d4 = readButton(parsed.d4);
+  if (d4 !== null) extra.d4 = d4;
+  const d8 = readButton(parsed.d8);
+  if (d8 !== null) extra.d8 = d8;
+  const rawDial = readRawDial(parsed.rawDial);
+  if (rawDial !== null) extra.rawDial = rawDial;
+  return extra;
+}
+
 /**
  * Parse one serial line. Returns null for boot text, partial JSON, and frames
  * whose enums or types are wrong. Numeric sensors are clamped into range:
- * `dial` 0..2, `accel` 1.0..1.5, `noise` 0..1023, `btn` 0..1.
+ * `dial` 0..2, `accel` 1.0..1.5, `noise` 0..1023, `btn` / `btn2` / `d3` / `d4` / `d8` 0..1,
+ * `rawDial` 0..1023. The optional pin fields are only present when the board sent them.
  */
 export function parseGloveSerialLine(line: string): GloveSensorFrame | null {
   const trimmed = line.trim();
@@ -204,6 +279,29 @@ export function parseGloveSerialLine(line: string): GloveSensorFrame | null {
     armed,
     noise,
     color: parsed.color,
+    ...readPinFields(parsed),
+  };
+}
+
+/** Parse the board's `{"event":"wifi",...}` status line. Null for anything else. */
+export function parseGloveWifiStatus(line: string): GloveWifiStatus | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null;
+  let parsed: unknown;
+  try {
+    parsed = parseJson(trimmed);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed) || parsed.event !== 'wifi') return null;
+  const status = parsed.status;
+  if (typeof status !== 'string' || !(WIFI_STATUS_VALUES as readonly string[]).includes(status)) return null;
+  const port = readFinite(parsed.port);
+  return {
+    status: status as GloveWifiState,
+    ssid: typeof parsed.ssid === 'string' ? parsed.ssid : '',
+    ip: typeof parsed.ip === 'string' ? parsed.ip : '0.0.0.0',
+    port: port === null ? 0 : Math.round(port),
   };
 }
 
@@ -221,10 +319,13 @@ export function normalizeWireChunk(chunk: string): string {
 /**
  * Reassembles chunked `ReadableStream` bytes or strings into sensor frames.
  * Malformed lines are skipped so a boot banner cannot desync the next frame.
+ * Wi-Fi status lines go to `onWifiStatus` instead of the frame list.
  */
 export class LineBufferProcessor {
   private buffer = '';
   private decoder = new TextDecoder();
+
+  constructor(private readonly onWifiStatus?: (status: GloveWifiStatus) => void) {}
 
   push(chunk: Uint8Array | string): GloveSensorFrame[] {
     const text = typeof chunk === 'string' ? chunk : this.decoder.decode(chunk, { stream: true });
@@ -258,7 +359,14 @@ export class LineBufferProcessor {
       if (marker === '\r' && this.buffer[newlineAt + 1] === '\n') drop = 2;
       this.buffer = this.buffer.slice(newlineAt + drop);
       const frame = parseGloveSerialLine(line);
-      if (frame) frames.push(frame);
+      if (frame) {
+        frames.push(frame);
+        continue;
+      }
+      if (this.onWifiStatus) {
+        const status = parseGloveWifiStatus(line);
+        if (status) this.onWifiStatus(status);
+      }
     }
     return frames;
   }
@@ -273,16 +381,75 @@ function findLineBreak(buffer: string): number {
 }
 
 export function isGloveCommand(cmd: GloveCommand | HardwareCommand): cmd is GloveCommand {
-  return 'cmd' in cmd && (cmd.cmd === 'buzz' || cmd.cmd === 'servo');
+  return 'cmd' in cmd;
+}
+
+/**
+ * Exactly what the 16x2 LCD will draw for one line: printable ASCII only
+ * (anything else becomes `?`, as on the board), cut at 16 characters.
+ */
+export function fitLcdLine(text: string): string {
+  let out = '';
+  for (const ch of text) {
+    if (out.length >= GLOVE_LCD_COLS) break;
+    const code = ch.charCodeAt(0);
+    out += ch.length === 1 && code >= 32 && code <= 126 ? ch : '?';
+  }
+  return out;
+}
+
+function clampByte(value: unknown): number {
+  const raw = readFinite(value);
+  return raw === null ? 0 : Math.round(clamp(raw, 0, 255));
+}
+
+/** `{"cmd":"lcd",...}` for a custom forearm message. */
+export function buildLcdCommand(message: GloveLcdMessage): GloveCommand {
+  const cmd: Extract<GloveCommand, { cmd: 'lcd' }> = {
+    cmd: 'lcd',
+    l1: fitLcdLine(message.l1),
+    l2: fitLcdLine(message.l2),
+  };
+  if (message.rgb) {
+    cmd.r = clampByte(message.rgb[0]);
+    cmd.g = clampByte(message.rgb[1]);
+    cmd.b = clampByte(message.rgb[2]);
+  }
+  if (message.ms !== undefined && Number.isFinite(message.ms)) cmd.ms = Math.max(0, Math.round(message.ms));
+  return cmd;
+}
+
+/** `{"cmd":"wifi",...}`. An empty SSID asks the board for its status instead. */
+export function buildWifiCommand(ssid: string, pass: string): GloveCommand {
+  const name = ssid.trim().slice(0, WIFI_SSID_MAX);
+  if (!name) return { cmd: 'wifi' };
+  return { cmd: 'wifi', ssid: name, pass: pass.slice(0, WIFI_PASS_MAX) };
 }
 
 /** Map either wire command shape onto the newline JSON the Uno expects. */
 export function normalizeGloveCommand(cmd: GloveCommand | HardwareCommand): GloveCommand {
   if (isGloveCommand(cmd)) {
-    if (cmd.cmd === 'buzz') {
-      return { cmd: 'buzz', p: isBuzzPattern(cmd.p) ? cmd.p : 'tick' };
+    switch (cmd.cmd) {
+      case 'buzz':
+        return { cmd: 'buzz', p: isBuzzPattern(cmd.p) ? cmd.p : 'tick' };
+      case 'servo':
+        return { cmd: 'servo', open: cmd.open === true };
+      case 'arm':
+        return { cmd: 'arm', open: cmd.open === true };
+      case 'hello':
+        return { cmd: 'hello' };
+      case 'wifi':
+        return buildWifiCommand(typeof cmd.ssid === 'string' ? cmd.ssid : '', typeof cmd.pass === 'string' ? cmd.pass : '');
+      case 'lcd': {
+        const hasRgb = cmd.r !== undefined && cmd.g !== undefined && cmd.b !== undefined;
+        return buildLcdCommand({
+          l1: typeof cmd.l1 === 'string' ? cmd.l1 : '',
+          l2: typeof cmd.l2 === 'string' ? cmd.l2 : '',
+          rgb: hasRgb ? [clampByte(cmd.r), clampByte(cmd.g), clampByte(cmd.b)] : undefined,
+          ms: cmd.ms,
+        });
+      }
     }
-    return { cmd: 'servo', open: cmd.open === true };
   }
   if (cmd.type === 'servo') {
     return { cmd: 'servo', open: cmd.servoOpen === true };
@@ -306,6 +473,42 @@ export function toHardwareEvent(frame: GloveSensorFrame): HardwareEvent {
     noiseLevel: frame.noise,
     armed: frame.armed,
   };
+}
+
+function padLcd(text: string): string {
+  return fitLcdLine(text).padEnd(GLOVE_LCD_COLS, ' ');
+}
+
+/**
+ * What the forearm LCD shows for this frame, following the firmware's priority:
+ * line 1 is the custom text, else LOCKED / WHEEL; line 2 is DISARMED, PARRY,
+ * SPEAKING, the custom text, SWIPE, CHARGED, then the button hint.
+ */
+export function previewGloveLcd(
+  frame: GloveSensorFrame,
+  options: { custom?: GloveLcdMessage | null; lockedElement?: P0ElementType | null } = {},
+): GloveLcdPreview {
+  const custom = options.custom ?? null;
+  const element = elementForDialSlot(frame.dial) ?? 'ember';
+  const name = element.toUpperCase();
+
+  let l1 = `WHEEL: ${name}`;
+  if (custom && custom.l1) l1 = custom.l1;
+  else if (frame.armed && options.lockedElement === element) l1 = `LOCKED: ${name} *`;
+
+  let l2 = 'D4:TALK  D8:LOCK';
+  if (!frame.armed) l2 = 'DISARMED';
+  else if (frame.parry) l2 = '!! PARRY !!';
+  else if (frame.btn !== 0) l2 = '>> SPEAKING <<';
+  else if (custom && custom.l2) l2 = custom.l2;
+  else if (frame.swipe !== 'none') l2 = `SWIPE: ${frame.swipe.toUpperCase()}!`;
+  else if (frame.fist) l2 = 'CHARGED 1.25x';
+
+  let rgb: readonly [number, number, number] = GLOVE_LCD_ELEMENT_RGB[element];
+  if (custom?.rgb) rgb = [clampByte(custom.rgb[0]), clampByte(custom.rgb[1]), clampByte(custom.rgb[2])];
+  else if (!frame.armed) rgb = GLOVE_LCD_DISARMED_RGB;
+
+  return { lines: [padLcd(l1), padLcd(l2)], rgb };
 }
 
 /** Total spell power for a release: accelerometer, then fist charge. */
@@ -347,6 +550,9 @@ export function detectGloveEdges(
     edges.pushToTalkStart = button.pushToTalkStart;
     edges.pushToTalkStop = button.pushToTalkStop;
   }
+
+  const lockWasDown = prev !== null && prev.armed && (prev.btn2 ?? 0) !== 0;
+  edges.lockPressed = prev !== null && (next.btn2 ?? 0) !== 0 && !lockWasDown;
 
   const prevParry = prev !== null && prev.parry;
   edges.parryTriggered = next.parry && !prevParry && prev !== null;

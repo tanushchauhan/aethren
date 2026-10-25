@@ -4,6 +4,26 @@ Arduino **Uno R4 WiFi** (`arduino:renesas_uno:unor4wifi`) plus a **Grove Base Sh
 
 The shield covers the board's 12×8 LED matrix. Wheel ticks, casts, fizzles, and hits come from the Grove buzzer. The storybook servo is the other output.
 
+### Hackathon pinout (7 parts)
+
+| Pin / bus | Part |
+| --- | --- |
+| **D3** | Touch sensor (parry) |
+| **D4** | Button 1 (push-to-talk) |
+| **D8** | Button 2 (lock / charge) |
+| **D5** | Buzzer |
+| **A0** | Rotary dial |
+| **I2C** | 16×2 RGB LCD |
+| **I2C** | 3-axis accelerometer (swipe / power) |
+
+Wi-Fi joins **`WIFI_SSID = "iPhone"`** (password in the sketch). After upload, read the LCD or serial `wifi` line for the board IP, then on Laptop A:
+
+```bash
+node --experimental-strip-types firmware/serial-bridge.ts --udp <arduino-ip>
+```
+
+(or set `GLOVE_UDP_HOST`). The bridge sends `{"cmd":"hello"}` every 3s on UDP **4210**, rebroadcasts 50 Hz frames to `ws://127.0.0.1:8765`, and forwards browser commands back over UDP.
+
 ## Before you power it
 
 1. Unplug USB.
@@ -156,10 +176,12 @@ node --experimental-strip-types firmware/serial-bridge.ts --list
 node --experimental-strip-types firmware/serial-bridge.ts
 node --experimental-strip-types firmware/serial-bridge.ts --port /dev/ttyACM0
 node --experimental-strip-types firmware/serial-bridge.ts --simulate
+node --experimental-strip-types firmware/serial-bridge.ts --udp 172.20.10.4
 node --experimental-strip-types firmware/serial-bridge.ts --self-test
 ```
 
 - No matching port (or `--simulate`): a 50 Hz scripted glove walks the dial, button, fist, parry, swipes, and all five color tokens. The simulated glove stays armed.
+- **`--udp <ip>`** (or `GLOVE_UDP_HOST`): subscribe on UDP 4210 with periodic `hello`, stream frames to the WebSocket, send commands back over UDP.
 - A real port: frames from the board are broadcast as WebSocket text messages. Text messages from the browser that are `buzz`, `servo`, or `calibrate` are written to the board with a newline.
 - If the cable is pulled, the bridge logs it and falls back to the simulator so the page does not go silent.
 - `EACCES` on `/dev/ttyACM0` means the user is not in `dialout`: `sudo usermod -aG dialout $USER`, then log in again.

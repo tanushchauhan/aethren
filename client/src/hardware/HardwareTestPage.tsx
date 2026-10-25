@@ -1,14 +1,17 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import {
   ELEMENT_META,
+  GLOVE_LCD_COLS,
   GLOVE_POLL_HZ,
+  GLOVE_UDP_PORT,
   NOISE_TOO_LOUD_THRESHOLD,
   P0_ELEMENTS,
   SERIAL_BAUD,
   SERVO_ANGLE,
 } from '@once-upon/shared';
 import type { BuzzPattern } from '@once-upon/shared';
-import { GloveSimulatorPanel } from './GloveSimulatorPanel';
+import { GloveLcdScreen, GloveSimulatorPanel } from './GloveSimulatorPanel';
+import { buildLcdCommand, buildWifiCommand, fitLcdLine, previewGloveLcd, type GloveLcdMessage } from './serialProtocol';
 import { SERIAL_BRIDGE_URL, SIMULATOR_HOTKEYS, useGloveHardware, type GloveHardwareController } from './useGloveHardware';
 import { DEBUG_HARDWARE_PATH } from '../debugRoutes';
 
@@ -17,22 +20,30 @@ export const HARDWARE_TEST_PATH = DEBUG_HARDWARE_PATH;
 
 const BUZZ_PATTERNS: readonly BuzzPattern[] = ['tick', 'cast', 'fizzle', 'hit'];
 
+type PortId = 'D3' | 'D4' | 'D8' | 'D5' | 'A0' | 'I2C LCD' | 'I2C Accel';
+
 const PORTS: readonly {
-  id: string;
+  id: PortId;
   bus: 'Analog' | 'Digital' | 'I2C';
   part: string;
   role: string;
 }[] = [
-  { id: 'A0', bus: 'Analog', part: 'Grove Rotary Angle Sensor', role: 'Forearm band. 10-bit angle mapped to spell-wheel slot 0–2.' },
-  { id: 'A1', bus: 'Analog', part: 'Grove Light Sensor', role: 'Palm. A closed fist covers it and charges the spell.' },
-  { id: 'A2', bus: 'Analog', part: 'Grove Sound Sensor', role: 'Table by Laptop A. Raises the mic gate when the room is too loud.' },
-  { id: 'D2', bus: 'Digital', part: 'Grove Button', role: 'Side of the index finger. Click locks an element; hold opens push-to-talk.' },
-  { id: 'D3', bus: 'Digital', part: 'Grove Touch Sensor', role: 'Palm, under the thumb. Parries a projectile.' },
-  { id: 'D4', bus: 'Digital', part: 'Grove Switch', role: 'Forearm band. Arms and disarms the glove, camera, and mic.' },
-  { id: 'D5', bus: 'Digital', part: 'Grove Buzzer', role: 'Forearm band. Tick, cast, fizzle, and hit.' },
-  { id: 'D6', bus: 'Digital', part: 'Grove Servo', role: 'Table prop. Opens the storybook when the boss ward breaks.' },
-  { id: 'I2C 1', bus: 'I2C', part: 'Grove 3-Axis Accelerometer', role: 'Back of the hand. Confirms swipe or thrust and scales power.' },
-  { id: 'I2C 2', bus: 'I2C', part: 'Grove I2C Color Sensor', role: 'Token well. The memory card held here becomes the boss.' },
+  { id: 'D3', bus: 'Digital', part: 'Grove Touch Sensor', role: 'Palm, under the thumb. Parries an incoming projectile (chirps).' },
+  { id: 'D4', bus: 'Digital', part: 'Grove Button 1', role: 'Hold for push-to-talk. The LCD shows SPEAKING.' },
+  { id: 'D8', bus: 'Digital', part: 'Grove Button 2', role: 'Click locks the element under the dial; hold 250 ms charges the spell (fist).' },
+  { id: 'D5', bus: 'Digital', part: 'Grove Buzzer', role: 'Dial tick, press chirps, and the cast / fizzle / hit melodies.' },
+  { id: 'A0', bus: 'Analog', part: 'Grove Rotary Angle Sensor', role: 'Spell wheel. 10-bit angle mapped to slot 0 Ember, 1 Frost, 2 Bloom.' },
+  { id: 'I2C LCD', bus: 'I2C', part: 'Grove 16x2 RGB LCD', role: 'Forearm. Text at 0x3E, RGB backlight at 0x62 (v4) or 0x30 (v5).' },
+  { id: 'I2C Accel', bus: 'I2C', part: 'Grove 3-Axis Accelerometer', role: 'Back of the hand. LIS3DHTR, ADXL345, or MMA7660: swipe, thrust, and power.' },
+];
+
+const LCD_PRESETS: readonly { label: string; rgb: readonly [number, number, number] }[] = [
+  { label: 'Ember', rgb: [255, 80, 0] },
+  { label: 'Frost', rgb: [30, 180, 255] },
+  { label: 'Bloom', rgb: [40, 255, 110] },
+  { label: 'Gold', rgb: [255, 215, 0] },
+  { label: 'Danger', rgb: [255, 0, 40] },
+  { label: 'White', rgb: [255, 255, 255] },
 ];
 
 /**
@@ -53,9 +64,9 @@ export function HardwareTestPage() {
           <p className="text-[11px] uppercase tracking-[0.32em] text-[#e6c35c]/80">Once Upon a Memory · {HARDWARE_TEST_PATH}</p>
           <h1 className="mt-2 font-serif text-4xl sm:text-5xl">Enchanted Glove bench</h1>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[#f0ddb4]/85">
-            Arduino Uno R4 WiFi under a Grove Base Shield V2, VCC at 5V. The shield covers the onboard LED matrix,
-            so every cue goes through the Grove buzzer and the storybook servo. Frames leave the board at {GLOVE_POLL_HZ} Hz
-            over USB-C at {SERIAL_BAUD} baud.
+            Arduino Uno R4 WiFi under a Grove Base Shield V2, VCC at 5V, with seven parts: D3 touch, D4 and D8 buttons,
+            D5 buzzer, A0 rotary dial, and an I2C accelerometer and 16x2 RGB LCD. Frames leave the board at {GLOVE_POLL_HZ} Hz
+            over USB-C at {SERIAL_BAUD} baud, or over Wi-Fi UDP port {GLOVE_UDP_PORT} through the bridge.
           </p>
         </header>
 
@@ -67,7 +78,9 @@ export function HardwareTestPage() {
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <div>
                   <h2 className="font-serif text-2xl">Grove port map</h2>
-                  <p className="text-xs text-[#d9c4a4]/75">A0–A2 · D2–D6 · four parallel I2C sockets on Wire. Live cells follow the current frame.</p>
+                  <p className="text-xs text-[#d9c4a4]/75">
+                    D3 · D4 · D8 · D5 · A0 · two of the four parallel I2C sockets on Wire. Live cells follow the current frame.
+                  </p>
                 </div>
                 <p className="font-mono text-[11px] text-[#e6c35c]">
                   {P0_ELEMENTS.map((id) => ELEMENT_META[id].label).join(' · ')}
@@ -128,10 +141,15 @@ export function HardwareTestPage() {
               </pre>
             </section>
 
+            <LcdComposer hardware={hardware} />
+
+            <WifiSetup hardware={hardware} />
+
             <section className={cardClass}>
-              <h2 className="font-serif text-2xl">Buzzer and servo</h2>
+              <h2 className="font-serif text-2xl">Buzzer and storybook</h2>
               <p className="mt-1 text-xs text-[#d9c4a4]/75">
-                Commands go to the board when a link is open, and the laptop synthesizer plays them either way.
+                Commands go to the board when a link is open, and the laptop synthesizer plays them either way. No servo is
+                wired in the 7-part kit, so the storybook command shows a notice on the LCD.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {BUZZ_PATTERNS.map((pattern) => (
@@ -156,7 +174,8 @@ export function HardwareTestPage() {
             <section className={cardClass}>
               <h2 className="font-serif text-2xl">Link</h2>
               <p className="mt-1 text-xs leading-relaxed text-[#d9c4a4]/75">
-                Chrome and Edge talk to the Uno directly. Other browsers use the local serial bridge at {SERIAL_BRIDGE_URL}.
+                Chrome and Edge talk to the Uno directly. Other browsers, and a glove on Wi-Fi, use the local bridge at{' '}
+                {SERIAL_BRIDGE_URL} (run it with <code className="font-mono">--udp &lt;arduino-ip&gt;</code> for wireless).
                 With no board attached, the keyboard is the glove.
               </p>
               <label htmlFor={bridgeId} className="mt-3 block text-[10px] uppercase tracking-[0.18em] text-[#e6c35c]/80">
@@ -212,58 +231,289 @@ const cardClass = 'rounded-3xl border border-[#8a6a3b]/45 bg-[#1b140f]/88 p-4 sh
 const commandClass =
   'rounded-xl border border-[#8a6a3b]/50 bg-[#140f0c] px-3 py-2 text-sm text-[#f6ecd8] hover:border-[#e6c35c]';
 
-function portHot(id: string, hardware: GloveHardwareController): boolean {
+const inputClass =
+  'w-full rounded-xl border border-[#8a6a3b]/50 bg-[#100c09] px-3 py-2 font-mono text-sm text-[#f6ecd8] outline-none focus:border-[#e6c35c]';
+const labelClass = 'block text-[10px] uppercase tracking-[0.18em] text-[#e6c35c]/80';
+
+const LCD_HOLD_OPTIONS: readonly { label: string; ms: number }[] = [
+  { label: '4 s', ms: 4000 },
+  { label: '10 s', ms: 10000 },
+  { label: 'Until replaced', ms: 0 },
+];
+
+function toHex(rgb: readonly [number, number, number]): string {
+  return `#${rgb.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function fromHex(hex: string): [number, number, number] | null {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!match) return null;
+  return [parseInt(match[1] ?? '0', 16), parseInt(match[2] ?? '0', 16), parseInt(match[3] ?? '0', 16)];
+}
+
+function LcdComposer({ hardware }: { hardware: GloveHardwareController }) {
+  const l1Id = useId();
+  const l2Id = useId();
+  const colorId = useId();
+  const [l1, setL1] = useState('WARD SHATTERED!');
+  const [l2, setL2] = useState('TWIN CAST 2.0x');
+  const [rgb, setRgb] = useState<[number, number, number]>([255, 80, 0]);
+  const [useRgb, setUseRgb] = useState(true);
+  const [holdMs, setHoldMs] = useState(4000);
+
+  const draft: GloveLcdMessage = { l1, l2, rgb: useRgb ? rgb : undefined, ms: holdMs };
+  const preview = previewGloveLcd(hardware.frame, { custom: draft, lockedElement: hardware.lockedElement });
+  const wire = JSON.stringify(buildLcdCommand(draft));
+  const setChannel = (index: 0 | 1 | 2, value: number) => {
+    const next: [number, number, number] = [...rgb];
+    next[index] = Math.round(Math.min(255, Math.max(0, Number.isFinite(value) ? value : 0)));
+    setRgb(next);
+  };
+
+  return (
+    <section className={cardClass} data-testid="lcd-composer">
+      <h2 className="font-serif text-2xl">Forearm 16x2 LCD</h2>
+      <p className="mt-1 text-xs leading-relaxed text-[#d9c4a4]/75">
+        Custom text and RGB backlight. The preview follows the live frame: PARRY, SPEAKING, and DISARMED still take line 2
+        on the board, just as they do here. Printable ASCII only, {GLOVE_LCD_COLS} characters per line.
+      </p>
+
+      <GloveLcdScreen preview={preview} className="mt-4" />
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div>
+          <label htmlFor={l1Id} className={labelClass}>
+            Line 1 · {fitLcdLine(l1).length}/{GLOVE_LCD_COLS}
+          </label>
+          <input
+            id={l1Id}
+            value={l1}
+            maxLength={GLOVE_LCD_COLS}
+            spellCheck={false}
+            onChange={(event) => setL1(event.target.value)}
+            className={`mt-2 ${inputClass}`}
+          />
+        </div>
+        <div>
+          <label htmlFor={l2Id} className={labelClass}>
+            Line 2 · {fitLcdLine(l2).length}/{GLOVE_LCD_COLS}
+          </label>
+          <input
+            id={l2Id}
+            value={l2}
+            maxLength={GLOVE_LCD_COLS}
+            spellCheck={false}
+            onChange={(event) => setL2(event.target.value)}
+            className={`mt-2 ${inputClass}`}
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <label className="flex items-center gap-2 text-sm text-[#f0ddb4]">
+          <input type="checkbox" checked={useRgb} onChange={(event) => setUseRgb(event.target.checked)} className="accent-[#e6c35c]" />
+          Custom backlight
+        </label>
+        <div>
+          <label htmlFor={colorId} className={labelClass}>
+            Color
+          </label>
+          <input
+            id={colorId}
+            type="color"
+            value={toHex(rgb)}
+            disabled={!useRgb}
+            onChange={(event) => {
+              const next = fromHex(event.target.value);
+              if (next) setRgb(next);
+            }}
+            className="mt-2 h-9 w-14 cursor-pointer rounded-lg border border-[#8a6a3b]/50 bg-[#100c09] disabled:opacity-40"
+          />
+        </div>
+        {(['R', 'G', 'B'] as const).map((channel, index) => (
+          <label key={channel} className="w-16">
+            <span className={labelClass}>{channel}</span>
+            <input
+              type="number"
+              min={0}
+              max={255}
+              value={rgb[index]}
+              disabled={!useRgb}
+              onChange={(event) => setChannel(index as 0 | 1 | 2, Number(event.target.value))}
+              className={`mt-2 ${inputClass} px-2 disabled:opacity-40`}
+            />
+          </label>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {LCD_PRESETS.map((preset) => (
+          <button
+            key={preset.label}
+            type="button"
+            disabled={!useRgb}
+            onClick={() => setRgb([...preset.rgb])}
+            className="flex items-center gap-1.5 rounded-full border border-[#8a6a3b]/40 px-2 py-1 text-[11px] disabled:opacity-40"
+          >
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: toHex(preset.rgb) }} />
+            {preset.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className={labelClass}>Hold</span>
+        {LCD_HOLD_OPTIONS.map((option) => (
+          <button
+            key={option.ms}
+            type="button"
+            aria-pressed={holdMs === option.ms}
+            onClick={() => setHoldMs(option.ms)}
+            className={`rounded-full border px-2 py-1 text-[11px] ${
+              holdMs === option.ms ? 'border-[#f6ecd8] bg-[#3a2a1c]' : 'border-[#8a6a3b]/40'
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" className={commandClass} onClick={() => hardware.sendLcd(draft)}>
+          Send to LCD
+        </button>
+        <button type="button" className={commandClass} onClick={() => hardware.clearLcd()}>
+          Clear LCD
+        </button>
+      </div>
+      <p className="mt-2 break-all font-mono text-[11px] text-[#d9c4a4]/80">{wire}</p>
+    </section>
+  );
+}
+
+function WifiSetup({ hardware }: { hardware: GloveHardwareController }) {
+  const ssidId = useId();
+  const passId = useId();
+  const [ssid, setSsid] = useState('');
+  const [pass, setPass] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const status = hardware.wifiStatus;
+  const linked = hardware.mode !== 'simulator' && hardware.status === 'connected';
+  const masked = JSON.stringify(buildWifiCommand(ssid, pass ? '•'.repeat(Math.min(pass.length, 63)) : ''));
+
+  return (
+    <section className={cardClass} data-testid="wifi-setup">
+      <h2 className="font-serif text-2xl">Arduino Wi-Fi hotspot</h2>
+      <p className="mt-1 text-xs leading-relaxed text-[#d9c4a4]/75">
+        Sends the hotspot credentials over the open USB link. The board joins in the background, shows its IP on the LCD,
+        and listens on UDP {GLOVE_UDP_PORT}. Credentials live in RAM only, so send them again after a power cycle.
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div>
+          <label htmlFor={ssidId} className={labelClass}>
+            SSID
+          </label>
+          <input
+            id={ssidId}
+            value={ssid}
+            maxLength={32}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(event) => setSsid(event.target.value)}
+            className={`mt-2 ${inputClass}`}
+          />
+        </div>
+        <div>
+          <label htmlFor={passId} className={labelClass}>
+            Password
+          </label>
+          <div className="mt-2 flex gap-2">
+            <input
+              id={passId}
+              type={showPass ? 'text' : 'password'}
+              value={pass}
+              maxLength={63}
+              autoComplete="off"
+              onChange={(event) => setPass(event.target.value)}
+              className={inputClass}
+            />
+            <button type="button" className={commandClass} onClick={() => setShowPass(!showPass)}>
+              {showPass ? 'Hide' : 'Show'}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          className={`${commandClass} disabled:opacity-40`}
+          disabled={!ssid.trim()}
+          onClick={() => hardware.configureWifi(ssid, pass)}
+        >
+          Join hotspot
+        </button>
+        <button type="button" className={commandClass} onClick={() => hardware.requestWifiStatus()}>
+          Ask Wi-Fi status
+        </button>
+      </div>
+      <p className="mt-2 break-all font-mono text-[11px] text-[#d9c4a4]/80">{masked}</p>
+      {!linked ? (
+        <p className="mt-2 text-xs text-[#f0ddb4]/80">Open Web Serial or the bridge on the USB port first.</p>
+      ) : null}
+      <p className="mt-3 font-mono text-sm" data-testid="wifi-status">
+        {status
+          ? `${status.status}${status.ssid ? ` · ${status.ssid}` : ''}${
+              status.status === 'connected' ? ` · ${status.ip}:${status.port}` : ''
+            }`
+          : 'No report yet'}
+      </p>
+      {status?.status === 'connected' ? (
+        <pre className="mt-2 overflow-x-auto rounded-2xl bg-[#100c09] p-3 font-mono text-[11px] text-[#c8f7c5]">
+          {`node --experimental-strip-types firmware/serial-bridge.ts --udp ${status.ip}`}
+        </pre>
+      ) : null}
+    </section>
+  );
+}
+
+function portHot(id: PortId, hardware: GloveHardwareController): boolean {
   const frame = hardware.frame;
   switch (id) {
-    case 'A0':
-      return frame.armed;
-    case 'A1':
-      return frame.fist;
-    case 'A2':
-      return frame.noise >= NOISE_TOO_LOUD_THRESHOLD;
-    case 'D2':
-      return frame.btn !== 0 || hardware.pushToTalk;
     case 'D3':
-      return frame.parry || hardware.parryLit;
+      return (frame.d3 ?? 0) !== 0 || frame.parry || hardware.parryLit;
     case 'D4':
-      return frame.armed;
+      return (frame.d4 ?? 0) !== 0 || frame.btn !== 0 || hardware.pushToTalk;
+    case 'D8':
+      return (frame.d8 ?? 0) !== 0 || (frame.btn2 ?? 0) !== 0 || frame.fist;
     case 'D5':
       return hardware.lastCommand?.includes('"cmd":"buzz"') ?? false;
-    case 'D6':
-      return hardware.servoOpen;
-    case 'I2C 1':
+    case 'A0':
+      return frame.armed;
+    case 'I2C LCD':
+      return hardware.lcdMessage !== null;
+    case 'I2C Accel':
       return frame.swipe !== 'none';
-    case 'I2C 2':
-      return frame.color !== 'none';
-    default:
-      return false;
   }
 }
 
-function portReadout(id: string, hardware: GloveHardwareController): string {
+function portReadout(id: PortId, hardware: GloveHardwareController): string {
   const frame = hardware.frame;
+  const level = (raw: number | undefined) => (raw === undefined ? '' : raw !== 0 ? 'HIGH · ' : 'LOW · ');
   switch (id) {
-    case 'A0':
-      return `slot ${frame.dial}`;
-    case 'A1':
-      return frame.fist ? 'covered' : 'lit';
-    case 'A2':
-      return String(frame.noise);
-    case 'D2':
-      return frame.btn !== 0 ? 'down' : 'up';
     case 'D3':
-      return frame.parry ? 'touch' : 'clear';
+      return `${level(frame.d3)}${frame.parry ? 'parry' : 'clear'}`;
     case 'D4':
-      return frame.armed ? 'armed' : 'safe';
+      return `${level(frame.d4)}${hardware.pushToTalk ? 'talking' : frame.btn !== 0 ? 'down' : 'up'}`;
+    case 'D8':
+      return `${level(frame.d8)}${frame.fist ? 'charged' : (frame.btn2 ?? 0) !== 0 ? 'locked' : 'up'}`;
     case 'D5':
       return hardware.lastCommand?.includes('"cmd":"buzz"') ? (hardware.lastCommand ?? 'quiet') : 'quiet';
-    case 'D6':
-      return `${hardware.servoAngle}°`;
-    case 'I2C 1':
+    case 'A0':
+      return frame.rawDial !== undefined ? `${frame.rawDial} → slot ${frame.dial}` : `slot ${frame.dial}`;
+    case 'I2C LCD': {
+      const lines = previewGloveLcd(frame, { custom: hardware.lcdMessage, lockedElement: hardware.lockedElement }).lines;
+      return `${lines[0].trimEnd()} | ${lines[1].trimEnd()}`;
+    }
+    case 'I2C Accel':
       return `${frame.swipe} · ${frame.accel.toFixed(2)}×`;
-    case 'I2C 2':
-      return frame.color;
-    default:
-      return '';
   }
 }

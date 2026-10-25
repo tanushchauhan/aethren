@@ -12,6 +12,7 @@
  *   node --experimental-strip-types firmware/serial-bridge.ts
  *   node --experimental-strip-types firmware/serial-bridge.ts --port /dev/ttyACM0
  *   node --experimental-strip-types firmware/serial-bridge.ts --simulate
+ *   node --experimental-strip-types firmware/serial-bridge.ts --udp 172.20.10.4
  *   node --experimental-strip-types firmware/serial-bridge.ts --self-test
  *
  * The frame shape is GloveSensorFrame / GloveCommand in
@@ -29,6 +30,7 @@ import {
   writeSync,
 } from 'node:fs';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
+import { createSocket, type Socket as UdpSocket } from 'node:dgram';
 import { connect, type Socket } from 'node:net';
 import { execFile } from 'node:child_process';
 import type { BuzzPattern, GloveCommand, GloveSensorFrame } from '../packages/shared/src/types.ts';
@@ -36,6 +38,8 @@ import type { BuzzPattern, GloveCommand, GloveSensorFrame } from '../packages/sh
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const DEFAULT_BAUD = 115200;
 const DEFAULT_WS_PORT = 8765;
+const DEFAULT_UDP_PORT = 4210;
+const UDP_HELLO_MS = 3000;
 const FRAME_MS = 20;
 
 type Swipe = GloveSensorFrame['swipe'];
@@ -63,6 +67,7 @@ function formatCommand(command: HostCommand): string {
 
 interface Options {
   port?: string;
+  udpHost?: string;
   baud: number;
   wsPort: number;
   host: string;
@@ -75,7 +80,7 @@ interface Options {
 
 interface BridgeHandle {
   port: number;
-  mode: 'serial' | 'simulate';
+  mode: 'serial' | 'simulate' | 'udp';
   commands: string[];
   stop: () => Promise<void>;
 }
@@ -100,6 +105,8 @@ function sleep(ms: number): Promise<void> {
 
 function parseArgs(argv: string[]): Options {
   const opts: Options = {
+    udpListen: false,
+    udpPort: DEFAULT_UDP_PORT,
     baud: DEFAULT_BAUD,
     wsPort: DEFAULT_WS_PORT,
     host: '127.0.0.1',
@@ -111,6 +118,7 @@ function parseArgs(argv: string[]): Options {
   };
   let simulateFlag = false;
   let portFlag = false;
+  let udpFlag = false;
 
   const take = (index: number, flag: string): string => {
     const value = argv[index + 1];
@@ -131,14 +139,26 @@ function parseArgs(argv: string[]): Options {
       opts.port = take(i, arg);
       portFlag = true;
       i++;
+    } else if (arg === '--udp') {
+      opts.udp = take(i, arg);
+      i++;
+    } else if (arg === '--udp-listen') {
+      opts.udpListen = true;
+    } else if (arg === '--udp-port') {
+      opts.udpPort = Number(take(i, arg));
+      i++;
     } else if (arg === '--baud') {
       opts.baud = Number(take(i, arg));
       i++;
     } else if (arg === '--ws-port') {
       opts.wsPort = Number(take(i, arg));
       i++;
-    } else if (arg === '--host') {
+    }     else if (arg === '--host') {
       opts.host = take(i, arg);
+      i++;
+    } else if (arg === '--udp') {
+      opts.udpHost = take(i, arg);
+      udpFlag = true;
       i++;
     } else {
       throw new Error(`Unknown argument: ${arg ?? ''}`);
@@ -146,6 +166,7 @@ function parseArgs(argv: string[]): Options {
   }
 
   if (!portFlag && process.env.GLOVE_PORT) opts.port = process.env.GLOVE_PORT;
+  if (!udpFlag && process.env.GLOVE_UDP_HOST) opts.udpHost = process.env.GLOVE_UDP_HOST;
   opts.simulate = simulateFlag || process.env.GLOVE_SIMULATE === '1';
 
   if (!Number.isInteger(opts.baud) || opts.baud < 1) throw new Error('Invalid --baud');
@@ -167,6 +188,7 @@ Options:
   --ws-port <n>     WebSocket listen port (default ${DEFAULT_WS_PORT})
   --host <addr>     Bind address (default 127.0.0.1)
   --simulate        50 Hz simulated glove, do not open a serial port
+  --udp <ip>        Wi-Fi UDP to the Uno R4 (port ${DEFAULT_UDP_PORT}; sends hello every 3s)
   --list            Print matching serial ports and exit
   --self-test       Check the codec, simulator, and WebSocket loopback
   --quiet           Suppress the periodic status line
@@ -174,6 +196,7 @@ Options:
 
 Environment:
   GLOVE_PORT        Default serial device when --port is omitted
+  GLOVE_UDP_HOST    Arduino IP when --udp is omitted
   GLOVE_SIMULATE=1  Force the simulator
 
 Browser clients connect to ws://127.0.0.1:${DEFAULT_WS_PORT}.
@@ -388,12 +411,28 @@ function openSerial(path: string): number {
 async function startBridge(opts: Options): Promise<BridgeHandle> {
   const commands: string[] = [];
   const clients = new Set<Socket>();
-  let mode: 'serial' | 'simulate' = opts.simulate || !opts.port ? 'simulate' : 'serial';
+  let mode: 'serial' | 'simulate' | 'udp' = opts.simulate
+    ? 'simulate'
+    : opts.udpHost
+      ? 'udp'
+      : opts.port
+        ? 'serial'
+        : 'simulate';
   let fd: number | null = null;
+  let udp: UdpSocket | null = null;
+  let helloTimer: ReturnType<typeof setInterval> | null = null;
   let running = true;
   let frames = 0;
   let stopTicker: (() => void) | null = null;
   let statusTimer: ReturnType<typeof setInterval> | null = null;
+
+  const sendUdpLine = (line: string): void => {
+    if (!udp || !opts.udpHost) return;
+    const payload = Buffer.from(`${line}\n`);
+    udp.send(payload, DEFAULT_UDP_PORT, opts.udpHost, (err) => {
+      if (err) log(`UDP send failed (${err.message})`, opts.quiet);
+    });
+  };
 
   const broadcast = (text: string): void => {
     frames++;
@@ -430,6 +469,10 @@ async function startBridge(opts: Options): Promise<BridgeHandle> {
   const writeCommand = (line: string): void => {
     commands.push(line);
     log(`-> ${line}`, opts.quiet);
+    if (mode === 'udp') {
+      sendUdpLine(line);
+      return;
+    }
     if (fd === null) return;
     const data = Buffer.from(`${line}\n`);
     try {
@@ -533,7 +576,29 @@ async function startBridge(opts: Options): Promise<BridgeHandle> {
     throw new Error('WebSocket server did not bind a TCP port');
   }
 
-  if (mode === 'serial' && opts.port) {
+  if (mode === 'udp' && opts.udpHost) {
+    const arduinoHost = opts.udpHost;
+    udp = createSocket('udp4');
+    udp.on('message', (msg: Buffer) => {
+      for (const piece of msg.toString('utf8').split(/\r?\n/)) {
+        const line = piece.trim();
+        if (line.startsWith('{')) broadcast(line);
+      }
+    });
+    udp.on('error', (err) => {
+      log(`UDP error (${err.message})`, opts.quiet);
+    });
+    await new Promise<void>((resolve, reject) => {
+      udp!.once('error', reject);
+      udp!.bind(0, () => {
+        udp!.off('error', reject);
+        resolve();
+      });
+    });
+    sendUdpLine('{"cmd":"hello"}');
+    helloTimer = setInterval(() => sendUdpLine('{"cmd":"hello"}'), UDP_HELLO_MS);
+    log(`UDP peer ${arduinoHost}:${DEFAULT_UDP_PORT} (hello every ${UDP_HELLO_MS / 1000}s)`, opts.quiet);
+  } else if (mode === 'serial' && opts.port) {
     const serialPath = opts.port;
     try {
       await configurePort(serialPath, opts.baud);
@@ -612,6 +677,13 @@ async function startBridge(opts: Options): Promise<BridgeHandle> {
       running = false;
       if (stopTicker) stopTicker();
       if (statusTimer) clearInterval(statusTimer);
+      if (helloTimer) clearInterval(helloTimer);
+      if (udp) {
+        await new Promise<void>((resolve) => {
+          udp!.close(() => resolve());
+        });
+        udp = null;
+      }
       if (fd !== null) {
         try {
           closeSync(fd);
@@ -896,7 +968,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!opts.simulate && !opts.port) {
+  if (!opts.simulate && !opts.udpHost && !opts.port) {
     const found = findPorts();
     if (found.length === 0) {
       opts.simulate = true;

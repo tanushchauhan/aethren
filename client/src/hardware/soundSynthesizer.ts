@@ -94,7 +94,7 @@ export class GloveSoundSynthesizer {
   playCommand(cmd: GloveCommand | HardwareCommand): void {
     const glove = normalizeGloveCommand(cmd);
     if (glove.cmd === 'buzz') this.playBuzz(glove.p);
-    else this.playServo(glove.open);
+    else if (glove.cmd === 'servo') this.playServo(glove.open);
   }
 
   dispose(): void {

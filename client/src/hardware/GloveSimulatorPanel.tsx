@@ -8,7 +8,7 @@ import {
   SERVO_ANGLE,
 } from '@once-upon/shared';
 import type { GloveSensorFrame, P0ElementType } from '@once-upon/shared';
-import { elementForDialSlot } from './serialProtocol';
+import { elementForDialSlot, previewGloveLcd, type GloveLcdPreview } from './serialProtocol';
 import { useGloveHardware, type GloveHardwareController } from './useGloveHardware';
 
 const TOKEN_COLORS: readonly { id: GloveSensorFrame['color']; label: string; swatch: string }[] = [
@@ -69,6 +69,8 @@ export function GloveSimulatorPanel({ hardware, placement = 'dock' }: GloveSimul
   const live = hardware.simulatorActive;
   const noisePct = Math.min(100, (frame.noise / 1023) * 100);
   const gatePct = (NOISE_TOO_LOUD_THRESHOLD / 1023) * 100;
+  const lcd = previewGloveLcd(frame, { custom: hardware.lcdMessage, lockedElement: hardware.lockedElement });
+  const btn2Down = (frame.btn2 ?? 0) !== 0;
 
   const shell =
     placement === 'float'
@@ -84,7 +86,7 @@ export function GloveSimulatorPanel({ hardware, placement = 'dock' }: GloveSimul
         <div>
           <p className="text-[10px] uppercase tracking-[0.28em] text-[#e6c35c]/80">Laptop A · Spellbearer</p>
           <h2 className="font-serif text-2xl leading-tight">Enchanted Glove</h2>
-          <p className="text-xs text-[#d9c4a4]/80">Grove Base Shield V2 · Uno R4 WiFi</p>
+          <p className="text-xs text-[#d9c4a4]/80">Grove Base Shield V2 · Uno R4 WiFi · 7 parts</p>
         </div>
         <div className="text-right">
           <p className="font-mono text-[11px] uppercase tracking-wider text-[#e6c35c]">
@@ -141,15 +143,26 @@ export function GloveSimulatorPanel({ hardware, placement = 'dock' }: GloveSimul
         <button
           type="button"
           aria-pressed={frame.armed}
-          disabled={!live}
           onClick={() => hardware.toggleArmed()}
           className={`rounded-full px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] ${
             frame.armed ? 'bg-[#2f6b45] text-[#e7ffe8]' : 'bg-[#5c2430] text-[#ffd5dc]'
-          } disabled:opacity-70`}
+          }`}
         >
           {frame.armed ? 'Armed' : 'Disarmed'}
         </button>
-        <p className="text-[11px] text-[#d9c4a4]/75">M toggles the forearm switch</p>
+        <p className="text-[11px] text-[#d9c4a4]/75">{live ? 'M arms / disarms' : 'Sends {"cmd":"arm"} to the board'}</p>
+      </div>
+
+      <div className="mt-3">
+        <p className="text-[10px] uppercase tracking-[0.22em] text-[#e6c35c]/80">Forearm 16x2 LCD · I2C</p>
+        <GloveLcdScreen preview={lcd} className="mt-2" />
+      </div>
+
+      <div className="mt-3 grid grid-cols-4 gap-1.5 text-center" data-testid="pin-readout">
+        <MeterChip label="D3" value={pinValue(frame.d3, frame.parry)} hot={(frame.d3 ?? 0) !== 0 || frame.parry} />
+        <MeterChip label="D4" value={pinValue(frame.d4, frame.btn !== 0)} hot={(frame.d4 ?? 0) !== 0 || frame.btn !== 0} />
+        <MeterChip label="D8" value={pinValue(frame.d8, btn2Down)} hot={(frame.d8 ?? 0) !== 0 || btn2Down} />
+        <MeterChip label="A0" value={frame.rawDial !== undefined ? String(frame.rawDial) : `slot ${frame.dial}`} hot={false} />
       </div>
 
       {!frame.armed ? (
@@ -185,15 +198,24 @@ export function GloveSimulatorPanel({ hardware, placement = 'dock' }: GloveSimul
         <MeterChip label="Parry" value={hardware.parryLit || frame.parry ? 'PARRY' : 'Ready'} hot={hardware.parryLit || frame.parry} />
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2">
+      <div className="mt-3 grid grid-cols-4 gap-2">
         <button
           type="button"
           disabled={!live}
           className={sensorClass(frame.btn !== 0)}
           {...holdHandlers(live, hardware.setButton)}
         >
-          Finger
+          D4 Talk
           <span className="block font-mono text-[10px] opacity-70">Hold E</span>
+        </button>
+        <button
+          type="button"
+          disabled={!live}
+          className={sensorClass(btn2Down)}
+          {...holdHandlers(live, hardware.setButton2)}
+        >
+          D8 Lock
+          <span className="block font-mono text-[10px] opacity-70">L</span>
         </button>
         <button
           type="button"
@@ -201,7 +223,7 @@ export function GloveSimulatorPanel({ hardware, placement = 'dock' }: GloveSimul
           className={sensorClass(frame.fist)}
           {...holdHandlers(live, hardware.setFist)}
         >
-          Fist
+          D8 Charge
           <span className="block font-mono text-[10px] opacity-70">Hold F</span>
         </button>
         <button
@@ -210,7 +232,7 @@ export function GloveSimulatorPanel({ hardware, placement = 'dock' }: GloveSimul
           className={sensorClass(hardware.parryLit || frame.parry)}
           onClick={() => hardware.tapParry()}
         >
-          Parry
+          D3 Parry
           <span className="block font-mono text-[10px] opacity-70">Q</span>
         </button>
       </div>
@@ -251,7 +273,7 @@ export function GloveSimulatorPanel({ hardware, placement = 'dock' }: GloveSimul
       )}
 
       <label htmlFor={noiseId} className="mt-4 block text-[10px] uppercase tracking-[0.22em] text-[#e6c35c]/80">
-        Room noise {frame.noise} / 1023
+        Room noise {frame.noise} / 1023 · simulator only
       </label>
       <div className="relative mt-2 h-3 rounded-full bg-[#100c09]">
         <div
@@ -298,7 +320,7 @@ export function GloveSimulatorPanel({ hardware, placement = 'dock' }: GloveSimul
       ) : null}
 
       <div className="mt-4">
-        <p className="text-[10px] uppercase tracking-[0.22em] text-[#e6c35c]/80">Color token well</p>
+        <p className="text-[10px] uppercase tracking-[0.22em] text-[#e6c35c]/80">Color token well · simulator only</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {TOKEN_COLORS.map((token) => {
             const selected = frame.color === token.id;
@@ -324,7 +346,7 @@ export function GloveSimulatorPanel({ hardware, placement = 'dock' }: GloveSimul
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[#e6c35c]/80">Storybook ward</p>
+          <p className="text-[10px] uppercase tracking-[0.22em] text-[#e6c35c]/80">Storybook ward · LCD notice</p>
           <p className="mt-1 font-serif text-lg">
             {hardware.servoAngle}° {hardware.servoOpen ? 'open' : 'closed'}
           </p>
@@ -347,7 +369,7 @@ export function GloveSimulatorPanel({ hardware, placement = 'dock' }: GloveSimul
       </div>
 
       <p className="mt-4 text-[11px] leading-relaxed text-[#d9c4a4]/70">
-        1 2 3 or [ ] dial · Hold E talk · Hold F fist · Arrows cast · Q parry · C token · M arm
+        1 2 3 or [ ] dial · Hold E talk · L lock · Hold F charge · Arrows cast · Q parry · C token · M arm
       </p>
     </section>
   );
@@ -398,6 +420,37 @@ function WheelSlot({
       </span>
     </button>
   );
+}
+
+/** A 16x2 character LCD with an RGB backlight, drawn from {@link previewGloveLcd}. */
+export function GloveLcdScreen({ preview, className = '' }: { preview: GloveLcdPreview; className?: string }) {
+  const [r, g, b] = preview.rgb;
+  return (
+    <div
+      data-testid="lcd-preview"
+      className={`rounded-xl border-4 border-[#2a2a2a] p-2 shadow-[inset_0_0_14px_rgba(0,0,0,0.45)] ${className}`}
+      style={{ background: `rgb(${r}, ${g}, ${b})` }}
+      aria-label={`LCD: ${preview.lines[0].trim()} / ${preview.lines[1].trim()}`}
+    >
+      {preview.lines.map((line, row) => (
+        <div key={row} className="grid grid-cols-[repeat(16,minmax(0,1fr))] gap-[2px]">
+          {Array.from(line).map((ch, col) => (
+            <span
+              key={col}
+              className="flex aspect-[5/8] items-center justify-center bg-black/10 font-mono text-[13px] leading-none text-[#0d0d0d]"
+            >
+              {ch === ' ' ? '\u00a0' : ch}
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function pinValue(raw: number | undefined, fallback: boolean): string {
+  if (raw !== undefined) return raw !== 0 ? 'HIGH' : 'LOW';
+  return fallback ? 'HIGH' : 'LOW';
 }
 
 function MeterChip({ label, value, hot }: { label: string; value: string; hot: boolean }) {

@@ -90,8 +90,9 @@ export interface PoseFrame {
 }
 
 /**
- * Newline-delimited JSON frame the glove sends at 50 Hz over USB serial (115200 baud).
- * `dial` is the spell-wheel slot (0..2 in P0), not the raw 10-bit angle.
+ * Newline-delimited JSON frame the glove sends at 50 Hz over USB serial (115200 baud)
+ * or Wi-Fi UDP (port 4210). `dial` is the spell-wheel slot (0..2 in P0), not the raw
+ * 10-bit angle. `btn` is D4 (push-to-talk) and `btn2` is D8 (lock / charge).
  */
 export interface GloveSensorFrame {
   dial: number;
@@ -103,12 +104,29 @@ export interface GloveSensorFrame {
   armed: boolean;
   noise: number;
   color: 'none' | 'ember' | 'frost' | 'bloom' | 'boss';
+  /** D8 Button 2, gated by `armed`. */
+  btn2?: number;
+  /** Raw D3 touch level, not gated. */
+  d3?: number;
+  /** Raw D4 Button 1 level, not gated. */
+  d4?: number;
+  /** Raw D8 Button 2 level, not gated. */
+  d8?: number;
+  /** Raw A0 rotary angle, 0..1023. */
+  rawDial?: number;
 }
 
 /** Command the laptop writes back to the glove, one JSON object per line. */
 export type GloveCommand =
   | { cmd: 'buzz'; p: BuzzPattern }
-  | { cmd: 'servo'; open: boolean };
+  | { cmd: 'servo'; open: boolean }
+  /** Forearm 16x2 RGB LCD. Lines are 16 printable ASCII characters; `ms` 0 keeps it until replaced. */
+  | { cmd: 'lcd'; l1?: string; l2?: string; r?: number; g?: number; b?: number; ms?: number }
+  /** Join a hotspot. Without `ssid` the board reports its Wi-Fi status. */
+  | { cmd: 'wifi'; ssid?: string; pass?: string }
+  | { cmd: 'arm'; open: boolean }
+  /** UDP only: subscribe this sender to the frame stream. */
+  | { cmd: 'hello' };
 
 /** Semantic glove snapshot laptop A forwards to the server (not the raw serial line). */
 export interface HardwareEvent {

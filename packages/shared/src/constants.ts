@@ -98,6 +98,10 @@ export const NOISE_TOO_LOUD_THRESHOLD = 450;
 
 export const SERIAL_BAUD = 115200;
 export const GLOVE_POLL_HZ = 50;
+/** The glove listens for commands and streams frames back on this UDP port once it joins Wi-Fi. */
+export const GLOVE_UDP_PORT = 4210;
+/** Forearm 16x2 LCD: characters per line. */
+export const GLOVE_LCD_COLS = 16;
 
 /** P0 dial slots. Index matches {@link P0_ELEMENTS}. */
 export const DIAL_SLOT_COUNT = 3;

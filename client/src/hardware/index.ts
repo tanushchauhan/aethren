@@ -1,20 +1,35 @@
 export {
   BUTTON_CLICK_MAX_MS,
   DEFAULT_GLOVE_FRAME,
+  GLOVE_LCD_ELEMENT_RGB,
   GloveEdgeTracker,
   LineBufferProcessor,
+  buildLcdCommand,
+  buildWifiCommand,
   createIdleGloveEdges,
   detectGloveEdges,
   elementForDialSlot,
+  fitLcdLine,
   isGloveCommand,
   normalizeGloveCommand,
   normalizeWireChunk,
   parseGloveSerialLine,
+  parseGloveWifiStatus,
+  previewGloveLcd,
   serializeGloveCommand,
   spellReleasePower,
   toHardwareEvent,
 } from './serialProtocol';
-export type { DialChange, GloveEdgeClock, GloveEdges, SwipeRelease } from './serialProtocol';
+export type {
+  DialChange,
+  GloveEdgeClock,
+  GloveEdges,
+  GloveLcdMessage,
+  GloveLcdPreview,
+  GloveWifiState,
+  GloveWifiStatus,
+  SwipeRelease,
+} from './serialProtocol';
 
 export { GloveSoundSynthesizer } from './soundSynthesizer';
 

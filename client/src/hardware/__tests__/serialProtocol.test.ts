@@ -13,21 +13,31 @@ import { HARDWARE_TEST_PATH, HardwareTestPage } from '../HardwareTestPage';
 import {
   BUTTON_CLICK_MAX_MS,
   DEFAULT_GLOVE_FRAME,
+  GLOVE_LCD_ELEMENT_RGB,
   GloveEdgeTracker,
   LineBufferProcessor,
+  buildLcdCommand,
+  buildWifiCommand,
   createIdleGloveEdges,
   detectGloveEdges,
   elementForDialSlot,
+  fitLcdLine,
   normalizeWireChunk,
   parseGloveSerialLine,
+  parseGloveWifiStatus,
+  previewGloveLcd,
   serializeGloveCommand,
   spellReleasePower,
   toHardwareEvent,
+  type GloveWifiStatus,
 } from '../serialProtocol';
 import { SERIAL_BRIDGE_URL, type GloveHardwareController } from '../useGloveHardware';
 
 const SAMPLE =
   '{"dial":1,"btn":1,"fist":true,"swipe":"thrust","accel":1.35,"parry":false,"armed":true,"noise":310,"color":"ember"}';
+/** A line captured from the flashed 7-part Uno R4 WiFi. */
+const FIRMWARE_SAMPLE =
+  '{"dial":2,"btn":0,"btn2":0,"fist":false,"swipe":"none","accel":1.00,"parry":false,"armed":true,"noise":0,"color":"none","d3":0,"d4":0,"d8":0,"rawDial":1021}';
 
 function frame(patch: Partial<GloveSensorFrame> = {}): GloveSensorFrame {
   return { ...DEFAULT_GLOVE_FRAME, ...patch };
@@ -82,6 +92,54 @@ describe('parseGloveSerialLine', () => {
 
   it('keeps unknown extra fields from rejecting a valid frame', () => {
     expect(parseGloveSerialLine(`${SAMPLE.slice(0, -1)},"debug":1}`)?.dial).toBe(1);
+  });
+
+  it('reads the 7-part pin fields from the firmware frame', () => {
+    expect(parseGloveSerialLine(FIRMWARE_SAMPLE)).toEqual({
+      dial: 2,
+      btn: 0,
+      btn2: 0,
+      fist: false,
+      swipe: 'none',
+      accel: 1,
+      parry: false,
+      armed: true,
+      noise: 0,
+      color: 'none',
+      d3: 0,
+      d4: 0,
+      d8: 0,
+      rawDial: 1021,
+    });
+  });
+
+  it('clamps the pin fields and drops malformed ones without rejecting the frame', () => {
+    const parsed = parseGloveSerialLine(`${SAMPLE.slice(0, -1)},"btn2":3,"d3":1,"d4":"x","d8":-2,"rawDial":4000}`);
+    expect(parsed).toMatchObject({ btn2: 1, d3: 1, d8: 0, rawDial: 1023 });
+    expect(parsed).not.toHaveProperty('d4');
+    expect(parseGloveSerialLine(SAMPLE)).not.toHaveProperty('btn2');
+  });
+});
+
+describe('parseGloveWifiStatus', () => {
+  it('reads the board status line and ignores frames', () => {
+    expect(
+      parseGloveWifiStatus('{"event":"wifi","status":"connected","ssid":"Glove","ip":"172.20.10.4","port":4210}'),
+    ).toEqual({ status: 'connected', ssid: 'Glove', ip: '172.20.10.4', port: 4210 });
+    expect(parseGloveWifiStatus('{"event":"wifi","status":"off","ssid":"","ip":"0.0.0.0","port":4210}')?.status).toBe('off');
+    expect(parseGloveWifiStatus('{"event":"wifi","status":"bogus"}')).toBeNull();
+    expect(parseGloveWifiStatus(FIRMWARE_SAMPLE)).toBeNull();
+    expect(parseGloveWifiStatus('not json')).toBeNull();
+  });
+
+  it('is routed out of the line buffer without becoming a frame', () => {
+    const seen: GloveWifiStatus[] = [];
+    const processor = new LineBufferProcessor((status) => seen.push(status));
+    const frames = processor.push(
+      `${FIRMWARE_SAMPLE}\n{"event":"wifi","status":"joining","ssid":"Glove","ip":"0.0.0.0","port":4210}\n${FIRMWARE_SAMPLE}\n`,
+    );
+    expect(frames).toHaveLength(2);
+    expect(seen).toEqual([{ status: 'joining', ssid: 'Glove', ip: '0.0.0.0', port: 4210 }]);
   });
 });
 
@@ -148,6 +206,63 @@ describe('serializeGloveCommand', () => {
     expect(serializeGloveCommand({ type: 'buzz' })).toBe('{"cmd":"buzz","p":"tick"}\n');
     expect(serializeGloveCommand({ type: 'servo' })).toBe('{"cmd":"servo","open":false}\n');
   });
+
+  it('writes the arm, hello, lcd, and wifi commands the 7-part firmware accepts', () => {
+    expect(serializeGloveCommand({ cmd: 'arm', open: false })).toBe('{"cmd":"arm","open":false}\n');
+    expect(serializeGloveCommand({ cmd: 'hello' })).toBe('{"cmd":"hello"}\n');
+    expect(serializeGloveCommand({ cmd: 'lcd', l1: 'WARD SHATTERED!', l2: 'TWIN CAST 2.0x', r: 255, g: 215, b: 0 })).toBe(
+      '{"cmd":"lcd","l1":"WARD SHATTERED!","l2":"TWIN CAST 2.0x","r":255,"g":215,"b":0}\n',
+    );
+    expect(serializeGloveCommand({ cmd: 'lcd' })).toBe('{"cmd":"lcd","l1":"","l2":""}\n');
+    expect(serializeGloveCommand({ cmd: 'wifi', ssid: 'Glove', pass: 'spellbook' })).toBe(
+      '{"cmd":"wifi","ssid":"Glove","pass":"spellbook"}\n',
+    );
+    expect(serializeGloveCommand({ cmd: 'wifi' })).toBe('{"cmd":"wifi"}\n');
+  });
+});
+
+describe('LCD and Wi-Fi helpers', () => {
+  it('fits a line to 16 printable ASCII characters like the board', () => {
+    expect(fitLcdLine('HELLO')).toBe('HELLO');
+    expect(fitLcdLine('ABCDEFGHIJKLMNOPQRST')).toBe('ABCDEFGHIJKLMNOP');
+    expect(fitLcdLine('café ✨')).toBe('caf? ?');
+  });
+
+  it('builds an lcd command with clamped RGB and an optional hold time', () => {
+    expect(buildLcdCommand({ l1: 'HI', l2: 'THERE', rgb: [300, -5, 80.4] })).toEqual({
+      cmd: 'lcd',
+      l1: 'HI',
+      l2: 'THERE',
+      r: 255,
+      g: 0,
+      b: 80,
+    });
+    expect(buildLcdCommand({ l1: 'STAY', l2: '', ms: 0 })).toEqual({ cmd: 'lcd', l1: 'STAY', l2: '', ms: 0 });
+  });
+
+  it('builds a wifi join, or a status request when the SSID is blank', () => {
+    expect(buildWifiCommand('  Glove  ', 'pw')).toEqual({ cmd: 'wifi', ssid: 'Glove', pass: 'pw' });
+    expect(buildWifiCommand('Glove', '')).toEqual({ cmd: 'wifi', ssid: 'Glove', pass: '' });
+    expect(buildWifiCommand('   ', 'pw')).toEqual({ cmd: 'wifi' });
+    expect(buildWifiCommand('x'.repeat(40), 'y'.repeat(80))).toEqual({ cmd: 'wifi', ssid: 'x'.repeat(32), pass: 'y'.repeat(63) });
+  });
+
+  it('previews the forearm LCD with the firmware line priorities', () => {
+    const idle = previewGloveLcd(frame({ dial: 1 }));
+    expect(idle.lines).toEqual(['WHEEL: FROST    ', 'D4:TALK  D8:LOCK']);
+    expect(idle.rgb).toEqual(GLOVE_LCD_ELEMENT_RGB.frost);
+
+    expect(previewGloveLcd(frame({ dial: 0 }), { lockedElement: 'ember' }).lines[0]).toBe('LOCKED: EMBER * ');
+    expect(previewGloveLcd(frame({ btn: 1 })).lines[1]).toBe('>> SPEAKING <<  ');
+    expect(previewGloveLcd(frame({ parry: true, btn: 1 })).lines[1]).toBe('!! PARRY !!     ');
+    expect(previewGloveLcd(frame({ fist: true })).lines[1]).toBe('CHARGED 1.25x   ');
+    expect(previewGloveLcd(frame({ armed: false })).lines[1]).toBe('DISARMED        ');
+
+    const custom = previewGloveLcd(frame(), { custom: { l1: 'WARD SHATTERED!', l2: 'TWIN CAST', rgb: [255, 215, 0] } });
+    expect(custom.lines).toEqual(['WARD SHATTERED! ', 'TWIN CAST       ']);
+    expect(custom.rgb).toEqual([255, 215, 0]);
+    expect(previewGloveLcd(frame({ parry: true }), { custom: { l1: 'A', l2: 'B' } }).lines[1]).toBe('!! PARRY !!     ');
+  });
 });
 
 describe('toHardwareEvent', () => {
@@ -211,6 +326,15 @@ describe('detectGloveEdges', () => {
     expect(detectGloveEdges(frame({ dial: 2 }), frame({ dial: 0 })).dialChanged?.element).toBe('ember');
     expect(detectGloveEdges(frame({ dial: 1 }), frame({ dial: 1 })).dialChanged).toBeNull();
     expect(detectGloveEdges(null, frame({ dial: 2 })).dialChanged).toBeNull();
+  });
+
+  it('locks on the D8 Button 2 rising edge only', () => {
+    expect(detectGloveEdges(frame({ btn2: 0 }), frame({ btn2: 1 })).lockPressed).toBe(true);
+    expect(detectGloveEdges(frame({ btn2: 1 }), frame({ btn2: 1 })).lockPressed).toBe(false);
+    expect(detectGloveEdges(frame({ btn2: 1 }), frame({ btn2: 0 })).lockPressed).toBe(false);
+    expect(detectGloveEdges(frame(), frame({ btn2: 1 })).lockPressed).toBe(true);
+    expect(detectGloveEdges(null, frame({ btn2: 1 })).lockPressed).toBe(false);
+    expect(detectGloveEdges(frame({ btn2: 0 }), frame({ btn2: 1, armed: false })).lockPressed).toBe(false);
   });
 
   it('fires a parry only on the rising edge', () => {
@@ -353,6 +477,8 @@ function stubHardware(patch: Partial<GloveSensorFrame> = {}): GloveHardwareContr
     lastRelease: null,
     parryLit: false,
     lastCommand: null,
+    lcdMessage: null,
+    wifiStatus: null,
     keyboardEnabled: true,
     webSerialSupported: true,
     simulatorActive: true,
@@ -366,6 +492,7 @@ function stubHardware(patch: Partial<GloveSensorFrame> = {}): GloveHardwareContr
     setDial: noop,
     stepDial: noop,
     setButton: noop,
+    setButton2: noop,
     setFist: noop,
     setSwipe: noop,
     releaseSwipe: noop,
@@ -380,6 +507,10 @@ function stubHardware(patch: Partial<GloveSensorFrame> = {}): GloveHardwareContr
     sendCommand: noop,
     setServoOpen: noop,
     playBuzz: noop,
+    sendLcd: noop,
+    clearLcd: noop,
+    configureWifi: noop,
+    requestWifiStatus: noop,
     setKeyboardEnabled: noop,
   };
 }
@@ -397,16 +528,41 @@ describe('glove bench markup', () => {
     expect(html).toContain('Bloom');
     expect(html).toContain('110°');
     expect(html).toContain('Web Serial');
+    expect(html).toContain('lcd-preview');
+    expect(html).toContain('D8 Lock');
   });
 
-  it('renders the hardware bench with the Grove port map and the hotkey guide', () => {
+  it('shows the raw 7-part pin levels when the board sends them', () => {
+    const html = renderToStaticMarkup(
+      createElement(GloveSimulatorPanel, { hardware: stubHardware({ d3: 1, d4: 0, d8: 1, rawDial: 777 }) }),
+    );
+    expect(html).toContain('pin-readout');
+    expect(html).toContain('HIGH');
+    expect(html).toContain('777');
+  });
+
+  it('renders the hardware bench with the 7-part port map, LCD, Wi-Fi, and the hotkey guide', () => {
     const html = renderToStaticMarkup(createElement(HardwareTestPage));
     expect(html).toContain(HARDWARE_TEST_PATH);
-    expect(html).toContain('Grove Rotary Angle Sensor');
-    expect(html).toContain('Grove I2C Color Sensor');
-    expect(html).toContain('A0');
-    expect(html).toContain('D6');
-    expect(html).toContain('I2C');
+    for (const part of [
+      'Grove Touch Sensor',
+      'Grove Button 1',
+      'Grove Button 2',
+      'Grove Buzzer',
+      'Grove Rotary Angle Sensor',
+      'Grove 16x2 RGB LCD',
+      'Grove 3-Axis Accelerometer',
+    ]) {
+      expect(html).toContain(part);
+    }
+    for (const port of ['D3', 'D4', 'D8', 'D5', 'A0', 'I2C LCD', 'I2C Accel']) expect(html).toContain(port);
+    expect(html).not.toContain('Grove I2C Color Sensor');
+    expect(html).not.toContain('Grove Servo');
+    expect(html).toContain('lcd-composer');
+    expect(html).toContain('Send to LCD');
+    expect(html).toContain('wifi-setup');
+    expect(html).toContain('Join hotspot');
+    expect(html).toContain('4210');
     expect(html).toContain('Arrow Left / Right / Up');
     expect(html).toContain('115200');
     expect(html).toContain(SERIAL_BRIDGE_URL);
