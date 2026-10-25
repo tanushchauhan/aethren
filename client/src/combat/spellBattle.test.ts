@@ -89,7 +89,7 @@ describe('diagnostic turn progression and victory', () => {
       expect(useSpellBattle.getState().turnNumber).toBe(number);
     }
     expect(useSpellBattle.getState()).toMatchObject({ activeId: 'player', turnNumber: 5, enemyTurn: null });
-    expect(playerStore.getState().health).toBe(100);
+    expect(playerStore.getState().health).toBe(82);
     expect(useSpellBattle.getState().opponents.center.statuses[0].id).toBe('roused');
   });
   it('blocks ending mid-cast, skips defeated enemies, and wins only after the last effect finishes', () => {
@@ -113,5 +113,50 @@ describe('diagnostic turn progression and victory', () => {
     useSpellBattle.getState().endTurn();
     expect(useSpellBattle.getState().turnNumber).toBe(number);
     expect(useSpellBattle.getState().castSpell(input)).toBe(false);
+  });
+});
+
+
+describe('enemy damage integration', () => {
+  it('applies slash once even with duplicate impact and return callbacks', () => {
+    const battle = useSpellBattle.getState();
+    battle.endTurn(); battle.beginEnemy();
+    const id = useSpellBattle.getState().enemyTurn!.action!.id;
+    battle.enemyStep('play', id); battle.enemyStep('impact', id);
+    battle.enemyStep('impact', id); battle.enemyStep('return', id);
+    expect(playerStore.getState()).toMatchObject({ health: 92, stanceValue: 78 });
+    expect(playerStore.getState().statuses).toEqual([{ id: 'bleeding', remaining: 2 }]);
+  });
+  it('resolves failed media and stops combat on lethal damage', () => {
+    playerStore.getState().setHealth(3);
+    const battle = useSpellBattle.getState();
+    battle.endTurn(); battle.beginEnemy();
+    const id = useSpellBattle.getState().enemyTurn!.action!.id;
+    battle.enemyStep('play', id); battle.enemyStep('return', id);
+    expect(playerStore.getState().health).toBe(0);
+    expect(useSpellBattle.getState()).toMatchObject({ status: 'lost', enemyTurn: null });
+    battle.enemyStep('finish', id); battle.endTurn();
+    expect(useSpellBattle.getState().status).toBe('lost');
+  });
+});
+
+
+describe('player Rest', () => {
+  it('recovers stance and magic once and hands control to opponents', () => {
+    playerStore.getState().setStanceValue(10); playerStore.getState().setMagicPower(2);
+    useSpellBattle.getState().rest(); useSpellBattle.getState().rest();
+    expect(playerStore.getState()).toMatchObject({stanceValue: 55, stance: 'shaken', magicPower: 5, health: 100});
+    expect(useSpellBattle.getState()).toMatchObject({activeId: 'left', turnNumber: 2});
+  });
+  it('caps recovery and cannot rest mid-cast', () => {
+    playerStore.getState().setMagicPower(11);
+    useSpellBattle.getState().rest();
+    expect(playerStore.getState()).toMatchObject({stanceValue:100, magicPower:12});
+    useSpellBattle.getState().reset(); playerStore.getState().reset();
+    useSpellBattle.getState().castSpell(input);
+    const magic = playerStore.getState().magicPower;
+    useSpellBattle.getState().rest();
+    expect(playerStore.getState().magicPower).toBe(magic);
+    expect(useSpellBattle.getState().activeId).toBe('player');
   });
 });

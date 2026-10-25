@@ -1,9 +1,11 @@
-export type MoveId = 'roar' | 'charge-slash' | 'wait';
+import type { StatusEffect } from './statusEffects';
+export type MoveId = 'roar' | 'charge-slash' | 'jaw-grab' | 'rest';
 export type CombatMove = { id: MoveId; name: string; cost: number; cooldown: number; video?: string; start: number; impact: number; end: number };
 export const moves: Record<MoveId, CombatMove> = {
   roar: { id: 'roar', name: 'Roar', cost: 3, cooldown: 3, video: '/art/combat/moves/roar.mp4', start: 0, impact: 1.5, end: 4.8 },
   'charge-slash': { id: 'charge-slash', name: 'Charge and Slash', cost: 4, cooldown: 0, video: '/art/combat/moves/charge-slash.mp4', start: 4.8, impact: 6.2, end: 9.95 },
-  wait: { id: 'wait', name: 'Wait', cost: 0, cooldown: 0, start: 0, impact: .3, end: .8 },
+  'jaw-grab': { id: 'jaw-grab', name: 'Jaw and Grab', cost: 8, cooldown: 3, video: '/art/combat/moves/jaw-grab.mp4', start: 0, impact: 1.8, end: 4.95 },
+  rest: { id: 'rest', name: 'Rest', cost: 0, cooldown: 0, start: 0, impact: .3, end: .8 },
 };
 export type Combatant = {
   id: string; name: string; side: 'player' | 'enemy'; sprite: string; kind: string;
@@ -11,15 +13,15 @@ export type Combatant = {
 };
 export const combatants: Combatant[] = [
   { id: 'player', name: 'You', side: 'player', sprite: '/art/spellbearer-male.png', kind: 'player', maxHp: 100, maxEnergy: 10, damage: 0, armor: 0, moves: [] },
-  { id: 'left', name: 'Left wolf', side: 'enemy', sprite: '/art/combat/wolf-stalker.png', kind: 'flank', maxHp: 40, maxEnergy: 10, damage: 8, armor: 0, moves: ['roar', 'charge-slash', 'wait'] },
-  { id: 'center', name: 'Pack leader', side: 'enemy', sprite: '/art/combat/wolf-leader.png', kind: 'leader', maxHp: 60, maxEnergy: 10, damage: 12, armor: 1, moves: ['roar', 'charge-slash', 'wait'] },
-  { id: 'right', name: 'Right wolf', side: 'enemy', sprite: '/art/combat/wolf-stalker.png', kind: 'flank mirrored', maxHp: 40, maxEnergy: 10, damage: 8, armor: 0, moves: ['roar', 'charge-slash', 'wait'] },
+  { id: 'left', name: 'Left wolf', side: 'enemy', sprite: '/art/combat/wolf-stalker.png', kind: 'flank', maxHp: 40, maxEnergy: 10, damage: 8, armor: 0, moves: ['roar', 'charge-slash', 'jaw-grab', 'rest'] },
+  { id: 'center', name: 'Pack leader', side: 'enemy', sprite: '/art/combat/wolf-leader.png', kind: 'leader', maxHp: 60, maxEnergy: 10, damage: 12, armor: 1, moves: ['roar', 'charge-slash', 'jaw-grab', 'rest'] },
+  { id: 'right', name: 'Right wolf', side: 'enemy', sprite: '/art/combat/wolf-stalker.png', kind: 'flank mirrored', maxHp: 40, maxEnergy: 10, damage: 8, armor: 0, moves: ['roar', 'charge-slash', 'jaw-grab', 'rest'] },
 ];
 export const definition = (id: string) => combatants.find(actor => actor.id === id)!;
-export type OpponentStatus = { id: 'roused'; source: string; remaining: number; appliedAction: number };
+export type OpponentStatus = StatusEffect<'roused'> & { source: string; appliedAction: number };
 export type ActorState = { hp: number; energy: number; cooldowns: Partial<Record<MoveId, number>>; statuses: OpponentStatus[]; turns: number; defeated: boolean };
 export type PendingMove = { id: number; actorId: string; moveId: MoveId; phase: 'approaching' | 'playing' | 'returning'; resolved: boolean };
-export type AttackEvent = { actionId: number; source: string; target: string; damage: number; type: 'standard' };
+export type AttackEvent = { actionId: number; source: string; target: string; damage: number; stanceDamage: number; type: 'standard' | 'grab' };
 export type EncounterState = {
   actors: Record<string, ActorState>; queue: string[]; round: number; roundPending: string[];
   serial: number; action: PendingMove | null; lastMove: string; lastAttack: AttackEvent | null;
@@ -38,9 +40,11 @@ export function canUseMove(id: string, actor: ActorState, move: MoveId) {
 }
 export function selectMove(id: string, actor: ActorState): MoveId {
   if (actor.turns === 0 && id !== 'center' && canUseMove(id, actor, 'charge-slash')) return 'charge-slash';
+  if (actor.energy < 4) return 'rest';
+  if (actor.turns > 0 && isRoused(actor) && canUseMove(id, actor, 'jaw-grab')) return 'jaw-grab';
   if (canUseMove(id, actor, 'roar')) return 'roar';
   if (canUseMove(id, actor, 'charge-slash')) return 'charge-slash';
-  return 'wait';
+  return 'rest';
 }
 export type EncounterAction =
   | { type: 'pass'; turn: number }
@@ -61,10 +65,10 @@ function resolveMove(state: EncounterState): EncounterState {
   let updated = actor;
   let lastAttack = state.lastAttack;
   if (action.moveId === 'roar') updated = { ...actor, statuses: [{ id: 'roused', source: action.actorId, remaining: 2, appliedAction: action.id }] };
-  if (action.moveId === 'wait') updated = { ...actor, energy: Math.min(definition(action.actorId).maxEnergy, actor.energy + 2) };
-  if (action.moveId === 'charge-slash') {
-    // Emit an outgoing attack only. Player reactions/HP resolution are intentionally deferred.
-    lastAttack = { actionId: action.id, source: action.actorId, target: 'player', damage: attackDamage(action.actorId, actor), type: 'standard' };
+  if (action.moveId === 'rest') updated = { ...actor, energy: Math.min(definition(action.actorId).maxEnergy, actor.energy + 5) };
+  if (action.moveId === 'charge-slash' || action.moveId === 'jaw-grab') {
+    // The battle store consumes this event once and applies player health, stance and bleeding.
+    lastAttack = { actionId: action.id, source: action.actorId, target: 'player', damage: attackDamage(action.actorId, actor), stanceDamage: action.moveId === 'jaw-grab' ? 55 : action.actorId === 'center' ? 30 : 22, type: action.moveId === 'jaw-grab' ? 'grab' : 'standard' };
   }
   return { ...state, actors: { ...state.actors, [action.actorId]: updated }, lastAttack,
     action: { ...action, resolved: true }, lastMove: `${definition(action.actorId).name} used ${moves[action.moveId].name}.` };

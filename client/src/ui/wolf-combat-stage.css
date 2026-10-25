@@ -74,3 +74,24 @@
 .player-panel-footer .diagnostic-end-turn { border: 1px solid #ffffff8c; padding: 5px 12px; text-decoration: none; }
 
 .wolf-combat-stage button, .wolf-combat-stage select { border-radius: 0; }
+
+.player-hurt-overlay { position: absolute; inset: 0; z-index: 8; pointer-events: none; box-shadow: inset 0 0 90px 24px #a32046aa; border: 2px solid #ec8193; }
+.player-hurt-overlay > span { position: absolute; left: 12%; bottom: 33%; color: #ffc4c9; font: 28px 'Pixelify Sans', monospace; text-shadow: 0 2px 4px #260914; }
+.player-slash-marks { position: absolute; left: 43%; top: 30%; display: flex; gap: 25px; transform: rotate(28deg); }
+.player-slash-marks i { display: block; height: 150px; width: 5px; background: #ffe7ed; box-shadow: 0 0 14px 6px #c72e56; }
+.player-hurt-overlay.bleed { box-shadow: inset 0 0 45px #a3204677; }
+
+.low-health-overlay { position: absolute; inset: 0; z-index: 4; pointer-events: none; transition: backdrop-filter .8s ease, box-shadow .8s ease; }
+.bleeding-edges { position: absolute; inset: 0; transition: opacity .8s ease; }
+.bleeding-edges i { position: absolute; top: 0; width: 16px; height: 19%; background: #8c1737; clip-path: polygon(0 0, 100% 0, 75% 90%, 50% 100%, 25% 90%); }
+.bleeding-edges i:nth-child(1) { left: 2%; }
+.bleeding-edges i:nth-child(2) { left: 5%; height: 11%; width: 9px; }
+.bleeding-edges i:nth-child(3) { right: 2%; height: 25%; }
+.bleeding-edges i:nth-child(4) { right: 6%; height: 13%; width: 10px; }
+.wolf-status-icons { display: flex; justify-content: center; gap: 5px; }
+@media (prefers-reduced-motion: reduce) { .low-health-overlay, .bleeding-edges { transition: none; } }
+
+.wolf-move-label { position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); padding: 5px 12px; white-space: nowrap; border: 1px solid #e8cf9a80; background: #0a1629dc; color: #fff0cd; font: 21px 'Pixelify Sans', monospace; text-align: center; text-shadow: 0 2px 3px #000; pointer-events: none; }
+.wolf-move-label.is-resting { color: #b9ebd0; border-color: #b9ebd080; }
+.wolf-move-label small { display: block; font-size: 13px; }
+.player-panel-footer .player-rest { border: 1px solid #ffffff8c; padding: 5px 12px; text-decoration: none; }

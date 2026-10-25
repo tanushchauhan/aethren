@@ -48,3 +48,30 @@ describe('shared player state', () => {
     expect(playerStore.getState()).toMatchObject({ ...INITIAL_PLAYER_STATS, attackRequestCount: 0, lastAttackRequest: null });
   });
 });
+
+
+describe('injury and stance recovery', () => {
+  it('maps stance boundaries and blocks retaliation only when staggered', () => {
+    for (const [value, stance] of [[100, 'balanced'], [60, 'balanced'], [59, 'shaken'], [30, 'shaken'], [29, 'staggered'], [0, 'staggered']] as const) {
+      playerStore.getState().setStanceValue(value);
+      expect(playerStore.getState().stance).toBe(stance);
+      expect(selectCanRetaliate(playerStore.getState())).toBe(value >= 30);
+    }
+  });
+  it('refreshes bleed without stacking, ticks twice, and recovers stance each turn', () => {
+    const player = playerStore.getState();
+    player.receiveAttack(8, 45); player.receiveAttack(8, 45);
+    expect(playerStore.getState()).toMatchObject({ health: 84, stanceValue: 10, stance: 'staggered' });
+    player.startTurn();
+    expect(playerStore.getState()).toMatchObject({ health: 82, stanceValue: 45, stance: 'shaken' });
+    player.startTurn(); player.startTurn();
+    expect(playerStore.getState()).toMatchObject({ health: 80, stanceValue: 100, statuses: [] });
+  });
+  it('guarding halves damage and stance loss; ignores invalid attacks', () => {
+    const player = playerStore.getState(); player.setStance('guarding');
+    player.receiveAttack(12, 30);
+    expect(playerStore.getState()).toMatchObject({ health: 94, stanceValue: 85 });
+    player.receiveAttack(NaN, 30); player.receiveAttack(-4, 30);
+    expect(playerStore.getState().health).toBe(94);
+  });
+});

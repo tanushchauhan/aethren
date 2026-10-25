@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { combatants, isRoused, moves } from '../combat/encounter';
 import { useSpellBattle } from '../combat/spellBattle';
+import { playerStore, usePlayerState } from '../combat/playerState';
+import { lowHealthIntensity } from '../combat/statusEffects';
+import { StatusEffectIcon } from './components/StatusEffects';
 import { SPELL_TIMING } from '../combat/spellVfx';
 import { WolfMoveAnimation } from './components/WolfMoveAnimation';
 import { SpellEffect } from './components/SpellEffect';
@@ -12,6 +15,9 @@ import { useBattleMusic } from './useBattleMusic';
 
 export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: boolean; onToggleSound: () => void; onContinue: () => void }) {
   const { opponents, pending, feedback, activeId, turnNumber, enemyTurn, status } = useSpellBattle();
+  const hurt = usePlayerState(state => state.hurt);
+  const lowHealth = usePlayerState(state => lowHealthIntensity(state.health, state.maxHealth));
+  const bleeding = usePlayerState(state => state.statuses.some(effect => effect.id === 'bleeding'));
   const enemyMove = enemyTurn?.action;
   const [leaving, setLeaving] = useState(false);
   const victoryButton = useRef<HTMLButtonElement>(null);
@@ -27,17 +33,17 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
   useEffect(() => () => useSpellBattle.getState().cancelCast(), []);
   useBattleMusic(muted);
   useEffect(() => {
-    if (!enemyTurn) return;
+    if (!enemyTurn || status !== 'active') return;
     if (!enemyMove) {
-      const timer = window.setTimeout(() => useSpellBattle.getState().beginEnemy(), reduced ? 600 : 1600);
+      const timer = window.setTimeout(() => useSpellBattle.getState().beginEnemy(), reduced ? 400 : 1100);
       return () => clearTimeout(timer);
     }
     if (enemyMove.phase !== 'playing') {
       const type = enemyMove.phase === 'approaching' ? 'play' : 'finish';
-      const timer = window.setTimeout(() => useSpellBattle.getState().enemyStep(type, enemyMove.id), reduced ? 150 : 950);
+      const timer = window.setTimeout(() => useSpellBattle.getState().enemyStep(type, enemyMove.id), reduced ? 150 : 650);
       return () => clearTimeout(timer);
     }
-  }, [activeId, enemyMove?.id, enemyMove?.phase, reduced]);
+  }, [activeId, enemyMove?.id, enemyMove?.phase, reduced, status]);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { heading.current?.focus(); }, []);
   return <motion.main className="wolf-combat-stage" aria-label="Wolf combat stage"
@@ -58,13 +64,13 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
         const stats = opponents[wolf.id];
         const reaction = feedback?.targetId === wolf.id ? feedback : null;
         const acting = enemyMove?.actorId === wolf.id;
-        const forward = acting && enemyMove.phase !== 'returning';
+        const forward = acting && enemyMove.moveId !== 'rest' && enemyMove.phase !== 'returning';
         return <motion.div key={wolf.id} id={`opponent-${wolf.id}`} className="wolf-slot" style={{ zIndex: acting ? 3 : 1 }} aria-hidden={stats.defeated || undefined}
           initial={reduced ? false : { opacity: 0 }} animate={{ opacity: stats.defeated ? 0 : 1 }}
           transition={{ delay: stats.defeated || reduced ? 0 : 2.5 + i * .3, duration: reduced ? 0 : stats.defeated ? .6 : 2.8 }}>
           <motion.div key={reaction?.id ?? 0} initial={false}
             animate={{ x: forward && !reduced ? `${(1 - i) * 113.043}%` : !reduced && reaction ? reaction.kind === 'dodge' ? [0, i === 2 ? 45 : -45, 0] : [0, -7, 7, -4, 0] : 0, y: forward && !reduced ? 40 : 0, scale: !reduced && forward ? 1.15 : 1 }}
-            transition={{ duration: reduced ? .1 : enemyMove ? .85 : reaction?.kind === 'dodge' ? .55 : .3 }} className={`wolf-combatant ${wolf.kind}${activeId === wolf.id ? ' is-active' : ''}${isRoused(stats) ? ' is-roused' : ''}`}>
+            transition={{ duration: reduced ? .1 : enemyMove ? .55 : reaction?.kind === 'dodge' ? .55 : .3 }} className={`wolf-combatant ${wolf.kind}${activeId === wolf.id ? ' is-active' : ''}${isRoused(stats) ? ' is-roused' : ''}`}>
             <div className="wolf-bars">
               {[{ id: 'health', value: stats.hp, max: wolf.maxHp }, { id: 'energy', value: stats.energy, max: wolf.maxEnergy }].map(stat =>
                 <div className={`wolf-stat-bar ${stat.id}`} key={stat.id}>
@@ -75,13 +81,15 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
                   </div>
                   <img className="wolf-stat-icon" src={`/art/resources/${stat.id}.png`} alt="" />
                 </div>)}
-              {stats.statuses.map(status => <span key={status.id} className="wolf-buff" role="img"
-                aria-label={`Roused: damage +25%, armor +2, ${status.remaining} turns remaining`}
-                title={`Roused: damage +25%, armor +2 · ${status.remaining} turns`}><span aria-hidden="true">↟</span></span>)}
+              <div className="wolf-status-icons">{stats.statuses.map(effect => <StatusEffectIcon key={effect.id} effect={effect} />)}</div>
             </div>
             <div className="wolf-turn-ring" aria-hidden="true" />
             {acting && enemyMove.phase === 'playing' ? <WolfMoveAnimation key={enemyMove.id} move={moves[enemyMove.moveId]} sprite={wolf.sprite} muted={muted} reduced={!!reduced}
               onImpact={() => useSpellBattle.getState().enemyStep('impact', enemyMove.id)} onComplete={() => useSpellBattle.getState().enemyStep('return', enemyMove.id)} /> : <img className={`wolf-sprite${reaction?.kind === 'hurt' ? ' wolf-hurt' : ''}`} src={wolf.sprite} alt={wolf.name} draggable={false} />}
+            {acting && <div className={`wolf-move-label${enemyMove.moveId === 'rest' ? ' is-resting' : ''}`} role="status">
+              {moves[enemyMove.moveId].name}
+              {enemyMove.moveId === 'rest' && enemyMove.resolved && <small>+5 Energy</small>}
+            </div>}
             {reaction && <motion.span className={`wolf-hit-feedback ${reaction.kind}`} initial={{ opacity: 1, y: 0 }} animate={{ opacity: 0, y: reduced ? 0 : -24 }} transition={{ duration: 1.4 }}>
               {reaction.kind === 'dodge' ? 'Dodged' : `−${reaction.damage}`}
             </motion.span>}
@@ -90,6 +98,21 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
       })}
     </div>
     <RainOverlay />
+    {(lowHealth > 0 || bleeding) && <div className="low-health-overlay" aria-hidden="true" style={{
+      backdropFilter: `grayscale(${lowHealth})`, WebkitBackdropFilter: `grayscale(${lowHealth})`,
+      boxShadow: `inset 0 0 ${35 + lowHealth * 100}px ${8 + lowHealth * 36}px rgba(125, 5, 30, ${Math.min(.85, lowHealth * .75 + (bleeding ? .12 : 0))})`,
+    }}>
+      {bleeding && <div className="bleeding-edges" style={{ opacity: .15 + lowHealth * .65 }}><i /><i /><i /><i /></div>}
+    </div>}
+    {hurt && <motion.div key={hurt.id} className={`player-hurt-overlay ${hurt.kind}`} aria-hidden="true"
+      initial={{ opacity: reduced ? .35 : 1 }} animate={{ opacity: 0 }} transition={{ duration: .85 }}>
+      {!reduced && hurt.kind === 'slash' && <div className="player-slash-marks"><i /><i /><i /></div>}
+      <span>−{hurt.damage}{hurt.kind === 'bleed' ? ' · Bleeding' : ''}</span>
+    </motion.div>}
+    {status === 'lost' && <section className="encounter-victory" role="alert">
+      <p>Encounter lost</p><h2>The vale claims another</h2><span>Your health has fallen to zero.</span>
+      <button autoFocus onClick={() => { playerStore.getState().reset(); useSpellBattle.getState().reset(); }}>Try again</button>
+    </section>}
     {pending && <SpellEffect key={pending.id} cast={pending} reduced={!!reduced} />}
     <aside className="combat-queue" aria-label="Turn order">
       <ol>
