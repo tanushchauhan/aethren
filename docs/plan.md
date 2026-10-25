@@ -3,7 +3,7 @@
 ## Current scope
 An authored fantasy visual novel with a rainy forest title, singleplayer or online room setup, a scripted rift introduction, Stay/Run choices, and a first-person wolf encounter.
 
-The playable story stops at the wolf encounter. Combat controls, dice, damage, enemies' turns, and boss progression are deliberately not implemented in the current version.
+After the wolf encounter dialogue, the scene fades into a forest combat stage with three wolves. The stage has a local turn queue for the player and each wolf, portrait turn order, active-turn rings, health and energy bars, and battle music. Players can pass; wolves automatically use Roar, Charge and Slash, or Wait with energy costs, recovery, cooldowns, and self buffs. Each wolf moves to the foreground for its supplied action video and returns afterward. Player reactions, player damage resolution, dice, and boss progression are not implemented. See [Opponent combat](opponent-combat.md) for stats, rules, and video cues.
 
 All dialogue, artwork, and sound are checked-in assets. Nothing is generated at runtime. There are no model providers, speech synthesis/transcription services, chat imports, camera tracking, or glove controls.
 
