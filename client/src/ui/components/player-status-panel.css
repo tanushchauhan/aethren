@@ -13,7 +13,7 @@
 .player-stance-label { font-size: 18px; }
 .player-stance strong { justify-self: end; padding: 5px 12px; border: 1px solid #ffffff8c; border-radius: 0; background: #fff2; font-size: 19px; font-weight: 400; }
 .player-stance small { grid-column: 1 / -1; text-align: right; font-size: 14px; color: #d4e0ec; }
-.spell-builder { display: grid; grid-template-columns: .8fr .95fr 1fr 1fr 1.3fr; gap: 12px; align-items: end; margin-top: 16px; }
+.spell-builder { display: grid; grid-template-columns: .7fr 1.3fr 1fr 1fr 1.5fr; gap: 12px; align-items: end; margin-top: 16px; }
 .spell-builder label { display: grid; gap: 4px; font-size: 13px; color: #e3edf7; }
 .spell-builder select { width: 100%; min-width: 0; height: 36px; border: 1px solid #ffffff70; border-radius: 0; background: #132b3d80; color: #fff; font: 16px 'Pixelify Sans', monospace; padding: 4px 8px; }
 .spell-builder option { background: #183041; color: #fff; }

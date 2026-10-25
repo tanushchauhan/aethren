@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { playerStore, selectStanceLabel, usePlayerState } from '../../combat/playerState';
-import { buildSpell, type SpellElement, type SpellForm } from '../../combat/spells';
+import { SPELLS, SPELLS_BY_ELEMENT, type SpellElement, type SpellId } from '../../combat/spells';
 import { useSpellBattle, type DodgeMode } from '../../combat/spellBattle';
 import { combatants } from '../../combat/encounter';
 import { useStoryStore } from '../../net/storyStore';
@@ -13,13 +13,16 @@ export function PlayerStatusPanel() {
   const battle = useSpellBattle();
   const [diagnostics, setDiagnostics] = useState(false);
   const [element, setElement] = useState<SpellElement>('fire');
-  const [form, setForm] = useState<SpellForm>('bolt');
+  const [chosen, setChosen] = useState<SpellId>('ember-bolt');
   const [targetId, setTargetId] = useState('left');
   const [dodgeMode, setDodgeMode] = useState<DodgeMode>('natural');
   const targets = combatants.filter(actor => actor.side === 'enemy' && !battle.opponents[actor.id].defeated);
   const target = targets.some(actor => actor.id === targetId) ? targetId : targets[0]?.id ?? '';
-  const spell = buildSpell({ element, form })!;
-  const canCast = battle.activeId === 'player' && battle.status === 'active' && !battle.pending && player.health > 0 && ['balanced', 'guarding', 'shaken'].includes(player.stance) && player.magicPower >= spell.cost && !!target;
+  // Switching element keeps the choice only if it belongs to that element.
+  const spell = SPELLS[SPELLS_BY_ELEMENT[element].includes(chosen) ? chosen : SPELLS_BY_ELEMENT[element][0]];
+  const self = spell.target === 'self';
+  const overcharged = player.statuses.some(effect => effect.id === 'overcharged') && spell.damage > 0;
+  const canCast = battle.activeId === 'player' && battle.status === 'active' && !battle.pending && player.health > 0 && ['balanced', 'guarding', 'shaken'].includes(player.stance) && player.magicPower >= spell.cost && (self || !!target);
   const hints = { balanced: 'Hands centered', shaken: 'Balance weakened', casting: 'Channel your spell', guarding: 'Hold your guard', staggered: 'Regain your balance' };
   const resources = [
     { id: 'health', label: 'Health', current: player.health, max: player.maxHealth, icon: '/art/resources/health.png' },
@@ -49,25 +52,25 @@ export function PlayerStatusPanel() {
       <label>Element<select aria-label="Element" value={element} onChange={event => setElement(event.target.value as SpellElement)} disabled={!!battle.pending || battle.activeId !== 'player'}>
         <option value="fire">Fire</option><option value="frost">Frost</option><option value="storm">Storm</option>
       </select></label>
-      <label>Form<select aria-label="Form" value={form} onChange={event => setForm(event.target.value as SpellForm)} disabled={!!battle.pending || battle.activeId !== 'player'}>
-        <option value="bolt">Bolt · 2 MP</option><option value="burst">Burst · 4 MP</option>
+      <label>Spell<select aria-label="Spell" value={spell.id} onChange={event => setChosen(event.target.value as SpellId)} disabled={!!battle.pending || battle.activeId !== 'player'}>
+        {SPELLS_BY_ELEMENT[element].map(id => <option key={id} value={id}>{SPELLS[id].name} · {SPELLS[id].cost} MP</option>)}
       </select></label>
-      <label>Target<select aria-label="Target" value={target} onChange={event => setTargetId(event.target.value)} disabled={!!battle.pending || battle.activeId !== 'player' || !targets.length}>
-        {targets.length ? targets.map(actor => <option key={actor.id} value={actor.id}>{actor.name}</option>) : <option value="">No opponents</option>}
+      <label>Target<select aria-label="Target" value={self ? 'player' : target} onChange={event => setTargetId(event.target.value)} disabled={self || !!battle.pending || battle.activeId !== 'player' || !targets.length}>
+        {self ? <option value="player">Yourself</option> : targets.length ? targets.map(actor => <option key={actor.id} value={actor.id}>{actor.name}</option>) : <option value="">No opponents</option>}
       </select></label>
       <label>Enemy response<select aria-label="Enemy response" value={dodgeMode} onChange={event => setDodgeMode(event.target.value as DodgeMode)} disabled={!!battle.pending || battle.activeId !== 'player'}>
         <option value="natural">Natural</option><option value="hit">Force hit</option><option value="dodge">Force dodge</option>
       </select></label>
       <button type="button" className="player-diagnostic-attack" disabled={!canCast}
-        onClick={() => battle.castSpell({ element, form, targetId: target }, 'diagnostic', dodgeMode)}>
-        Diagnostic attack <small>{spell.name}</small>
+        onClick={() => battle.castSpell(self ? { spellId: spell.id } : { spellId: spell.id, targetId: target }, 'diagnostic', dodgeMode)}>
+        Cast {spell.name} <small>{spell.description}{overcharged ? ' Overcharged ×1.5.' : ''}</small>
       </button>
     </div>}
     <footer className="player-panel-footer">
       <button type="button" className="diagnostic-end-turn" disabled={!!battle.pending || battle.activeId !== 'player' || battle.status !== 'active'} onClick={() => battle.endTurn()}>End turn</button>
       <button type="button" className="player-rest" title="Recover 45 stance and 3 Magic Power, then end your turn."
         disabled={!!battle.pending || battle.activeId !== 'player' || battle.status !== 'active'} onClick={() => battle.rest()}>Rest</button>
-      {diagnostics && <><p role="status" aria-live="polite">{!targets.length ? 'The clearing is safe.' : player.magicPower < spell.cost && !battle.pending ? 'Not enough Magic Power — refill to continue testing.' : battle.message}</p>
+      {diagnostics && <><p role="status" aria-live="polite">{!targets.length ? 'The clearing is safe.' : player.magicPower < spell.cost && !battle.pending ? 'Not enough Magic Power — rest or end your turn to recover it.' : battle.message}</p>
       <button type="button" disabled={!!battle.pending || battle.activeId !== 'player'} onClick={() => playerStore.getState().setMagicPower(player.maxMagicPower)}>Refill magic</button>
       <button type="button" onClick={() => { battle.reset(); playerStore.getState().reset(); }}>Reset encounter</button></>}
       <label className="diagnostics-toggle"><input type="checkbox" checked={diagnostics} onChange={event => setDiagnostics(event.target.checked)} />Enable diagnostics</label>

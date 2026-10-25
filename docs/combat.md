@@ -2,7 +2,7 @@
 
 ## Current direction
 
-The story battleground is input-driven, with the portrait order, encounter title, and diagnostic End Turn control. The player can build and cast simple spells using diagnostics. Wolves can dodge, take damage, and be defeated. End Turn runs each surviving opponent through its existing move/video lifecycle and then returns control to the player. The separate server engine and debug labs remain intact and independent.
+The story battleground is input-driven, with the portrait order, encounter title, and diagnostic End Turn control. The player can cast twelve element spells (four each for Fire, Frost and Storm) using diagnostics, and they apply real status effects. Wolves can dodge, take damage, and be defeated. End Turn runs each surviving opponent through its existing move/video lifecycle and then returns control to the player. The separate server engine and debug labs remain intact and independent.
 
 ## Shared player state
 
@@ -40,7 +40,7 @@ const canCounter = selectCanRetaliate(playerStore.getState());
 playerStore.getState().setStance('guarding');
 
 useSpellBattle.getState().castSpell(
-  { element: 'fire', form: 'bolt', targetId: 'left' },
+  { spellId: 'fire-lance', targetId: 'left' },
   'glove',
 );
 ```
@@ -49,45 +49,65 @@ This does not yet subscribe to physical glove events. The battleground must be m
 
 The stores are client-local, not persisted or synchronized. Starting a new adventure resets them. The old turn engine's placeholder player record is not authoritative for this player HUD.
 
-## Small spell builder
+## Element spells
 
-`buildSpell({ element, form })` in `spells.ts` constructs a recipe. Independent input fields let future adapters combine different gesture/sensor inputs without duplicating spell logic. The initial forms are **Bolt** and **Burst**. Both affect one selected opponent; Burst is a stronger impact, not an area attack yet.
+`spells.ts` defines twelve spells in `SPELLS`, four per element (`SPELLS_BY_ELEMENT`). Each element has its own role rather than sharing generic forms: **Fire** deals the most damage per Magic Power, **Frost** protects you and slows the pack, **Storm** is cheap, spreads damage and disrupts wolf turns. `getSpell(id)` validates external input. A spell is declarative data (damage, `pierce`, `area`, `splash`, `chain`, an applied wolf effect, `drain`, `shield`, `overcharge`); `spellBattle.ts` resolves it.
 
-| Element | Bolt · 2 MP | Damage | Burst · 4 MP | Damage |
-| --- | --- | --- | --- | --- |
-| Fire | Ember Bolt | 8 | Fireburst | 20 |
-| Frost | Frost Shard | 5 | Frost Nova | 14 |
-| Storm | Storm Spark | 6 | Storm Pulse | 16 |
+| Element | Spell | MP | Effect |
+| --- | --- | --- | --- |
+| Fire | Ember Bolt | 2 | 8 damage. |
+| Fire | Fire Lance | 4 | 18 damage that ignores armor. |
+| Fire | Immolate | 3 | 5 damage, then **Burning**: 4 damage at the start of its next 3 turns, ignoring armor. |
+| Fire | Meteor | 7 | 22 to the target and 10 to every other wolf. 2-second charge. |
+| Frost | Frost Shard | 2 | 5 damage and **Chilled** for its next turn. |
+| Frost | Ice Shield | 3 | You gain **Ice Shield**: absorbs 18 health damage, lasting 2 of your turn starts. |
+| Frost | Frost Prison | 5 | **Frozen**: the wolf skips its next 2 turns. No damage. |
+| Frost | Frost Nova | 4 | 5 damage to every wolf and Chills them all. |
+| Storm | Storm Spark | 1 | 4 damage. Nearly instant. |
+| Storm | Chain Lightning | 4 | 9 to the target, then 6 to the nearest other wolf and 4 to the last. |
+| Storm | Static Shock | 3 | 4 damage and **Drained**: energy is emptied, so its next turn is Rest. |
+| Storm | Overcharge | 2 | You gain **Overcharged**: your next damaging spell deals 50% more to its primary target; a Storm spell also refunds 1 MP. Lasts this turn and the next. |
 
-Damage is reduced by the opponent's armor, with a minimum of 1 for a hit. These are provisional balance values. Frost and Storm currently differ visually and in damage; they do not apply slow, stun, or resistance effects.
+Armor reduces every hit to a minimum of 1, except Fire Lance and burn ticks. Single-target spells can be dodged; area, splash and chain spells cannot. A dodged spell applies no effect. Effects refresh rather than stack. Self spells (Ice Shield, Overcharge) need no target and are not consumed by Overcharge. Non-damaging spells do not spend Overcharge.
 
-A cast validates that it is the player’s turn, a living target, a known recipe, available Magic Power, and a valid stance, then locks further casts and spends Magic Power once. Impact resolves after 900 ms and presentation finishes after 1800 ms (150/500 ms with reduced motion). Missing particle images do not block gameplay because resolution does not depend on image load events. Invalid casts spend nothing. Dodged casts still spend Magic Power. There is no passive regeneration yet.
+Balance targets: single-target damage per MP is Fire 4–4.5, Storm 4, Frost 2.5 plus control. Multi-target spells only beat that when several wolves are alive (Meteor ≈ 6/MP against three). The player regains **2 Magic Power at the start of each turn** (`MAGIC_REGEN`), on top of Rest's +3, so the 5–7 MP spells are reachable without debug refills.
+
+### Status effects
+
+| Effect | On | Mechanic | Visual |
+| --- | --- | --- | --- |
+| Burning | Wolf | At the start of each of its turns, before it acts, takes `amount` damage ignoring armor. Can kill it; a burn kill can win the encounter during the opponents' turn. | Flames at the wolf's feet; “−4 Burning” on each tick. |
+| Chilled | Wolf | Its attacks deal 30% less health and stance damage (`CHILL_FACTOR`). | Frosty glow and falling ice motes. |
+| Frozen | Wolf | Skips its turns: no energy recovery, cooldowns or move. Its other effects still count down and burn still ticks. | Ice block grows over the sprite; “Frozen” shows on each skipped turn. |
+| Drained | Wolf | Energy set to 0 on hit; its next move is always Rest. | Flickering arcs over the wolf. |
+| Ice Shield | You | Guarding halves an attack first; the shield then absorbs what it can. A fully absorbed hit deals no health damage, does not cause Bleeding and halves stance damage. | Crystal wall in front of you that flashes per block, cracks below half and shatters when spent. |
+| Overcharged | You | See Overcharge. | Crackling violet hand; the boosted spell glows violet. |
+
+Wolf effects applied by spells use `appliedAction: PLAYER_ACTION` and count down at the end of each of that wolf's own turns, so a 1-turn effect covers exactly its next turn. Player effects count down at your turn start, alongside Bleeding. Roar now adds Roused without clearing other effects. All effects use the shared `STATUS_EFFECTS` registry and icons.
+
+A cast validates the turn, a living target for enemy spells, a known spell, Magic Power and stance, then locks further casts and spends Magic Power once. Invalid casts spend nothing; dodged casts still spend Magic Power.
 
 ### Diagnostics
 
-Enable **Enable diagnostics** in the bottom toolbar to reveal Element, Form, Target, Enemy response, Diagnostic attack, Refill magic, and Reset encounter. Diagnostics are off by default; End turn and Rest remain visible. Choose the inputs, then press **Diagnostic attack**. The button displays the built spell's name. A successful request records its source, recipe input, resource snapshot, and retaliation eligibility.
+Enable **Enable diagnostics** in the bottom toolbar to reveal Element, Spell, Target, Enemy response, the Cast button, Refill magic and Reset encounter. The Spell list shows the chosen element's four spells with their costs; Target is disabled for self spells. The Cast button shows the spell's effect, and notes when Overcharge will boost it. End turn and Rest stay visible without diagnostics.
 
 Enemy response options are explicitly diagnostic:
 
-- Natural: Stalkers dodge 20% of incoming spells; the leader dodges 10%.
+- Natural: Stalkers dodge 20% of incoming single-target spells; the leader dodges 10%.
 - Force hit: always hit, applying armor.
-- Force dodge: always evade without losing HP.
+- Force dodge: single-target spells always miss. Area, splash and chain spells still land.
 
 Glove-sourced requests always use Natural; they cannot force the outcome. **Refill magic** restores MP to maximum for testing. **Reset encounter** cancels active effects, restores opponents and player defaults, and clears feedback.
 
-### Particle effects and opponent reactions
+### Spell visuals
 
-Use selected transparent Kenney Particle Pack textures in `client/public/art/particles/` for tinted projectiles, impact rings, and fragments. Fire uses flame texture, Frost a star-shaped shard, and Storm a spark. Burst increases the impact spread. The supplied CC0 license is copied alongside the files. No runtime generation is used.
+Every spell is held in the hand before release: a pulsing aura, a turning sigil and element motes drawn inward (1 second; Meteor 2 seconds, which also glows in the sky). `SPELL_VISUALS` in `spellVfx.ts` sets each spell's projectile, impact, size, charge and flight time; `spellTiming(spell)` derives impact and finish times from it.
 
-A dodge briefly moves the wolf aside and displays “Dodged.” A hit shakes and flashes the wolf, displays damage, and updates its health bar. Reduced motion suppresses the projectile flight, shake, dodge displacement, and flash while retaining feedback text and a soft impact. A defeated wolf fades away and is removed from target selection and portrait order. After the last wolf is defeated and the final spell presentation finishes, a victory overlay says “Encounter won / The vale falls silent.” Combat controls are removed. Continue fades out the battlefield and opens the authored “Beyond the clearing” scene; it does not start another battle.
+- Fire: fireballs with a flame tail; Fire Lance is a stretched flame spear whose impact streaks through the wolf; Meteor falls from the sky and explodes with double fire rings.
+- Frost: a spinning icicle that locks onto its target; Frost Prison and Frost Nova use a six-point crystal cluster and erupt in a ring of ground spikes (on every wolf for Nova). Ice Shield sends crystals out to form the wall.
+- Storm: a crackling orb along a lightning channel; Chain Lightning arcs visibly from wolf to wolf, 160 ms per jump; Overcharge pulls lightning into the hand.
 
-The battleground stays above the square-cornered glass HUD. Keep the title introduction, portrait indicator, forest rain, slow entrance fades, and `Final Surge` music. Ground rings and particle shockwaves remain circles; rectangular UI controls and bars have no corner radius.
-
-### Reusable VFX layers
-
-`spellVfx.ts` provides `buildSpellVfx(spell, overrides)` and shared `SPELL_TIMING`. Profiles separate core/accent/trail/residue textures, highlight colors, trail count, orbit count, shard count, ring count, spread, and core scale. New recipes can tune those fields without duplicating the renderer. Fire uses flame/embers/smoke, Frost shards and rings, and Storm sparks with trace accents. Burst raises layer counts and spread.
-
-The renderer combines a casting sigil, travelling outer/inner cores, orbiting accents, a trailing particle stream, staggered impact rings, radial fragments, and lingering residue. Reduced motion retains only a soft impact ring. Gameplay timing is independent of texture loading.
+Each wolf hit gets its own impact: full size for the primary target and Frost Nova, smaller for splash and chain. Hits flash the wolf white, knock it back, shake the stage and show the damage with the effect name beneath. Reduced motion keeps only the soft impact flash and the feedback text, and freezes status animations.
 
 ## Diagnostic turn cycle
 
@@ -131,10 +151,10 @@ The full source files are preserved. `WolfMoveAnimation` removes edge-connected 
 
 ## Next steps
 
-1. Map real glove gestures to the existing element/form/target input API.
+1. Map real glove gestures to the `{ spellId, targetId }` input API.
 2. Tune spell costs, damage, dodge chances, and discrete stance transitions through playtesting.
 3. Decide how physical glove inputs should commit/end turns and eventually resolve incoming attacks against player defenses.
-4. Add physical defense reactions, additional spell forms/status effects, and network synchronization when specified.
+4. Add physical defense reactions and network synchronization when specified.
 
 ## Player injury and active status effects
 
@@ -146,7 +166,7 @@ The full source files are preserved. `WolfMoveAnimation` removes edge-connected 
 - Zero Health stops enemy processing and shows Encounter lost with Try again, which resets both stores. No automatic continuation after defeat.
 - Wolf clips play at 1.35× speed with impact tied to source timestamps. Approach/return take 0.55 seconds with 0.65-second lifecycle timers, and turn introductions wait 1.1 seconds.
 
-These values are provisional tuning defaults. Fire/Frost/Storm remain direct-damage spells; Roused and Bleeding are the currently implemented status effects.
+These values are provisional tuning defaults. Spell status effects (Burning, Chilled, Frozen, Drained, Ice Shield, Overcharged) are described under Element spells.
 
 ## Status presentation and low-health feedback
 

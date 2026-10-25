@@ -1,14 +1,16 @@
 import { useId, useState } from 'react';
-import { ChevronDown, ChevronUp, Droplet, Swords } from 'lucide-react';
+import { ChevronDown, ChevronUp, Droplet, Flame, Shield, Snowflake, Swords, ThermometerSnowflake, Zap, ZapOff } from 'lucide-react';
 import { STATUS_EFFECTS, type StatusEffect } from '../../combat/statusEffects';
 import './status-effects.css';
 
-const icons = { droplet: Droplet, swords: Swords };
+const icons = { droplet: Droplet, swords: Swords, flame: Flame, 'thermometer-snowflake': ThermometerSnowflake, snowflake: Snowflake, 'zap-off': ZapOff, shield: Shield, zap: Zap };
 export function StatusEffectIcon({ effect }: { effect: StatusEffect }) {
   const definition = STATUS_EFFECTS[effect.id], Icon = icons[definition.icon];
-  const description = `${definition.label}: ${definition.description} ${effect.remaining} turn${effect.remaining === 1 ? '' : 's'} remaining.`;
+  const strength = effect.id === 'shielded' ? ` ${effect.amount} points left.` : effect.id === 'burning' ? ` ${effect.amount} damage per turn.` : '';
+  const description = `${definition.label}: ${definition.description}${strength} ${effect.remaining} turn${effect.remaining === 1 ? '' : 's'} remaining.`;
   return <span className="status-effect-icon" tabIndex={0} role="img" aria-label={description} style={{ color: definition.color }}>
     <Icon size={20} aria-hidden="true" />
+    {effect.id === 'shielded' && <span className="status-effect-amount" aria-hidden="true">{effect.amount}</span>}
     <span className="status-effect-tooltip" aria-hidden="true">{description}</span>
   </span>;
 }
