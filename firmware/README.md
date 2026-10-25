@@ -92,3 +92,4 @@ choice is remembered for that tab. A game served from a LAN address picks the hu
 A page served over `https` cannot open a plain `ws://` socket (browsers block it), so use the dev server or an `http` page.
 Phone hotspots and some Wi-Fi networks isolate devices from each other; if the address does not answer, try another network.
 Each glove can be claimed by one player at a time, across laptops.
+The hub also relays the co-op boss fight between two game screens (`{type:'coop', to?, data}` messages), so two laptops need nothing else to play together; see `docs/combat.md`.

@@ -1,6 +1,8 @@
 import type { Spell, SpellId } from './spells';
 /** Where the caster's hand holds a spell, in stage percent: the first-person camera sits just below the stage. */
 export const HAND = { x: 50, y: 63 };
+/** A co-op partner casts from beside you, at the right edge of your screen. */
+export const PARTNER_HAND = { x: 90, y: 58 };
 /** Shared by the stage shake, the target's hit-stop and the impact burst so all three land on the same frame. */
 export const HIT_TIMING = { hitStop: .09, react: .55 };
 /**

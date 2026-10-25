@@ -1,0 +1,24 @@
+.coop-gather { position: absolute; z-index: 8; left: 50%; bottom: 10%; transform: translateX(-50%); width: min(620px, calc(100% - 32px)); box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 26px 28px; text-align: center;
+  background: #0b0f24d9; border: 1px solid #b393d8; color: #eee0ff; font-family: 'Pixelify Sans', monospace; box-shadow: 0 14px 40px #000a; }
+.coop-gather > p { margin: 0; text-transform: uppercase; letter-spacing: 5px; color: #bd91e8; font-size: 16px; }
+.coop-gather h2 { margin: 0; font-size: 34px; font-weight: 400; color: #f3e8ff; text-shadow: 0 3px 8px #000; }
+.coop-gather > span { color: #cfc4e4; font-size: 18px; line-height: 1.4; }
+.coop-gather button { margin-top: 6px; border: 1px solid #fff9; background: #dceafa20; padding: 10px 26px; font: 20px 'Pixelify Sans', monospace; color: #fff; cursor: pointer; }
+.coop-gather button:focus-visible { outline: 2px solid #bd91e8; outline-offset: 4px; }
+.coop-gather-pulse { width: 14px; height: 14px; border-radius: 50%; background: #bd91e8; animation: coop-pulse 1.4s ease-in-out infinite; }
+@keyframes coop-pulse { 0%, 100% { opacity: .3; transform: scale(.7); } 50% { opacity: 1; transform: scale(1.2); box-shadow: 0 0 14px #bd91e8; } }
+
+.coop-partner { position: absolute; z-index: 6; top: 24px; right: 24px; width: 220px; box-sizing: border-box; padding: 10px 14px 12px;
+  border: 1px solid #ffffff80; background: #0d2029cc; color: #f6faff; font-family: 'Pixelify Sans', monospace; display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; }
+.coop-partner[data-active='true'] { border-color: #9de4b2; box-shadow: 0 0 12px #55ec8b66; }
+.coop-partner[data-away='true'] { opacity: .55; filter: grayscale(.8); }
+.coop-partner strong { font-weight: 400; font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coop-partner-state { font-size: 14px; color: #c3d3dd; }
+.coop-partner[data-active='true'] .coop-partner-state { color: #9de4b2; }
+.coop-partner-bar { grid-column: 1 / -1; position: relative; height: 12px; background: #ffffff1f; border: 1px solid #ffffff40; }
+.coop-partner-bar span { position: absolute; inset: 0 auto 0 0; transition: width .4s ease-out; }
+.coop-partner-bar.health span { background: #d6455f; }
+.coop-partner-bar.magic span { background: #4f8ff0; }
+.coop-partner-bar b { position: absolute; right: 4px; top: -3px; font-size: 12px; font-weight: 400; }
+@media (prefers-reduced-motion: reduce) { .coop-gather-pulse { animation: none; } .coop-partner-bar span { transition: none; } }

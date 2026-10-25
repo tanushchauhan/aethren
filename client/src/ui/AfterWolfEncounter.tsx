@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { useLandingSound } from './useLandingSound';
 import { ScornFlames } from './components/ScornFlames';
@@ -7,12 +7,14 @@ import { RainOverlay } from './components/RainOverlay';
 import { VisualNovelDialogue } from './components/VisualNovelDialogue';
 import { WolfMoveAnimation } from './components/WolfMoveAnimation';
 import { WolfCombatStage } from './WolfCombatStage';
+import { CoopGather } from './components/CoopGather';
 import { moves, knight } from '../combat/encounter';
-import { playerStore } from '../combat/playerState';
+import { resetHeroes, playerStore } from '../combat/playerState';
+import { leaveCoop, startCoopBattle } from '../net/coopLink';
 import { useSpellBattle } from '../combat/spellBattle';
 import './boss-journey.css';
 
-type Stage = 'escape' | 'castle' | 'descent' | 'warning' | 'battle' | 'ending';
+type Stage = 'escape' | 'castle' | 'descent' | 'warning' | 'gather' | 'battle' | 'ending';
 export function AfterWolfEncounter({ muted, onToggleSound }: { muted: boolean; onToggleSound: () => void }) {
   const [stage, setStage] = useState<Stage>('escape');
   const [landed, setLanded] = useState(false);
@@ -24,12 +26,17 @@ export function AfterWolfEncounter({ muted, onToggleSound }: { muted: boolean; o
     landingPlayed.current = true; setLanded(true); impactSound.play();
   };
   const beginBattle = () => {
-    playerStore.getState().reset();
+    leaveCoop();
+    resetHeroes();
     playerStore.getState().setMagicPower(12);
-    useSpellBattle.getState().reset('knight');
+    useSpellBattle.getState().reset('knight', false);
     setStage('battle');
   };
-  if (stage === 'battle') return <WolfCombatStage key="knight" muted={muted} onToggleSound={onToggleSound} onContinue={() => setStage('ending')} />;
+  // Both screens meet at the gate; the fight starts once a partner is found, or alone on request.
+  const beginCoopBattle = () => { startCoopBattle(); setStage('battle'); };
+  useEffect(() => () => leaveCoop(), []);
+  if (stage === 'battle') return <WolfCombatStage key="knight" muted={muted} onToggleSound={onToggleSound} onFightAlone={beginBattle}
+    onContinue={() => { leaveCoop(); setStage('ending'); }} />;
   const escape = stage === 'escape';
   return <motion.main className="wolf-combat-stage boss-journey" aria-label={escape ? 'Escape through the forest' : stage === 'ending' ? 'Demo complete' : 'The deserted castle'}
     initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: reduced ? .1 : .8 }}>
@@ -56,10 +63,14 @@ export function AfterWolfEncounter({ muted, onToggleSound }: { muted: boolean; o
     </>}
     {stage === 'warning' && <>
       <div className="boss-waiting"><ScornFlames reduced={!!reduced} /><img style={{ position: 'relative', width: '100%', height: '100%', objectFit: 'contain' }} src={knight.sprite} alt="The huge ruined knight bars the gate with his corrupted axe" /></div>
-      <VisualNovelDialogue key="warning" muted={muted} onComplete={beginBattle} lines={[
+      <VisualNovelDialogue key="warning" muted={muted} onComplete={() => setStage('gather')} lines={[
         { speaker: 'The Ruined Gatekeeper', color: '#bd91e8', voicePitch: .6, text: '**No one enters.**' },
         { speaker: 'The Scorn', color: '#bd91e8', text: 'Rust groans. The axe drinks the moonlight. His armor will endure—but even this guardian must rest. Your health, stance, and Magic Power are restored. Prepare yourself.' },
       ]} />
+    </>}
+    {stage === 'gather' && <>
+      <div className="boss-waiting"><ScornFlames reduced={!!reduced} /><img style={{ position: 'relative', width: '100%', height: '100%', objectFit: 'contain' }} src={knight.sprite} alt="The ruined knight waits at the gate" /></div>
+      <CoopGather onPaired={beginCoopBattle} onAlone={beginBattle} />
     </>}
     {stage === 'ending' && <section className="encounter-victory" aria-labelledby="demo-end-title">
       <p>Demo complete</p><h2 id="demo-end-title">Beyond the ruined gate</h2><span>The axe falls silent. For the first time, the kingdom lets you pass.</span>

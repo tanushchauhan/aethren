@@ -29,7 +29,8 @@ export const definition = (id: string) => combatants.find(actor => actor.id === 
 export type OpponentStatus = StatusEffect<'roused' | 'burning' | 'chilled' | 'frozen' | 'drained'> & { source: string; appliedAction: number };
 /** Player spells are not opponent actions, so their effects start ticking on the target's very next turn. */
 export const PLAYER_ACTION = -1;
-export type ActorState = { hp: number; energy: number; cooldowns: Partial<Record<MoveId, number>>; statuses: OpponentStatus[]; turns: number; defeated: boolean };
+/** `maxHp` overrides the roster's when an encounter is scaled, as the knight is for two heroes. */
+export type ActorState = { hp: number; maxHp?: number; energy: number; cooldowns: Partial<Record<MoveId, number>>; statuses: OpponentStatus[]; turns: number; defeated: boolean };
 export type PendingMove = { id: number; actorId: string; moveId: MoveId; phase: 'approaching' | 'playing' | 'returning'; resolved: boolean };
 export type AttackEvent = { actionId: number; source: string; target: string; damage: number; stanceDamage: number; type: 'standard' | 'grab' | 'scorn' | 'eclipse' | 'inferno' };
 export type EncounterState = {

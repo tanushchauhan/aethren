@@ -282,6 +282,22 @@ function reply(socket: Socket, message: unknown): void {
   socket.write(encodeWs(JSON.stringify(message)));
 }
 
+/**
+ * Co-op relay: two game screens on this hub share a boss fight without any other server.
+ * `{type:'coop', to?, data}` goes to that one connection, or to every other connection without `to`,
+ * arriving as `{type:'coop', from, data}`.
+ */
+function relayCoop(socket: Socket, message: Record<string, unknown>): void {
+  const from = clientIds.get(socket);
+  if (!from || message.data === undefined) return;
+  const frame = encodeWs(JSON.stringify({ type: 'coop', from, data: message.data }));
+  for (const client of clients) {
+    if (client === socket) continue;
+    if (typeof message.to === 'string' && clientIds.get(client) !== message.to) continue;
+    client.write(frame);
+  }
+}
+
 function handleClientMessage(socket: Socket, text: string): void {
   let message: Record<string, unknown>;
   try {
@@ -289,6 +305,7 @@ function handleClientMessage(socket: Socket, text: string): void {
   } catch {
     return;
   }
+  if (message.type === 'coop') return relayCoop(socket, message);
   if (typeof message.id !== 'number') return;
   const me = clientIds.get(socket);
   if (message.type === 'claim') {
@@ -351,7 +368,8 @@ server.on('upgrade', (req, socket: Socket) => {
     }
   });
   const drop = () => {
-    clients.delete(socket);
+    // Tells a co-op partner straight away instead of leaving them waiting on a silent screen.
+    if (clients.delete(socket)) broadcast({ type: 'coop-left', from: clientId });
     for (const [gloveId, owner] of [...owners]) {
       if (owner !== clientId) continue;
       owners.delete(gloveId);

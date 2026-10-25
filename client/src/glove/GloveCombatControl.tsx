@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { create } from 'zustand';
 import { useReducedMotion } from 'motion/react';
 import type { BuzzPattern } from '@once-upon/shared';
-import { playerStore, usePlayerState } from '../combat/playerState';
+import { heroStore, isHero, useLocalHero, usePlayerState } from '../combat/playerState';
+import { useCoop } from '../net/coopLink';
 import { useSpellBattle } from '../combat/spellBattle';
 import { useWolfTutorial } from '../combat/wolfTutorial';
 import { combatants } from '../combat/encounter';
@@ -57,6 +58,8 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   const glove = session?.glove ?? null;
   const setCombatControl = useGloveMode((s) => s.setCombatControl);
   const battle = useSpellBattle();
+  // On a co-op guest's screen this glove plays the ally; everywhere else it plays `player`.
+  const me = useLocalHero();
   const magic = usePlayerState((s) => s.magicPower);
   const maxMagic = usePlayerState((s) => s.maxMagicPower);
   const [slot, setSlot] = useState(0);
@@ -79,9 +82,9 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   const target = wolves[targetIndex % Math.max(1, wolves.length)];
   const spell = SPELLS[WHEEL[slot]!];
   const element = spell.element;
-  const myTurn = live && battle.activeId === 'player' && !battle.pending;
+  const myTurn = live && battle.activeId === me && !battle.pending;
   const lessonOpen = useWolfTutorial((s) => s.activeStep !== null);
-  const attacking = live && !!battle.enemyTurn && battle.activeId !== 'player';
+  const attacking = live && !!battle.enemyTurn && !isHero(battle.activeId);
   const boss = battle.encounterId === 'knight';
 
   // The glove's buzzer confirms what the hand just did: a tick per selection step, a rising chirp
@@ -101,7 +104,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   };
   const cast = (source: 'glove' | 'diagnostic', powerBoost?: number) => {
     const state = useSpellBattle.getState();
-    if (state.status !== 'active' || state.activeId !== 'player' || state.pending) return;
+    if (state.status !== 'active' || state.activeId !== me || state.pending) return;
     const chosen = SPELLS[WHEEL[slotRef.current ?? slot]!];
     const ok = state.castSpell(
       chosen.target === 'self' ? { spellId: chosen.id } : { spellId: chosen.id, targetId: target?.id },
@@ -114,7 +117,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   };
   const rest = () => {
     const state = useSpellBattle.getState();
-    if (state.status === 'active' && state.activeId === 'player' && !state.pending) state.rest();
+    if (state.status === 'active' && state.activeId === me && !state.pending) state.rest();
   };
   const cycleTarget = (withBuzz = false) => {
     setTargetIndex((index) => (index + 1) % Math.max(1, wolves.length));
@@ -128,27 +131,27 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   /** Dodge and parry only mean something while a wolf is attacking; a dodge is never downgraded to a parry. */
   const defend = (mode: 'dodge' | 'parry', label: string, ms: number) => {
     const state = useSpellBattle.getState();
-    if (state.status !== 'active' || !state.enemyTurn || state.activeId === 'player') return;
-    const now = Date.now();
-    if (mode === 'parry' && state.playerDefense?.mode === 'dodge' && state.playerDefense.untilMs > now) return;
+    if (state.status !== 'active' || !state.enemyTurn || isHero(state.activeId)) return;
+    const now = Date.now(), held = me === 'ally' ? state.allyDefense : state.playerDefense;
+    if (mode === 'parry' && held?.mode === 'dodge' && held.untilMs > now) return;
     if (lastDefense.current.mode === mode && now - lastDefense.current.at < RESEND_DEFENSE_MS) return;
     lastDefense.current = { mode, at: now };
     state.triggerDefense(mode, label, ms);
-    if (mode === 'parry') playerStore.getState().setStance('guarding');
+    if (mode === 'parry') heroStore(me).getState().setStance('guarding');
     useWolfTutorial.getState().notifyAction('parry');
     setFlash({ id: ++flashId.current, mode });
   };
   const swung = (power: number) => {
     const state = useSpellBattle.getState();
     if (state.status !== 'active') return;
-    if (state.enemyTurn && state.activeId !== 'player') defend('parry', 'Glove Ward', 1600);
-    else if (state.activeId === 'player' && !state.pending && performance.now() >= armedAt.current) cast('glove', power);
+    if (state.enemyTurn && !isHero(state.activeId)) defend('parry', 'Glove Ward', 1600);
+    else if (state.activeId === me && !state.pending && performance.now() >= armedAt.current) cast('glove', power);
   };
   const onGlove = (event: GloveInputEvent) => {
     const state = useSpellBattle.getState();
     if (state.status !== 'active') return;
-    const enemyTurn = !!state.enemyTurn && state.activeId !== 'player';
-    const mine = state.activeId === 'player' && !state.pending;
+    const enemyTurn = !!state.enemyTurn && !isHero(state.activeId);
+    const mine = state.activeId === me && !state.pending;
     if (event.type === 'gesture') swung(event.power);
     else if (event.type === 'dial') moveTo(dialSlot(event.value, SLOTS, slotRef.current), true);
     else if (event.type === 'down' && event.button === 'B2') {
@@ -170,7 +173,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
     if (el?.closest('input, select, textarea, [contenteditable]')) return;
     const onButton = Boolean(el?.closest('button, a'));
     const state = useSpellBattle.getState();
-    const enemyTurn = !!state.enemyTurn && state.activeId !== 'player';
+    const enemyTurn = !!state.enemyTurn && !isHero(state.activeId);
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     if (key === 'ArrowLeft' || key === 'ArrowRight') {
       moveTo((slotRef.current ?? slot) + (key === 'ArrowRight' ? 1 : -1));
@@ -219,23 +222,24 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   useEffect(() => {
     const was = previousActive.current;
     previousActive.current = battle.activeId;
-    if (!live || battle.activeId !== 'player' || was === 'player') return;
+    if (!live || battle.activeId !== me || was === me) return;
     buzzRef.current('tick');
     const second = window.setTimeout(() => buzzRef.current('tick'), 140);
     return () => window.clearTimeout(second);
-  }, [battle.activeId, live]);
+  }, [battle.activeId, live, me]);
 
   // Chirp when the charged spell is released, and fizzle if every target it reached dodged.
   const reduced = useReducedMotion();
   const pending = battle.pending;
   useEffect(() => {
-    if (!pending) return;
+    // Only your own spells chirp; your partner's play on their glove.
+    if (!pending || pending.casterId !== me) return;
     const timer = window.setTimeout(() => buzzRef.current('cast'), spellTiming(pending.spell, !!reduced).chargeMs);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending?.id]);
   useEffect(() => {
-    if (!pending?.resolved) return;
+    if (!pending?.resolved || pending.casterId !== me) return;
     const hits = useSpellBattle.getState().feedback.filter((hit) => hit.castId === pending.id);
     if (hits.length && hits.every((hit) => hit.kind === 'dodge')) buzzRef.current('fizzle');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -250,6 +254,10 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
     if (hurt.kind === 'blocked') buzzRef.current('tick');
     else if (hurt.kind === 'slash' || hurt.impact === 'axe') buzzRef.current('hit');
   }, [hurt?.id]);
+
+  // The co-op host turned down a move this screen sent (it arrived too late, or the hero cannot cast).
+  const rejected = useCoop((s) => s.rejected?.id);
+  useEffect(() => { if (rejected) buzzRef.current('fizzle'); }, [rejected]);
 
   useEffect(() => { if (myTurn) armedAt.current = performance.now() + ARM_DELAY_MS; }, [myTurn]);
   useEffect(() => {
@@ -345,7 +353,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       {parrying && !dodging && <strong className="defense-flash" data-mode="parry">◆ PARRYING (GLOVE WARD)!</strong>}
       {attacking
         ? <p className="defense-prompt">◆ {boss ? 'GATEKEEPER ATTACKING!' : 'WOLF ATTACKING!'} Shake Glove or Press <kbd>T</kbd> / <kbd>B2</kbd> to PARRY!</p>
-        : <p className="defense-prompt" data-calm="true">{battle.pending ? `✦ Casting ${battle.pending.spell.name}…` : battle.activeId === 'player' ? 'Your turn…' : boss ? 'The Gatekeeper raises his axe…' : 'The wolves are moving…'}</p>}
+        : <p className="defense-prompt" data-calm="true">{battle.pending ? `✦ Casting ${battle.pending.spell.name}…` : battle.activeId === me ? 'Your turn…' : isHero(battle.activeId) ? `${battle.heroNames[battle.activeId]}’s turn…` : boss ? 'The Gatekeeper raises his axe…' : 'The wolves are moving…'}</p>}
       <small className="defense-meta">Turn {battle.turnNumber} · MP {magic}/{maxMagic}</small>
     </section>
   </aside>;

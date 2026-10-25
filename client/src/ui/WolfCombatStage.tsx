@@ -4,11 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, useAnimate, useReducedMotion } from 'motion/react';
 import { combatants, isRoused, moves } from '../combat/encounter';
 import { useSpellBattle } from '../combat/spellBattle';
-import { playerStore, usePlayerState } from '../combat/playerState';
+import { isHero, playerStore, resetHeroes, useLocalHero, usePlayerState, type HeroId } from '../combat/playerState';
+import { CoopPartnerCard } from './components/CoopGather';
+import { useCoop } from '../net/coopLink';
 import { lowHealthIntensity } from '../combat/statusEffects';
 import { StatusEffectIcon } from './components/StatusEffects';
 import { playCastSound, playImpactSound } from '../combat/spellSound';
-import { buildSpellVfx, HIT_TIMING, spellTiming } from '../combat/spellVfx';
+import { buildSpellVfx, HAND, HIT_TIMING, PARTNER_HAND, spellTiming } from '../combat/spellVfx';
 import { SPELLS } from '../combat/spells';
 import { PlayerWards, WolfStatusAura } from './components/StatusAuras';
 import { WolfMoveAnimation } from './components/WolfMoveAnimation';
@@ -24,7 +26,21 @@ import { RainOverlay } from './components/RainOverlay';
 import './wolf-combat-stage.css';
 import { useBattleMusic } from './useBattleMusic';
 
-export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: boolean; onToggleSound: () => void; onContinue: () => void }) {
+/** Turn-order portraits for the heroes, who are not in the roster the way the opponents are. */
+const HERO_SPRITES: Record<HeroId, string> = { player: '/art/spellbearer-male.png', ally: '/art/spellbearer-female.png' };
+
+export function WolfCombatStage({ muted, onToggleSound, onContinue, onFightAlone }: { muted: boolean; onToggleSound: () => void; onContinue: () => void; onFightAlone?: () => void }) {
+  const me = useLocalHero();
+  const coop = useSpellBattle(state => state.coop);
+  const allyAway = useSpellBattle(state => state.allyAway);
+  const heroNames = useSpellBattle(state => state.heroNames);
+  const coopLink = useCoop();
+  const partner: HeroId = me === 'player' ? 'ally' : 'player';
+  const partnerHealth = usePlayerState(state => state.health, partner);
+  const partnerMaxHealth = usePlayerState(state => state.maxHealth, partner);
+  const partnerMagic = usePlayerState(state => state.magicPower, partner);
+  const partnerMaxMagic = usePlayerState(state => state.maxMagicPower, partner);
+  const guest = coop && coopLink.role === 'guest';
   const { opponents, pending, feedback, activeId, turnNumber, enemyTurn, status, encounterId, fieldTurns, message } = useSpellBattle();
   useFieldFlamesSound(fieldTurns > 0 && status === 'active', muted);
   const boss = encounterId === 'knight';
@@ -80,6 +96,10 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
       return () => clearTimeout(timer);
     }
   }, [activeId, enemyMove?.id, enemyMove?.phase, reduced, status]);
+  // In co-op the engine's single `player` slot stands for both heroes, whoever acts first leading.
+  const turnOrder = (queue: string[]) => queue.flatMap(id => id !== 'player' || !coop ? [id] : activeId === 'ally' ? ['ally'] : ['player', 'ally'])
+    .concat(coop && activeId === 'ally' ? ['player'] : [])
+    .map(id => isHero(id) ? { id, name: coop ? heroNames[id] : 'You', side: 'player', kind: 'player', sprite: HERO_SPRITES[id] } : combatants.find(actor => actor.id === id)!);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { heading.current?.focus(); }, []);
   useEffect(() => {
@@ -105,7 +125,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
     {status === 'active' && <motion.header key={turnNumber} className="wolf-combat-heading turn-announcement" role="status"
       initial={{ opacity: 0 }} animate={{ opacity: [0, 1, 1, 0] }}
       transition={{ delay: turnNumber === 1 ? 6.2 : 0, duration: reduced ? 1.4 : 2.5, times: [0, .12, .75, 1] }}>
-      <p>Turn {turnNumber}</p><h2>{activeId === 'player' ? 'Your turn' : `${combatants.find(actor => actor.id === activeId)?.name}’s turn`}</h2>
+      <p>Turn {turnNumber}</p><h2>{activeId === me ? 'Your turn' : isHero(activeId) ? `${heroNames[activeId]}’s turn` : `${combatants.find(actor => actor.id === activeId)?.name}’s turn`}</h2>
     </motion.header>}
     <div className="wolf-formation" role="group" aria-label={boss ? 'The Ruined Gatekeeper' : 'Three wolf combatants'}>
       {combatants.filter(actor => actor.side === 'enemy' && opponents[actor.id]).map((wolf, i) => {
@@ -126,7 +146,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
               : { duration: reduced ? .1 : .28 }} className={`wolf-combatant ${wolf.kind}${activeId === wolf.id ? ' is-active' : ''}${isRoused(stats) ? ' is-roused' : ''}`}>
             {boss && !stats.defeated && <ScornFlames reduced={!!reduced} />}
             <div className="wolf-bars">
-              {[{ id: 'health', value: stats.hp, max: wolf.maxHp }, { id: 'energy', value: stats.energy, max: wolf.maxEnergy }].map(stat =>
+              {[{ id: 'health', value: stats.hp, max: stats.maxHp ?? wolf.maxHp }, { id: 'energy', value: stats.energy, max: wolf.maxEnergy }].map(stat =>
                 <div className={`wolf-stat-bar ${stat.id}`} key={stat.id}>
                   <div className="wolf-stat-track" role="progressbar" aria-label={`${wolf.name} ${stat.id}`}
                     aria-valuemin={0} aria-valuemax={stat.max} aria-valuenow={stat.value}>
@@ -158,7 +178,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
       })}
     </div>
     <RainOverlay />
-    {pending && <SpellEffect key={pending.id} cast={pending} hits={castHits} reduced={!!reduced} />}
+    {pending && <SpellEffect key={pending.id} cast={pending} hits={castHits} reduced={!!reduced} own={pending.casterId === me} hand={pending.casterId === me ? HAND : PARTNER_HAND} />}
     <PlayerWards reduced={!!reduced} />
     {boss && <BossAtmosphere />}
     {boss && enemyMove?.moveId === 'scorn-inferno' && <div className="scorn-ultimate-charge" aria-hidden="true" />}
@@ -183,13 +203,14 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
       {defended.kind === 'dodged' ? 'DODGED!' : 'PARRIED!'}
     </motion.div>}
     {status === 'lost' && <section className="encounter-victory" role="alert">
-      <p>Encounter lost</p><h2>{boss ? 'The gate remains sealed' : 'The vale claims another'}</h2><span>Your health has fallen to zero.</span>
-      <button autoFocus data-glove-b1="Retry" onClick={() => { playerStore.getState().reset(); useSpellBattle.getState().reset(); }}>Try again <kbd className="glove-key">B1</kbd></button>
+      <p>Encounter lost</p><h2>{boss ? 'The gate remains sealed' : 'The vale claims another'}</h2><span>{coop ? 'Both heroes have fallen.' : 'Your health has fallen to zero.'}</span>
+      {guest ? <span>Waiting for {heroNames.player} to try again…</span>
+        : <button autoFocus data-glove-b1="Retry" onClick={() => { if (coop) resetHeroes(); else playerStore.getState().reset(); useSpellBattle.getState().reset(); }}>Try again <kbd className="glove-key">B1</kbd></button>}
     </section>}
     {fieldTurns > 0 && status === 'active' && <div className="scorn-field-label" role="status">Scorn Inferno · {fieldTurns} turns</div>}
     <aside className="combat-queue" aria-label="Turn order">
       <ol>
-        {(enemyTurn?.queue ?? ['player', ...combatants.filter(actor => actor.side === 'enemy' && opponents[actor.id] && !opponents[actor.id].defeated).map(actor => actor.id)]).map(id => combatants.find(actor => actor.id === id)!).map((actor, index) => <li key={actor.id}
+        {turnOrder(enemyTurn?.queue ?? ['player', ...combatants.filter(actor => actor.side === 'enemy' && opponents[actor.id] && !opponents[actor.id].defeated).map(actor => actor.id)]).map((actor, index) => <li key={actor.id}
           className={actor.id === activeId ? 'is-current' : ''} aria-current={index === 0 ? 'step' : undefined}
           aria-label={`${actor.name}, ${index === 0 ? 'ready' : `position ${index + 1}`}`} title={actor.name}>
           <span className={`queue-portrait ${actor.side} ${actor.kind}`}><img src={actor.sprite} alt="" /></span>
@@ -197,6 +218,12 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
       </ol>
     </aside>
     {status === 'active' && <PlayerStatusPanel />}
+    {coop && status === 'active' && <CoopPartnerCard name={heroNames[partner]} health={partnerHealth} maxHealth={partnerMaxHealth} magic={partnerMagic} maxMagic={partnerMaxMagic}
+      active={activeId === partner} away={partner === 'ally' ? allyAway : coopLink.status === 'partner-left'} />}
+    {guest && coopLink.status === 'partner-left' && status === 'active' && <section className="encounter-victory" role="alert">
+      <p>Co-op</p><h2>{heroNames.player} disconnected</h2><span>Their screen was running this fight, so it cannot go on without them.</span>
+      <button autoFocus data-glove-b1="Alone" onClick={onFightAlone}>Fight alone <kbd className="glove-key">B1</kbd></button>
+    </section>}
     <GloveCombatControl />
     {status === 'active' && <CombatCamera />}
     {status === 'active' && !boss && <CombatTutorialOverlay />}

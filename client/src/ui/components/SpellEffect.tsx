@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import type { Cast, HitFeedback } from '../../combat/spellBattle';
 import type { SpellElement } from '../../combat/spells';
@@ -6,6 +6,8 @@ import { buildSpellVfx, CHAIN_STEP_MS, HAND, SPELL_VISUALS, spellTiming, type Sp
 import './spell-effect.css';
 
 type Point = { x: number; y: number };
+/** Where the caster's hand is: yours, or your co-op partner's at the edge of the screen. */
+const HandPoint = createContext<Point>(HAND);
 /** `big` picks the large impact; `size` scales the projectile; `cluster` is a six-point crystal rather than one icicle. */
 type Visual = { fx: SpellVfxProfile; big: boolean; size: number; cluster: boolean; angle: number; random: () => number; id: number };
 type ProjectileProps = Visual & { charge: number; released: boolean };
@@ -40,6 +42,7 @@ function IceShard({ id, size = 1, style }: { id: number; size?: number; style?: 
 
 /** The spell forming in the caster's hand: a pulsing aura, a turning sigil and element motes drawn inward. */
 function HandCharge({ element, charge, released, random }: { element: SpellElement; charge: number; released: boolean; random: () => number }) {
+  const HAND = useContext(HandPoint);
   const motes = useMemo(() => Array.from({ length: 14 }, (_, i) => ({ angle: i / 14 * Math.PI * 2 + random() * .4, radius: 95 + random() * 45, delay: random() * .5 })), [random]);
   return <motion.div className="hand-charge" style={{ left: `${HAND.x}%`, top: `${HAND.y}%` }}
     initial={{ opacity: 0, scale: .4 }} animate={{ opacity: released ? 0 : 1, scale: released ? 1.3 : 1 }} transition={{ duration: released ? .12 : charge * .6 }}>
@@ -197,6 +200,7 @@ function ShieldForm({ travel, id }: { travel: number; id: number }) {
 
 /** Overcharge: lightning is pulled out of the air and coils into the hand. */
 function OverchargeForm({ travel, random }: { travel: number; random: () => number }) {
+  const HAND = useContext(HandPoint);
   const arcs = useMemo(() => Array.from({ length: 5 }, (_, i) => {
     const angle = i / 5 * Math.PI * 2 + random() * .6;
     return jag({ x: HAND.x + Math.cos(angle) * 16, y: HAND.y + Math.sin(angle) * 22 }, HAND, 7, 1.6, random);
@@ -223,7 +227,9 @@ const projectiles = { fireball: FireProjectile, meteor: FireProjectile, lance: L
 const impacts = { fire: FireImpact, frost: FrostImpact, storm: StormImpact, none: null };
 
 /** `hits` are this cast's landed and dodged targets, primary first; self spells have none. */
-export function SpellEffect({ cast, hits, reduced }: { cast: Cast; hits: HitFeedback[]; reduced: boolean }) {
+/** `hand` is where the spell leaves from; a partner's (`own` false) self spells take shape at their side, not in front of you. */
+export function SpellEffect({ cast, hits, reduced, hand = HAND, own = true }: { cast: Cast; hits: HitFeedback[]; reduced: boolean; hand?: Point; own?: boolean }) {
+  const HAND = hand;
   const root = useRef<HTMLDivElement>(null);
   const [stage, setStage] = useState<{ points: Record<string, Point>; width: number; height: number }>({ points: {}, width: 1000, height: 600 });
   const spell = cast.spell, look = SPELL_VISUALS[spell.id];
@@ -259,13 +265,13 @@ export function SpellEffect({ cast, hits, reduced }: { cast: Cast; hits: HitFeed
   const charge = timing.chargeMs / 1000, travel = timing.travelMs / 1000;
   const Projectile = projectiles[look.projectile], Impact = impacts[look.impact], element = spell.element;
   const struck = hits.some(hit => hit.kind === 'hurt');
-  return <div ref={root} className={`spell-effect spell-${element} spell-${spell.id}${cast.power > 1 ? ' is-overcharged' : ''}`} style={palette} aria-hidden="true">
+  return <HandPoint.Provider value={hand}><div ref={root} className={`spell-effect spell-${element} spell-${spell.id}${cast.power > 1 ? ' is-overcharged' : ''}`} style={palette} aria-hidden="true">
     {!reduced && !cast.resolved && <>
       <HandCharge element={element} charge={charge} released={released} random={random} />
       {released && <motion.span className="hand-release" style={{ left: `${HAND.x}%`, top: `${HAND.y}%` }} initial={{ scale: .4, opacity: 1 }} animate={{ scale: 2, opacity: 0 }} transition={{ duration: .3 }} />}
       {look.projectile === 'meteor' && <motion.span className="meteor-sky-glow" style={{ left: `${from.x}%`, top: `${from.y}%` }} initial={{ opacity: 0, scale: .3 }} animate={{ opacity: released ? 0 : 1, scale: 1 }} transition={{ duration: released ? .2 : charge }} />}
       {released && Projectile && element !== 'storm' && <PathTrail element={element} from={from} point={point} travel={travel} count={fx.trail} />}
-      {released && look.self === 'shield' && <ShieldForm travel={travel} id={cast.id} />}
+      {released && own && look.self === 'shield' && <ShieldForm travel={travel} id={cast.id} />}
       {released && look.self === 'overcharge' && <OverchargeForm travel={travel} random={random} />}
       {Projectile && <motion.div className="spell-travel-core" initial={{ left: `${from.x}%`, top: `${from.y}%` }}
         animate={released ? { left: `${point.x}%`, top: `${point.y}%` } : undefined} transition={{ duration: travel, ease: [.45, 0, .9, .55] }}>
@@ -295,5 +301,5 @@ export function SpellEffect({ cast, hits, reduced }: { cast: Cast; hits: HitFeed
         </div>
       </Delayed>;
     })}
-  </div>;
+  </div></HandPoint.Provider>;
 }

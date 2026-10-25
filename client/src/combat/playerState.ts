@@ -50,8 +50,8 @@ const statsSnapshot = (state: PlayerStats): PlayerStats => ({ health: state.heal
 export const stanceFromValue = (value: number): PlayerStance => value >= 60 ? 'balanced' : value >= 30 ? 'shaken' : 'staggered';
 let hurtId = 0;
 
-/** One observable client-side state shared by the HUD, diagnostics, and future glove adapters. */
-export const playerStore = createStore<PlayerState>((set, get) => ({
+/** One hero's observable state, shared by the HUD, diagnostics and glove adapters. */
+export const createPlayerStore = () => createStore<PlayerState>((set, get) => ({
   ...INITIAL_PLAYER_STATS, statuses: [], hurt: null, attackRequestCount: 0, lastAttackRequest: null,
   setHealth(value) { if (Number.isFinite(value)) set({ health: Math.max(0, Math.min(get().maxHealth, value)) }); },
   setMagicPower(value) { if (Number.isFinite(value)) set({ magicPower: Math.max(0, Math.min(get().maxMagicPower, value)) }); },
@@ -114,6 +114,21 @@ export const playerStore = createStore<PlayerState>((set, get) => ({
   },
   reset() { set({ ...INITIAL_PLAYER_STATS, statuses: [], hurt: null, attackRequestCount: 0, lastAttackRequest: null }); },
 }));
-export function usePlayerState<T>(selector: (state: PlayerState) => T): T {
-  return useStore(playerStore, selector);
+/** `player` is you in a solo fight and the host in co-op; `ally` is the co-op partner who joins for the boss. */
+export type HeroId = 'player' | 'ally';
+export const HEROES: readonly HeroId[] = ['player', 'ally'];
+export const playerStore = createPlayerStore();
+export const allyStore = createPlayerStore();
+export const heroStore = (id: HeroId) => id === 'ally' ? allyStore : playerStore;
+export const isHero = (id: string): id is HeroId => id === 'player' || id === 'ally';
+export function resetHeroes() { for (const id of HEROES) heroStore(id).getState().reset(); }
+
+/** Which hero this screen plays: the co-op guest's screen shows the ally as "you". */
+export const localHeroStore = createStore<{ hero: HeroId }>(() => ({ hero: 'player' }));
+export const useLocalHero = () => useStore(localHeroStore, state => state.hero);
+
+/** Reads a hero's state; without an id, the hero this screen plays. */
+export function usePlayerState<T>(selector: (state: PlayerState) => T, heroId?: HeroId): T {
+  const local = useLocalHero();
+  return useStore(heroStore(heroId ?? local), selector);
 }
