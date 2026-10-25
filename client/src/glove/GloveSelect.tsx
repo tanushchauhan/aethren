@@ -48,7 +48,7 @@ export function GloveSelect({ lostGlove = false, onBypass }: { lostGlove?: boole
       <h1 id="glove-select-title">{lostGlove ? 'Your glove disconnected' : 'Choose your glove'}</h1>
       <p className="glove-lede">
         Once in a Memory is played with the enchanted glove. Pick up a glove and press
-        {' '}<kbd>{CONTROL_LABELS.touch}</kbd>, <kbd>{CONTROL_LABELS.button1}</kbd> or <kbd>{CONTROL_LABELS.button2}</kbd> to claim it.
+        {' '}<kbd className="glove-key">{CONTROL_LABELS.touch}</kbd>, <kbd className="glove-key">{CONTROL_LABELS.button1}</kbd> or <kbd className="glove-key">{CONTROL_LABELS.button2}</kbd> to claim it.
       </p>
 
       {hubDown && <p className="glove-alert" role="alert">
@@ -86,10 +86,11 @@ export function GloveSelect({ lostGlove = false, onBypass }: { lostGlove?: boole
       </p>}
 
       <footer className="glove-legend" aria-label="Glove controls">
-        <span><kbd>{CONTROL_LABELS.touch}</kbd> touch sensor</span>
-        <span><kbd>{CONTROL_LABELS.button1}</kbd> button 1</span>
-        <span><kbd>{CONTROL_LABELS.button2}</kbd> button 2</span>
-        <span><kbd>{CONTROL_LABELS.dial}</kbd> turn to choose</span>
+        <span><kbd className="glove-key">{CONTROL_LABELS.touch}</kbd> touch sensor</span>
+        <span><kbd className="glove-key">{CONTROL_LABELS.button1}</kbd> button 1</span>
+        <span><kbd className="glove-key">{CONTROL_LABELS.button2}</kbd> button 2</span>
+        <span><kbd className="glove-key">{CONTROL_LABELS.dial} ⟳</kbd> turn to choose</span>
+        <span><kbd className="glove-key">Hold {CONTROL_LABELS.button2}</kbd> skip dialogue</span>
       </footer>
 
       {onBypass && <button type="button" className="glove-bypass" onClick={onBypass}>

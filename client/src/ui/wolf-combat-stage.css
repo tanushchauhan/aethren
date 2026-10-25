@@ -108,3 +108,11 @@
 .player-axe-gash .gash-splinter { background: #c998e9; inset: 68% 22% 14% 42%; transform: rotate(-8deg); opacity: .8; }
 @keyframes axe-gash-cut { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(-40px); } }
 @media (prefers-reduced-motion: reduce) { .player-axe-gash { display: none; } }
+
+.wolf-target-badge { position: absolute; z-index: 4; top: calc(100% + 10px); left: 50%; transform: translateX(-50%); padding: 3px 10px; white-space: nowrap; border: 1px solid #c9a15a; background: #08141be6; color: #ffe5a1; font: 16px 'Pixelify Sans', monospace; text-shadow: 0 2px 3px #000; pointer-events: none; animation: wolf-target-pulse 1.4s ease-in-out infinite; }
+.wolf-target-badge kbd { display: inline-block; padding: 0 5px; font: 13px/1.4 'Pixelify Sans', monospace; color: #ffe5a1; background: #1b1409; border: 1px solid #b8964f; border-bottom-width: 2px; }
+@keyframes wolf-target-pulse { 0%, 100% { box-shadow: 0 0 6px #ffe5a144; } 50% { box-shadow: 0 0 16px #ffe5a1aa; } }
+.defense-result { position: absolute; z-index: 7; left: 50%; top: 34%; translate: -50% 0; padding: 4px 22px; font: 400 52px/1.1 'Pixelify Sans', monospace; letter-spacing: 3px; pointer-events: none; }
+.defense-result.dodged { color: #d9f4ff; text-shadow: 3px 0 #12324a, -3px 0 #12324a, 0 3px #12324a, 0 -3px #12324a, 0 0 22px #6cc6ff; }
+.defense-result.parried { color: #ffe27a; text-shadow: 3px 0 #4a2a08, -3px 0 #4a2a08, 0 3px #4a2a08, 0 -3px #4a2a08, 0 0 22px #ffb347; }
+@media (prefers-reduced-motion: reduce) { .wolf-target-badge { animation: none; } }

@@ -32,8 +32,8 @@ export function WolfEncounter({ muted, onToggleSound }: { muted: boolean; onTogg
       <h2 id="path-choice-title">…Which?</h2>
       <p>The voices fall silent. The next step is yours.</p>
       <div className="path-options">
-        <button ref={firstChoice} onClick={() => setChoice('stay')}><span aria-hidden="true">◆</span> Stay <small>Stand your ground.</small></button>
-        <button onClick={() => setChoice('run')}><span aria-hidden="true">◆</span> Run <small>Follow the path into the dark.</small></button>
+        <button ref={firstChoice} data-glove-b1="Stay" onClick={() => setChoice('stay')}><kbd className="glove-key">B1</kbd>Stay <small>Stand your ground.</small></button>
+        <button data-glove-b2="Run" onClick={() => setChoice('run')}><kbd className="glove-key">B2</kbd>Run <small>Follow the path into the dark.</small></button>
       </div>
     </section> : <VisualNovelDialogue key={choice} muted={muted} onComplete={() => setStage('transition')} lines={[
       { speaker: 'The forest', color: '#b9cdca', voicePitch: .7, voiceVolume: .36,

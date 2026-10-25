@@ -83,9 +83,9 @@ function DialoguePage({ line, index, total, onNext, onSkip, muted, active }: {
     </div>
     <footer className="novel-dialogue-actions">
       <span className="novel-page" aria-label={`Dialogue ${index + 1} of ${total}`}>{String(index + 1).padStart(2, '0')} / {String(total).padStart(2, '0')}</span>
-      <button type="button" onClick={onSkip}>Skip <span aria-hidden="true">»</span></button>
-      <button type="button" className="novel-next" onClick={() => complete ? onNext() : setRevealed(true)}>
-        Next <span aria-hidden="true">◆</span>
+      <button type="button" className="novel-skip" data-glove-hold-b2 onClick={onSkip}>Skip <kbd className="glove-key">Hold B2</kbd></button>
+      <button type="button" className="novel-next" data-glove-b1="Next Line" onClick={() => complete ? onNext() : setRevealed(true)}>
+        Next <kbd className="glove-key">B1</kbd>
       </button>
     </footer>
   </motion.section>;

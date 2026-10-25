@@ -17,15 +17,23 @@ import { PlayerStatusPanel } from './components/PlayerStatusPanel';
 import { ScornFlames } from './components/ScornFlames';
 import { useFieldFlamesSound } from './useFieldFlamesSound';
 import { BossAtmosphere } from './components/BossAtmosphere';
-import { GloveCombatControl } from '../glove/GloveCombatControl';
+import { GloveCombatControl, useWheelSelection } from '../glove/GloveCombatControl';
 import { RainOverlay } from './components/RainOverlay';
 import './wolf-combat-stage.css';
 import { useBattleMusic } from './useBattleMusic';
 
 export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: boolean; onToggleSound: () => void; onContinue: () => void }) {
-  const { opponents, pending, feedback, activeId, turnNumber, enemyTurn, status, encounterId, fieldTurns } = useSpellBattle();
+  const { opponents, pending, feedback, activeId, turnNumber, enemyTurn, status, encounterId, fieldTurns, message } = useSpellBattle();
   useFieldFlamesSound(fieldTurns > 0 && status === 'active', muted);
   const boss = encounterId === 'knight';
+  const targetedId = useWheelSelection(state => state.targetId);
+  // The battle only reports a dodge or parry through its message, so catch it there and flash a banner.
+  const [defended, setDefended] = useState<{ id: number; kind: 'dodged' | 'parried' } | null>(null);
+  const defendedCount = useRef(0);
+  useEffect(() => {
+    const kind = message.startsWith('Dodged!') ? 'dodged' : message.startsWith('Parried with') ? 'parried' : null;
+    if (kind) setDefended({ id: ++defendedCount.current, kind });
+  }, [message]);
   const hurt = usePlayerState(state => state.hurt);
   const lowHealth = usePlayerState(state => lowHealthIntensity(state.health, state.maxHealth));
   const bleeding = usePlayerState(state => state.statuses.some(effect => effect.id === 'bleeding'));
@@ -117,6 +125,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
               <div className="wolf-status-icons">{stats.statuses.map(effect => <StatusEffectIcon key={effect.id} effect={effect} />)}</div>
             </div>
             <div className="wolf-turn-ring" aria-hidden="true" />
+            {targetedId === wolf.id && !stats.defeated && status === 'active' && <span className="wolf-target-badge" role="status">🎯 Targeted · <kbd>T</kbd> Switch</span>}
             {acting && enemyMove.phase === 'playing' ? <WolfMoveAnimation key={enemyMove.id} move={moves[enemyMove.moveId]} sprite={wolf.sprite} muted={muted} reduced={!!reduced}
               onProgress={progress => useDefense.getState().setProgress(enemyMove.id, progress)}
               onImpact={() => useSpellBattle.getState().enemyStep('impact', enemyMove.id)} onComplete={() => useSpellBattle.getState().enemyStep('return', enemyMove.id)} /> : <img className={`wolf-sprite${reaction?.kind === 'hurt' ? ' wolf-hurt' : ''}`} src={wolf.sprite} alt={wolf.name} draggable={false} />}
@@ -154,9 +163,15 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
       {!reduced && hurt.kind === 'slash' && <div className="player-slash-marks"><i /><i /><i /></div>}
       <span>{hurt.guarded ? `Blocked · −${hurt.damage}` : hurt.kind === 'blocked' ? `Shield blocked ${hurt.absorbed}` : `−${hurt.damage}${hurt.kind === 'bleed' ? ' · Bleeding' : hurt.kind === 'curse' ? ' · Scorn' : ''}${hurt.absorbed ? ` · ${hurt.absorbed} blocked` : ''}`}</span>
     </motion.div>}
+    {defended && <motion.div key={defended.id} className={`defense-result ${defended.kind}`} role="status"
+      initial={{ opacity: 0 }} animate={{ opacity: [0, 1, 1, 0], ...(reduced ? {} : { scale: [.6, 1.2, 1, 1], y: [10, 0, -6, -22] }) }}
+      transition={{ duration: reduced ? .9 : 1.5, times: [0, .12, .7, 1], ease: 'easeOut' }}
+      onAnimationComplete={() => setDefended(current => current?.id === defended.id ? null : current)}>
+      {defended.kind === 'dodged' ? 'DODGED!' : 'PARRIED!'}
+    </motion.div>}
     {status === 'lost' && <section className="encounter-victory" role="alert">
       <p>Encounter lost</p><h2>{boss ? 'The gate remains sealed' : 'The vale claims another'}</h2><span>Your health has fallen to zero.</span>
-      <button autoFocus onClick={() => { playerStore.getState().reset(); useSpellBattle.getState().reset(); }}>Try again</button>
+      <button autoFocus data-glove-b1="Retry" onClick={() => { playerStore.getState().reset(); useSpellBattle.getState().reset(); }}>Try again <kbd className="glove-key">B1</kbd></button>
     </section>}
     {fieldTurns > 0 && status === 'active' && <div className="scorn-field-label" role="status">Scorn Inferno · {fieldTurns} turns</div>}
     <aside className="combat-queue" aria-label="Turn order">
@@ -174,7 +189,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
     {status === 'won' && <motion.section className="encounter-victory" aria-labelledby="victory-title" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: reduced ? .1 : .8 }}>
       <p>Encounter won</p><h2 id="victory-title">{boss ? 'The Scorn is broken' : 'The vale falls silent'}</h2>
       <span>{boss ? 'The kingdom awaits beyond the gate.' : 'The path beyond the clearing is open.'}</span>
-      <button ref={victoryButton} disabled={leaving} onClick={() => setLeaving(true)}>Continue <span aria-hidden="true">➜</span></button>
+      <button ref={victoryButton} data-glove-b1="Continue" disabled={leaving} onClick={() => setLeaving(true)}>Continue <kbd className="glove-key">B1</kbd> <span aria-hidden="true">➜</span></button>
     </motion.section>}
     <button className="intro-sound" aria-pressed={muted} onClick={onToggleSound}>{muted ? 'Sound off' : 'Sound on'}</button>
   </motion.main>;

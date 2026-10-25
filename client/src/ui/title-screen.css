@@ -65,3 +65,20 @@
 .title-dialog .adventure-modes label { display: flex; align-items: center; gap: 12px; margin: 8px 0; cursor: pointer; }
 .title-dialog .adventure-modes input { width: 18px; height: 18px; accent-color: #e7c68b; }
 .adventure-modes p { font-size: 16px; line-height: 1.4; color: #b9c6b5; margin: 12px 0 0; }
+
+/* Glove shortcuts: every title button wears its keycap, and the dial's pick gets a glowing runic frame. */
+.title-menu .glove-key { margin-left: auto; font-size: 14px; }
+.title-menu .glove-key + .menu-flourish { margin-left: 0; }
+.title-menu button[data-glove-focus] { background: #dca34b1f; box-shadow: 0 0 22px #f4dc9988, inset 0 0 0 1px #f4dc9955; outline: 1px solid #f4dc99 !important; outline-offset: 4px; }
+.title-menu button[data-glove-focus]::before, .title-menu button[data-glove-focus]::after { opacity: 1; }
+.title-name { display: inline-flex; align-items: center; gap: 10px; margin: 18px 0 0; padding: 6px 12px; border: 1px dashed #bda67580; background: transparent; color: #c1ccbf; font: 22px 'Pixelify Sans', monospace; cursor: pointer; }
+.title-name b { color: #ffe5ad; font-weight: 400; }
+.title-name .glove-key { margin-left: 0; font-size: 12px; }
+.title-name:hover, .title-name:focus-visible { border-color: #ffe5ad; color: #ffe5ad; outline: none; }
+.title-dialog .title-name { margin: 0 0 20px; }
+.title-glove-hint { margin: 16px 0 0; color: #9fb5b0; font: 18px 'Pixelify Sans', monospace; line-height: 2; }
+.title-glove-hint .glove-key { margin: 0 4px 0 8px; font-size: 12px; }
+.coop-option { display: block; width: 100%; margin: 8px 0; padding: 10px 14px; text-align: left; border: 1px solid #7f978c; background: #071116; color: #c1ccbf; font: 24px 'Pixelify Sans', monospace; cursor: pointer; }
+.coop-option[aria-pressed="true"] { color: #ffe5ad; border-color: #ffe5ad; background: #dca34b1a; box-shadow: 0 0 14px #f4dc9944; }
+.dialog-close .glove-key { margin-left: 8px; font-size: 11px; vertical-align: middle; }
+.title-confirm { display: flex; align-items: center; justify-content: center; }

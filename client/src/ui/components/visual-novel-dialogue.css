@@ -15,7 +15,8 @@
 .novel-page { margin-right: auto; color: #9cafa9; font-size: 15px; letter-spacing: 2px; }
 .novel-dialogue-actions button { border: 0; background: transparent; color: #bccbc5; padding: 8px 14px; font: 21px 'Pixelify Sans', monospace; cursor: pointer; }
 .novel-dialogue-actions .novel-next { color: #ffe5ad; border: 1px solid #bda67580; min-width: 126px; }
-.novel-dialogue-actions button span { margin-left: 14px; font-size: 14px; }
+.novel-dialogue-actions button .glove-key { margin-left: 12px; }
+.novel-dialogue-actions .novel-skip .glove-key { background: transparent; color: #ffe5ad; border-color: #bda67580; box-shadow: none; }
 .novel-dialogue-actions button:hover { background: #d5be851a; color: #ffe5ad; }
 .novel-dialogue-actions button:focus-visible { outline: 2px solid #ffe5ad; outline-offset: 4px; }
 .novel-sr-text { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

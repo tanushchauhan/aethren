@@ -26,9 +26,13 @@ function GateContents({ children, onBypass }: { children: ReactNode; onBypass?: 
     {children}
     <GloveMenuNav />
     <aside className="glove-badge" aria-label="Your glove">
-      <span>Glove {glove.id}</span>
-      <span>{profile.label}</span>
-      <span>{CONTROL_LABELS.touch} · {CONTROL_LABELS.button1} · {CONTROL_LABELS.button2} · {CONTROL_LABELS.dial}</span>
+      <span className="glove-badge-id">Glove {glove.id} · {profile.label}</span>
+      <span className="glove-badge-keys" aria-label="Glove controls">
+        <kbd className="glove-key">{CONTROL_LABELS.touch}</kbd>
+        <kbd className="glove-key">{CONTROL_LABELS.button1}</kbd>
+        <kbd className="glove-key">{CONTROL_LABELS.button2}</kbd>
+        <kbd className="glove-key">{CONTROL_LABELS.dial} ⟳</kbd>
+      </span>
       <button type="button" onClick={leave}>Give back</button>
     </aside>
     {!glove.online && <div className="glove-lost" role="alert">

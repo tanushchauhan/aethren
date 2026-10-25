@@ -74,3 +74,26 @@ describe('camera defense', () => {
     battle().reset(); expect(defense().cue).toBeNull(); expect(defense().actionId).toBeNull();
   });
 });
+
+it('combines a camera block and glove parry without double damage', () => {
+  vi.spyOn(performance,'now').mockReturnValue(1150);
+  defense().setEnabled(true); battle().endTurn(); battle().beginEnemy();
+  const id = battle().enemyTurn!.action!.id;
+  const raised = {...pose('standing_in_zone'),isRightArmRaised:true};
+  defense().sample(raised,1000); defense().sample(raised,1150);
+  battle().triggerDefense('parry', 'Glove Ward');
+  battle().enemyStep('play',id); battle().enemyStep('impact',id); battle().enemyStep('return',id);
+  expect(playerStore.getState()).toMatchObject({health:97,stanceValue:87,statuses:[]});
+  expect(battle().opponents.knight.hp).toBeLessThan(240);
+  expect(battle().playerDefense).toBeNull();
+});
+it('lets a successful camera dodge take precedence over a simultaneous glove parry', () => {
+  vi.spyOn(Math,'random').mockReturnValue(0); vi.spyOn(performance,'now').mockReturnValue(1150);
+  defense().setEnabled(true); battle().endTurn(); battle().beginEnemy();
+  const id = battle().enemyTurn!.action!.id;
+  hold('side_step_left'); battle().triggerDefense('parry', 'Glove Ward');
+  battle().enemyStep('play',id); battle().enemyStep('impact',id);
+  expect(playerStore.getState().health).toBe(100);
+  expect(battle().opponents.knight.hp).toBe(240);
+  expect(battle().playerDefense).toBeNull();
+});

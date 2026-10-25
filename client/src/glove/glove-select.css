@@ -18,10 +18,17 @@
 .glove-alert code { background: #071116; padding: 1px 6px; border: 1px solid #748d83; }
 .glove-hint { margin: 16px 0 0; color: #9fb5b0; }
 .glove-legend { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 26px; padding-top: 16px; border-top: 1px solid #3a4f4a; color: #9fb5b0; font-size: 21px; }
-kbd { display: inline-block; min-width: 26px; padding: 0 6px; text-align: center; color: #1a1408; background: #ecdfac; border-bottom: 3px solid #a99a62; font: 18px 'Silkscreen', monospace; }
-.glove-badge { position: fixed; z-index: 50; top: 12px; right: 12px; display: grid; gap: 2px; padding: 8px 12px; background: #101e23e6; border: 1px solid #7f978c; color: #c1ccbf; font: 18px 'VT323', monospace; }
-.glove-badge span:first-child { color: #ffe5a1; }
-.glove-badge button { margin-top: 4px; font: inherit; color: #d6d6af; background: transparent; border: 0; text-decoration: underline; cursor: pointer; text-align: left; padding: 0; }
+/* Keycaps: parchment gold on deep forest slate, the same on every screen. */
+kbd, .glove-key { display: inline-block; min-width: 26px; padding: 0 6px; box-sizing: border-box; text-align: center; white-space: nowrap; color: #0d202b; background: #ffe5ad; border: 1px solid #d9bb73; border-bottom-width: 3px; border-bottom-color: #a98a46; border-radius: 3px; box-shadow: 0 0 8px #ffe5ad33; font: 16px/1.3 'Silkscreen', monospace; vertical-align: middle; }
+button .glove-key { margin-left: 10px; font-size: 13px; pointer-events: none; }
+.glove-badge { position: fixed; z-index: 50; top: 12px; right: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 5px 8px 5px 14px; background: #0d202bea; border: 1px solid #bda675; border-radius: 999px; box-shadow: 0 0 0 3px #07141b85, 0 6px 18px #020a1266; color: #c1ccbf; font: 18px 'VT323', monospace; }
+.glove-badge-id { color: #ffe5ad; }
+.glove-badge-keys { display: inline-flex; gap: 4px; }
+.glove-badge-keys .glove-key { min-width: 0; font-size: 12px; }
+.glove-badge button { font: inherit; color: #0d202b; background: #ffe5ad; border: 0; border-radius: 999px; padding: 0 10px; cursor: pointer; }
+.glove-badge button:hover, .glove-badge button:focus-visible { background: #fff1c9; outline: none; }
+.glove-selected { position: fixed; z-index: 70; left: 50%; bottom: 18px; translate: -50% 0; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 24px); padding: 6px 16px; background: #0d202bf2; border: 1px solid #ffe5ad; border-radius: 999px; box-shadow: 0 0 22px #ffe5ad55; color: #ffe5ad; font: 22px 'VT323', monospace; pointer-events: none; }
+.glove-selected b { color: #c1ccbf; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .glove-lost { position: fixed; z-index: 60; inset: 0; display: grid; place-content: center; gap: 4px; text-align: center; background: #040b10d9; color: #efe9c9; font: 28px 'VT323', monospace; }
 @media (max-width: 600px) { .glove-panel { padding: 22px 18px; } }
 
@@ -29,7 +36,12 @@ kbd { display: inline-block; min-width: 26px; padding: 0 6px; text-align: center
 .glove-buzz { padding: 6px 10px; font: 20px 'VT323', monospace; color: #e7dfb9; background: #28453e; border: 1px solid #87a38d; box-shadow: 3px 3px #06100d; cursor: pointer; }
 .glove-buzz:hover, .glove-buzz:focus-visible { color: #ffe5a1; border-color: #f4dc99; outline: none; }
 
-[data-glove-focus] { outline: 2px solid #f4dc99 !important; outline-offset: 6px; color: #ffe5a1 !important; box-shadow: 0 0 22px #f4dc9988; }
+[data-glove-focus] { outline: 2px solid #f4dc99 !important; outline-offset: 6px; color: #ffe5a1 !important; box-shadow: 0 0 22px #f4dc9988; animation: glove-rune-glow 1.6s ease-in-out infinite; }
+@keyframes glove-rune-glow { 50% { box-shadow: 0 0 34px #f4dc99cc, inset 0 0 12px #f4dc9944; } }
+@media (prefers-reduced-motion: reduce) { [data-glove-focus] { animation: none; } }
+
+.path-options .glove-key { margin: 0 14px 0 0; font-size: 15px; }
+
 /* TEMPORARY bypass (see ALLOW_GLOVE_BYPASS in GloveGate.tsx). Deliberately quieter than the glove cards. */
 .glove-bypass { display: block; margin: 22px 0 0 auto; padding: 8px 14px; font: 21px 'VT323', monospace; color: #c9d6d2; background: transparent; border: 1px dashed #6f8a84; cursor: pointer; text-align: right; }
 .glove-bypass small { display: block; font-size: 16px; color: #8da39e; }

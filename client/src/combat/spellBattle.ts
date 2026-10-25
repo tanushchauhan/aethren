@@ -5,8 +5,14 @@ import { playerStore, stanceFromValue, type PlayerStance } from './playerState';
 import { STATUS_EFFECTS, withStatus } from './statusEffects';
 import { getSpell, SPELLS, type Spell, type SpellInput } from './spells';
 export type DodgeMode = 'natural' | 'hit' | 'dodge';
+export type DefenseMode = 'dodge' | 'parry' | 'brace';
+/** An active defensive pose or glove move, valid until `untilMs` (Date.now clock). */
+export type PlayerDefense = { mode: 'none' | DefenseMode; label: string; untilMs: number };
+export const DEFENSE_MS: Record<DefenseMode, number> = { dodge: 1200, parry: 900, brace: 1500 };
+/** Damage a successful parry bounces back at the attacker. */
+export const PARRY_REFLECT_DAMAGE = 4;
 /** `power` is the Overcharge multiplier locked in when the cast began. Self spells target `player`. */
-export type Cast = { id: number; spell: Spell; targetId: string; dodgeMode: DodgeMode; previousStance: PlayerStance; resolved: boolean; power: number };
+export type Cast = { id: number; spell: Spell; targetId: string; dodgeMode: DodgeMode; previousStance: PlayerStance; resolved: boolean; power: number; autoEndTurn?: boolean };
 /** One wolf's reaction. `castId` is null for start-of-turn effects such as a burn tick. */
 export type HitFeedback = { id: number; castId: number | null; targetId: string; kind: 'hurt' | 'dodge' | 'effect'; damage: number; label?: string };
 interface SpellBattle {
@@ -24,7 +30,11 @@ interface SpellBattle {
   pending: Cast | null;
   feedback: HitFeedback[];
   message: string;
-  castSpell: (input: SpellInput, source?: 'diagnostic' | 'glove', dodgeMode?: DodgeMode) => boolean;
+  /** The dodge, parry or brace the player is currently performing; consumed by the next wolf attack. */
+  playerDefense: PlayerDefense | null;
+  triggerDefense: (mode: DefenseMode, label?: string, durationMs?: number) => void;
+  /** `powerBoost` (1..1.45, e.g. from a glove swing) multiplies spell power; `autoEndTurn` defaults to true for glove casts. */
+  castSpell: (input: SpellInput, source?: 'diagnostic' | 'glove', dodgeMode?: DodgeMode, options?: { powerBoost?: number; autoEndTurn?: boolean }) => boolean;
   resolveCast: (id: number, roll?: number) => void;
   finishCast: (id: number) => void;
   cancelCast: () => void;
@@ -72,9 +82,31 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
   function applyEngine(engine: EncounterState, next: EncounterState) {
     const state = get();
     const fieldTurns = next.lastAttack !== engine.lastAttack && next.lastAttack?.type === 'inferno' ? 5 : state.fieldTurns;
+    let defenseMessage: string | null = null, clearDefense = false;
     if (next.lastAttack && next.lastAttack !== engine.lastAttack) {
-      const defense = useDefense.getState().resolve(next.lastAttack.actionId, playerStore.getState().stanceValue);
-      if (defense !== 'dodged') playerStore.getState().receiveAttack(next.lastAttack.damage, next.lastAttack.stanceDamage, next.lastAttack.type === 'inferno' ? 'scorn' : next.lastAttack.type === 'scorn' || next.lastAttack.type === 'eclipse' ? next.lastAttack.type : undefined, defense === 'blocked');
+      const attack = next.lastAttack, player = playerStore.getState();
+      const cameraDefense = useDefense.getState().resolve(attack.actionId, player.stanceValue);
+      const curse = attack.type === 'inferno' ? 'scorn' : attack.type === 'scorn' || attack.type === 'eclipse' ? attack.type : undefined;
+      const defense = state.playerDefense && state.playerDefense.mode !== 'none' && Date.now() <= state.playerDefense.untilMs ? state.playerDefense : null;
+      if (state.playerDefense) clearDefense = true;
+      if (cameraDefense === 'dodged' || defense?.mode === 'dodge') {
+        // A clean evasion: no damage, no stance loss, no bleeding.
+        defenseMessage = cameraDefense === 'dodged' ? 'Dodged with movement tracking!' : `Dodged! (${defense!.label})`;
+        useDefense.setState({ result: 'dodged' });
+      } else if (defense?.mode === 'parry' || defense?.mode === 'brace') {
+        // Both guard for this hit, halving damage and stance loss; a parry also bounces damage back (never lethal, so the wolf's action finishes cleanly).
+        const wasGuarding = player.stance === 'guarding';
+        player.setStance('guarding');
+        player.receiveAttack(attack.damage, attack.stanceDamage, curse, cameraDefense === 'blocked');
+        useDefense.setState({ result: 'blocked' });
+        if (!wasGuarding && playerStore.getState().stance === 'guarding') playerStore.setState({ stance: stanceFromValue(playerStore.getState().stanceValue) });
+        if (defense.mode === 'parry') {
+          const source = next.actors[attack.source];
+          if (source && !source.defeated) next = { ...next, actors: { ...next.actors, [attack.source]: { ...source, hp: Math.max(1, source.hp - PARRY_REFLECT_DAMAGE) } } };
+          defenseMessage = `Parried with ${defense.label}!`;
+        } else defenseMessage = `Braced with ${defense.label}!`;
+      } else player.receiveAttack(attack.damage, attack.stanceDamage, curse, cameraDefense === 'blocked');
+
     }
     const feedback: HitFeedback[] = [];
     const tick = next.lastTick !== engine.lastTick ? next.lastTick : null;
@@ -96,11 +128,18 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
     set({ fieldTurns: won ? 0 : fieldTurns, enemyTurn: activeId === 'player' || won ? null : next, activeId: won ? 'player' : activeId, opponents, status: won ? 'won' : 'active',
       turnNumber: state.turnNumber + (activeId !== state.activeId && !won ? 1 : 0),
       ...(feedback.length ? { feedback } : {}),
-      message: activeId === 'player' ? 'Your turn. Choose a spell or end your turn.' : next.lastMove });
+      ...(clearDefense ? { playerDefense: null } : {}),
+      message: activeId === 'player' ? 'Your turn. Choose a spell or end your turn.' : defenseMessage ?? next.lastMove });
   }
   return {
-    encounterId: 'wolves', fieldTurns: 0, opponents: initialOpponents(), enemyTurn: null, activeId: 'player', turnNumber: 1, status: 'active', pending: null, feedback: [], message: 'Choose a spell and a target.',
-    castSpell(input, source = 'diagnostic', dodgeMode = 'natural') {
+    encounterId: 'wolves', fieldTurns: 0, opponents: initialOpponents(), enemyTurn: null, activeId: 'player', turnNumber: 1, status: 'active', pending: null, feedback: [], message: 'Choose a spell and a target.', playerDefense: null,
+    triggerDefense(mode, label, durationMs) {
+      const state = get();
+      if (state.status !== 'active') return;
+      const ms = Number.isFinite(durationMs) && durationMs! > 0 ? durationMs! : DEFENSE_MS[mode];
+      set({ playerDefense: { mode, label: label ?? mode[0].toUpperCase() + mode.slice(1), untilMs: Date.now() + ms } });
+    },
+    castSpell(input, source = 'diagnostic', dodgeMode = 'natural', options) {
       const battle = get(), player = playerStore.getState(), spell = getSpell(input?.spellId);
       const fail = (message: string) => { set({ message }); return false; };
       if (battle.pending || battle.activeId !== 'player' || battle.status !== 'active') return false;
@@ -112,9 +151,10 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
       // Overcharge is spent by the next spell that deals damage, and pays back 1 MP on a Storm spell.
       const overcharged = spell.damage > 0 && player.statuses.some(status => status.id === 'overcharged');
       const id = ++nextCastId;
+      const boost = Number.isFinite(options?.powerBoost) && options!.powerBoost! > 0 ? options!.powerBoost! : 1;
       // Lock the action before notifying external subscribers, preventing duplicate casts.
       set({ pending: { id, spell, targetId, dodgeMode: source === 'diagnostic' ? dodgeMode : 'natural', previousStance: player.stance, resolved: false,
-        power: overcharged ? SPELLS.overcharge.overcharge!.multiplier : 1 }, feedback: [],
+        power: (overcharged ? SPELLS.overcharge.overcharge!.multiplier : 1) * boost, autoEndTurn: options?.autoEndTurn ?? source === 'glove' }, feedback: [],
         message: spell.target === 'self' ? `${spell.name}…` : `${spell.name} → ${nameOf(targetId)}${overcharged ? ' (overcharged)' : ''}` });
       player.setMagicPower(player.magicPower - spell.cost + (overcharged && spell.element === 'storm' ? 1 : 0));
       if (overcharged) player.removeStatus('overcharged');
@@ -160,6 +200,8 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
       restoreStance(pending);
       const won = Object.values(get().opponents).every(actor => actor.defeated);
       set({ pending: null, fieldTurns: won ? 0 : get().fieldTurns, status: won ? 'won' : 'active' });
+      // Casting hands the turn to the wolves once the spell has played out.
+      if (!won && pending.autoEndTurn) get().endTurn();
     },
     rest() {
       const state = get(), player = playerStore.getState();
@@ -212,7 +254,7 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
     reset(encounterId = get().encounterId) {
       useDefense.getState().clear();
       get().cancelCast();
-      set({ encounterId, fieldTurns: 0, opponents: initialOpponents(encounterId), enemyTurn: null, activeId: 'player', turnNumber: 1, status: 'active', message: 'Choose a spell and a target.' });
+      set({ encounterId, fieldTurns: 0, opponents: initialOpponents(encounterId), enemyTurn: null, activeId: 'player', turnNumber: 1, status: 'active', playerDefense: null, message: 'Choose a spell and a target.' });
     },
   };
 });

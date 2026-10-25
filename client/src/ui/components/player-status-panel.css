@@ -1,8 +1,8 @@
-.player-status-panel { position: absolute; z-index: 5; bottom: 22px; left: 5%; right: 5%; box-sizing: border-box; padding: 24px 26px 14px; border: 1px solid #ffffffa6; border-radius: 0; background: #eef6ff26; color: #f6faff; box-shadow: inset 0 1px 0 #fff9, inset 0 -1px 0 #ffffff26, 0 12px 35px #020b184d; backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%); font-family: 'Pixelify Sans', monospace; text-shadow: 0 1px 3px #031120b3; }
-.player-nameplate { position: absolute; left: 24px; top: -20px; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 7px 22px; margin: 0; border: 1px solid #ffffffa6; border-radius: 0; background: #dceafa45; backdrop-filter: blur(18px); color: #fff; font-size: 20px; font-weight: 400; }
-.player-resource-grid { display: grid; grid-template-columns: 1fr 1fr .8fr; gap: 32px; align-items: center; }
-.player-resource-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 19px; }
-.player-resource-heading img { width: 29px; height: 29px; flex-shrink: 0; image-rendering: pixelated; }
+.player-status-panel { position: absolute; z-index: 5; bottom: 8px; left: 5%; right: 5%; box-sizing: border-box; padding: 14px 22px 6px; border: 1px solid #ffffffa6; border-radius: 0; background: #eef6ff26; color: #f6faff; box-shadow: inset 0 1px 0 #fff9, inset 0 -1px 0 #ffffff26, 0 12px 35px #020b184d; backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%); font-family: 'Pixelify Sans', monospace; text-shadow: 0 1px 3px #031120b3; }
+.player-nameplate { position: absolute; left: 24px; top: -16px; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 18px; margin: 0; border: 1px solid #ffffffa6; border-radius: 0; background: #dceafa45; backdrop-filter: blur(18px); color: #fff; font-size: 17px; font-weight: 400; }
+.player-resource-grid { display: grid; grid-template-columns: 1fr 1fr .8fr; gap: 24px; align-items: center; }
+.player-resource-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; font-size: 17px; }
+.player-resource-heading img { width: 24px; height: 24px; flex-shrink: 0; image-rendering: pixelated; }
 .player-resource-numbers { margin-left: auto; font-size: 21px; white-space: nowrap; }
 .player-resource-numbers small { font-size: 15px; color: #d4e0ec; }
 .player-resource-track { height: 11px; padding: 2px; border: 1px solid #ffffff80; background: #09203166; border-radius: 0; overflow: hidden; }
@@ -20,7 +20,8 @@
 .player-diagnostic-attack { min-height: 54px; border: 1px solid #fff; border-radius: 0; padding: 6px 12px; background: #eaf4ffcf; color: #102639; font: 17px 'Pixelify Sans', monospace; cursor: pointer; text-shadow: none; }
 .player-diagnostic-attack small { display: block; font-size: 12px; color: #335366; margin-top: 2px; }
 .player-diagnostic-attack:hover { background: #fff; }
-.player-panel-footer { display: flex; align-items: center; gap: 18px; border-top: 1px solid #ffffff30; margin-top: 12px; padding-top: 10px; }
+.player-panel-footer { display: flex; align-items: center; gap: 18px; border-top: 1px solid #ffffff30; margin-top: 6px; padding-top: 5px; }
+.glove-hint-badge { display: inline-block; margin-left: 3px; padding: 0 5px; font: 11px/1.5 'Pixelify Sans', monospace; color: #ffe5a1; background: #1b1409; border: 1px solid #b8964f; border-bottom-width: 2px; text-decoration: none; text-shadow: none; vertical-align: 1px; }
 .player-panel-footer p { margin: 0 auto 0 0; font-size: 14px; }
 .player-panel-footer button { border: 0; padding: 3px; background: transparent; color: #e6f2ff; font: 13px 'Pixelify Sans', monospace; text-decoration: underline; cursor: pointer; white-space: nowrap; }
 .player-status-panel button:disabled, .spell-builder select:disabled { opacity: .45; cursor: default; }
