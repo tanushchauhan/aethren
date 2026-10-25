@@ -1,0 +1,89 @@
+/* Spell VFX. Everything is anchored on zero-size containers placed at the hand or the target, so each
+   layer centres itself with negative margins and scales or rotates around that point. */
+.spell-effect { position: absolute; z-index: 4; inset: 0; pointer-events: none; overflow: hidden; }
+.spell-effect span, .spell-effect svg { pointer-events: none; }
+.spell-particle { display: block; position: absolute; mask-size: contain; mask-repeat: no-repeat; mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; filter: drop-shadow(0 0 6px currentColor) brightness(1.35); }
+.spell-travel-core, .spell-impact, .hand-charge, .fire-ball, .frost-crystal, .frost-arm, .storm-orb-wrap, .spell-spark-axis { position: absolute; width: 0; height: 0; }
+
+/* Charging in the hand */
+.hand-aura { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; mix-blend-mode: screen;
+  background: radial-gradient(circle, var(--fx-hi) 0 12%, var(--fx) 34%, color-mix(in srgb, var(--fx-deep) 60%, transparent) 55%, transparent 70%); animation: fx-pulse .32s ease-in-out infinite alternate; }
+.hand-sigil { position: absolute; width: 190px; height: 190px; margin: -65px 0 0 -95px; border-radius: 50%; border: 3px dashed var(--fx-hi);
+  box-shadow: 0 0 14px var(--fx), inset 0 0 0 10px color-mix(in srgb, var(--fx) 25%, transparent), inset 0 0 22px var(--fx); animation: hand-sigil-turn 2.4s linear infinite; }
+.hand-mote { position: absolute; }
+.mote-fire { width: 10px; height: 10px; margin: -5px; border-radius: 50%; background: radial-gradient(circle, #fff6c8, #ffae4a 55%, #ff5a1f); box-shadow: 0 0 10px #ff7a2a; }
+.mote-frost { width: 18px; height: 9px; margin: -4.5px -9px; clip-path: polygon(0 50%, 50% 0, 100% 50%, 50% 100%); background: linear-gradient(#ffffff, #9fe9ff); }
+.mote-storm { width: 22px; height: 2px; margin: -1px -11px; background: #fff; box-shadow: 0 0 6px 2px var(--fx); }
+.hand-release { position: absolute; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; border: 5px solid var(--fx-hi); box-shadow: 0 0 22px 6px var(--fx); }
+
+/* Fire */
+.fire-outer { position: absolute; width: 64px; height: 64px; margin: -32px; border-radius: 50%; mix-blend-mode: screen;
+  background: radial-gradient(circle, #fff 0 14%, var(--fx-hi) 24%, var(--fx) 44%, var(--fx-deep) 62%, transparent 71%);
+  box-shadow: 0 0 26px 8px color-mix(in srgb, var(--fx) 80%, transparent), 0 0 64px 20px color-mix(in srgb, var(--fx-deep) 55%, transparent); animation: fire-flicker .13s ease-in-out infinite alternate; }
+.fire-lick { width: 96px; height: 96px; margin: -48px; mix-blend-mode: screen; animation: fx-spin .7s linear infinite reverse; }
+.fire-core { position: absolute; width: 20px; height: 20px; margin: -10px; border-radius: 50%; background: #fff; box-shadow: 0 0 14px 4px #fff3c0; }
+.fire-tail { position: absolute; right: 0; top: -22px; width: 130px; height: 44px; border-radius: 50%; transform-origin: 100% 50%; mix-blend-mode: screen;
+  background: linear-gradient(to left, var(--fx-hi), var(--fx) 25%, var(--fx-deep) 60%, transparent);
+  mask-image: linear-gradient(to left, #000 35%, transparent); -webkit-mask-image: linear-gradient(to left, #000 35%, transparent); }
+.trail-fire { width: 16px; height: 16px; margin: -8px; border-radius: 50%; background: radial-gradient(circle, #fff3c0, var(--fx) 50%, transparent 72%); box-shadow: 0 0 12px var(--fx); }
+.fire-ring { position: absolute; width: 130px; height: 130px; margin: -65px; border-radius: 50%; border: 9px solid var(--fx);
+  box-shadow: 0 0 26px 8px var(--fx-deep), inset 0 0 26px 8px var(--fx-hi); }
+.fire-tongue { width: 84px; height: 84px; margin: -42px; mix-blend-mode: screen; }
+.fire-ember { position: absolute; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: #ffe08a; box-shadow: 0 0 8px 2px #ff7a2a; }
+.fire-smoke { width: 120px; height: 120px; margin: -60px; filter: none; }
+
+/* Frost */
+.ice-shard { position: absolute; left: 0; top: 0; overflow: visible; filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 8px #7fd8ff); }
+.frost-glow { position: absolute; width: 100px; height: 100px; margin: -50px; border-radius: 50%; mix-blend-mode: screen; background: radial-gradient(circle, #e9fbff 0 15%, #7fd8ff55 45%, transparent 70%); }
+.trail-frost { width: 14px; height: 14px; margin: -7px; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); background: linear-gradient(135deg, #fff, #9fe9ff 60%, #3b82d6); }
+.frost-hex { position: absolute; width: 140px; height: 140px; margin: -70px; overflow: visible; filter: drop-shadow(0 0 8px #7fd8ff); }
+.frost-hex polygon { fill: #bdf0ff22; stroke: #effcff; stroke-width: 4; stroke-linejoin: round; }
+.ice-spike { position: absolute; width: 28px; margin-left: -14px; translate: 0 -100%; transform-origin: 50% 100%; clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  background: linear-gradient(90deg, #3b82d6 0 20%, #c4f4ff 50%, #ffffff 52%, #8fd9f5 80%, #2f6fc0); }
+.frost-mist { width: 140px; height: 140px; margin: -70px; }
+
+/* Storm */
+.storm-orb { position: absolute; width: 46px; height: 46px; margin: -23px; border-radius: 50%; mix-blend-mode: screen;
+  background: radial-gradient(circle, #fff 0 22%, var(--fx-hi) 32%, var(--fx) 52%, var(--fx-deep) 66%, transparent 72%); box-shadow: 0 0 22px 8px var(--fx), 0 0 50px 16px color-mix(in srgb, var(--fx-deep) 60%, transparent);
+  animation: storm-pulse .08s linear infinite alternate; }
+.storm-arcs, .storm-branches { position: absolute; overflow: visible; filter: drop-shadow(0 0 6px var(--fx)); }
+.storm-arcs { animation: fx-spin .45s linear infinite; }
+.storm-arcs polyline { fill: none; stroke: #fff; stroke-width: 2.5; stroke-linejoin: round; animation: fx-blink .14s linear infinite; }
+.storm-channel { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 8px var(--fx)); }
+.storm-flicker { animation: fx-blink .1s linear infinite; }
+.bolt-glow, .bolt-core { fill: none; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.bolt-glow { stroke: var(--fx); stroke-width: 10; stroke-opacity: .55; }
+.bolt-core { stroke: #fff; stroke-width: 3; }
+.storm-ring { position: absolute; width: 120px; height: 120px; margin: -60px; border-radius: 50%; border: 4px dashed var(--fx-hi); box-shadow: 0 0 18px 4px var(--fx), inset 0 0 18px 4px var(--fx); }
+.spell-spark { position: absolute; width: 54px; height: 3px; left: 0; top: -1.5px; border-radius: 3px; background: linear-gradient(90deg, transparent, var(--fx) 30%, #fff); box-shadow: 0 0 10px var(--fx); }
+
+/* Shared impact */
+.spell-screen-flash { position: absolute; inset: 0; mix-blend-mode: screen; background: radial-gradient(circle at 50% 40%, var(--fx-hi), var(--fx) 45%, var(--fx-deep)); }
+.spell-flash-core { position: absolute; width: 120px; height: 120px; margin: -60px; border-radius: 50%; mix-blend-mode: screen;
+  background: radial-gradient(circle, #fff 0 30%, var(--fx-hi) 40%, var(--fx) 60%, transparent 72%); box-shadow: 0 0 40px 12px var(--fx); }
+.spell-whiff { width: 100px; height: 100px; margin: -50px; }
+
+@keyframes fx-spin { to { transform: rotate(360deg); } }
+@keyframes fx-pulse { from { transform: scale(.9); opacity: .85; } to { transform: scale(1.12); opacity: 1; } }
+@keyframes fx-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .15; } }
+@keyframes fire-flicker { from { transform: scale(1.06, .94) rotate(-4deg); } to { transform: scale(.95, 1.07) rotate(5deg); } }
+@keyframes storm-pulse { from { transform: scale(.88); } to { transform: scale(1.12); } }
+@keyframes hand-sigil-turn { from { transform: rotateX(64deg) rotate(0deg); } to { transform: rotateX(64deg) rotate(360deg); } }
+
+/* Fire Lance */
+.fire-lance { position: absolute; width: 0; height: 0; }
+.lance-body { position: absolute; width: 0; height: 0; transform-origin: 0 0; }
+.lance-shaft { position: absolute; left: -120px; top: -6px; width: 160px; height: 12px; border-radius: 6px; mix-blend-mode: screen;
+  background: linear-gradient(90deg, transparent, var(--fx-deep) 22%, var(--fx) 60%, var(--fx-hi) 90%, #fff); box-shadow: 0 0 14px 4px var(--fx), 0 0 30px 8px color-mix(in srgb, var(--fx-deep) 60%, transparent); }
+.lance-tip { position: absolute; left: 34px; top: -13px; width: 40px; height: 26px; clip-path: polygon(0 0, 100% 50%, 0 100%, 24% 50%); background: linear-gradient(90deg, var(--fx-hi), #fff); }
+.lance-tail { right: 110px; top: -18px; width: 140px; height: 36px; }
+.lance-pierce { position: absolute; width: 0; height: 0; }
+.lance-pierce span { position: absolute; left: 0; top: -4px; width: 280px; height: 8px; transform-origin: 0 50%; border-radius: 4px; background: linear-gradient(90deg, #fff, var(--fx) 40%, transparent); box-shadow: 0 0 14px var(--fx); }
+
+/* Meteor */
+.meteor-sky-glow { position: absolute; width: 260px; height: 260px; margin: -130px; border-radius: 50%; mix-blend-mode: screen;
+  background: radial-gradient(circle, #fff1c4 0 8%, #ff9a52aa 25%, #d6361a55 50%, transparent 70%); animation: fx-pulse .4s ease-in-out infinite alternate; }
+
+/* A cast boosted by Overcharge crackles violet on the way in. */
+.overcharge-ring { position: absolute; width: 96px; height: 96px; margin: -48px; border-radius: 50%; border: 3px dashed #e2ccff; box-shadow: 0 0 16px 4px #9b6bff, inset 0 0 14px #9b6bff; animation: fx-spin .5s linear infinite; }
+.spell-effect.is-overcharged .spell-travel-core { filter: drop-shadow(0 0 10px #b48cff) drop-shadow(0 0 22px #7b3fe0); }

@@ -6,3 +6,4 @@
 .status-effect-icon:hover .status-effect-tooltip, .status-effect-icon:focus .status-effect-tooltip { visibility: visible; }
 .status-effects-toggle, .status-effects-more { height: 32px; min-width: 25px; padding: 3px; border: 1px solid #ffffff50; border-radius: 0; background: #14253470; color: #fff; font: 14px 'Pixelify Sans', monospace; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .status-effects-toggle:focus-visible, .status-effects-more:focus-visible, .status-effect-icon:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.status-effect-amount { position: absolute; right: -6px; bottom: -6px; min-width: 16px; padding: 0 2px; background: #0d1a26; border: 1px solid currentColor; font: 11px/14px 'Pixelify Sans', monospace; text-align: center; }

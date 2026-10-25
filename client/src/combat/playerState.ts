@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
-import type { StatusEffect } from './statusEffects';
+import { withStatus, type StatusEffect } from './statusEffects';
 import type { SpellInput } from './spells';
 
 export const STANCES = ['balanced', 'casting', 'guarding', 'shaken', 'staggered'] as const;
@@ -17,8 +17,11 @@ export type AttackRequest = {
   snapshot: PlayerStats; canRetaliate: boolean; input?: SpellInput;
 };
 export interface PlayerState extends PlayerStats {
-  statuses: StatusEffect<'bleeding'>[];
-  hurt: { id: number; damage: number; kind: 'slash' | 'bleed' } | null;
+  statuses: PlayerStatus[];
+  /** `absorbed` is what an Ice Shield soaked up; a fully absorbed hit is `blocked`. */
+  hurt: { id: number; damage: number; absorbed?: number; kind: 'slash' | 'bleed' | 'blocked' } | null;
+  addStatus: (effect: PlayerStatus) => void;
+  removeStatus: (id: PlayerStatus['id']) => void;
   receiveAttack: (damage: number, stanceDamage: number) => void;
   startTurn: () => void;
   setStanceValue: (value: number) => void;
@@ -30,6 +33,9 @@ export interface PlayerState extends PlayerStats {
   requestAttack: (source?: AttackRequest['source'], input?: SpellInput) => AttackRequest | null;
   reset: () => void;
 }
+export type PlayerStatus = StatusEffect<'bleeding' | 'shielded' | 'overcharged'>;
+/** Magic Power regained at the start of each of your turns. */
+export const MAGIC_REGEN = 2;
 export const INITIAL_PLAYER_STATS: Readonly<PlayerStats> = {
   health: 100, maxHealth: 100, magicPower: 6, maxMagicPower: 12, stance: 'balanced', stanceValue: 100,
 };
@@ -58,13 +64,23 @@ export const playerStore = createStore<PlayerState>((set, get) => ({
     if (value === 'casting' || value === 'guarding') { set({ stance: value }); return; }
     get().setStanceValue(value === 'balanced' ? 100 : value === 'shaken' ? 45 : 0);
   },
+  addStatus(effect) { set({ statuses: withStatus(get().statuses, effect) }); },
+  removeStatus(id) { set({ statuses: get().statuses.filter(status => status.id !== id) }); },
   receiveAttack(damage, stanceDamage) {
     if (!Number.isFinite(damage) || !Number.isFinite(stanceDamage) || damage <= 0 || get().health <= 0) return;
     const state = get(), guarding = state.stance === 'guarding';
-    const amount = Math.min(state.health, Math.max(1, Math.floor(damage * (guarding ? .5 : 1))));
-    const stanceValue = Math.max(0, state.stanceValue - Math.max(0, stanceDamage) * (guarding ? .5 : 1));
+    const incoming = Math.max(1, Math.floor(damage * (guarding ? .5 : 1)));
+    // Guarding halves first, then an Ice Shield soaks up what it can.
+    const shield = state.statuses.find(status => status.id === 'shielded');
+    const absorbed = Math.min(incoming, shield?.amount ?? 0), left = (shield?.amount ?? 0) - absorbed;
+    const statuses = shield ? left > 0 ? withStatus(state.statuses, { ...shield, amount: left }) : state.statuses.filter(status => status !== shield) : state.statuses;
+    const amount = Math.min(state.health, incoming - absorbed);
+    // A fully blocked hit still jars your stance a little but does not open a wound.
+    const stanceLoss = Math.max(0, stanceDamage) * (guarding ? .5 : 1) * (amount ? 1 : .5);
+    const stanceValue = Math.max(0, state.stanceValue - stanceLoss);
     set({ health: state.health - amount, stanceValue, stance: stanceFromValue(stanceValue),
-      statuses: [{ id: 'bleeding', remaining: 2 }], hurt: { id: ++hurtId, damage: amount, kind: 'slash' } });
+      statuses: amount ? withStatus(statuses, { id: 'bleeding', remaining: 2 }) : statuses,
+      hurt: { id: ++hurtId, damage: amount, absorbed, kind: amount ? 'slash' : 'blocked' } });
   },
   startTurn() {
     const state = get();
@@ -72,6 +88,7 @@ export const playerStore = createStore<PlayerState>((set, get) => ({
     const damage = state.statuses.some(status => status.id === 'bleeding') ? Math.min(2, state.health) : 0;
     const stanceValue = Math.min(100, state.stanceValue + 35);
     set({ health: state.health - damage, stanceValue, stance: stanceFromValue(stanceValue),
+      magicPower: Math.min(state.maxMagicPower, state.magicPower + MAGIC_REGEN),
       statuses: state.statuses.map(status => ({ ...status, remaining: status.remaining - 1 })).filter(status => status.remaining > 0),
       ...(damage ? { hurt: { id: ++hurtId, damage, kind: 'bleed' as const } } : {}) });
   },
