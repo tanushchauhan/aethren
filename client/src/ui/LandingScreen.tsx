@@ -3,6 +3,7 @@ import { useStoryStore as useUiStore } from '../net/storyStore';
 const getUiStore = useUiStore.getState;
 import './title-screen.css';
 import { ForestCanvas } from './ForestCanvas';
+import { useGameMode } from '../combat/gameMode';
 
 /** Preset names the glove can cycle with T, so nobody has to type to start playing. */
 const NAMES = ['Spellbearer', 'Alden', 'Lyra', 'Rowan', 'Soren'] as const;
@@ -18,6 +19,7 @@ export function LandingScreen() {
   const [coop, setCoop] = useState<CoopMode>('host');
   const [name, setName] = useState<string>(nameInStore || NAMES[0]);
   const [code, setCode] = useState('');
+  const mode = useGameMode(s => s.mode);
 
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -65,6 +67,10 @@ export function LandingScreen() {
       </nav>
       <button type="button" className="title-name" data-glove-t onClick={cycleName}>
         Playing as <b>{name}</b> <kbd className="glove-key">T</kbd>
+      </button>
+      <button type="button" className="title-name title-pace" aria-pressed={mode === 'fast'}
+        onClick={() => useGameMode.getState().setMode(mode === 'fast' ? 'standard' : 'fast')}>
+        Pace <b>{mode === 'fast' ? 'Fast' : 'Standard'}</b>
       </button>
       <p className="title-glove-hint"><kbd className="glove-key">Dial</kbd> choose <kbd className="glove-key">B1</kbd> start <kbd className="glove-key">B2</kbd> co-op <kbd className="glove-key">T</kbd> name</p>
     </section>

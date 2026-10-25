@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { combatants, createEncounter, armorValue, encounterReducer, PLAYER_ACTION, type AttackEvent, type EncounterId, type EncounterState, type ActorState } from './encounter';
 import { HEROES, heroStore, isHero, localHeroStore, stanceFromValue, type HeroId, type PlayerStance } from './playerState';
 import { STATUS_EFFECTS, withStatus } from './statusEffects';
+import { scaleDamage } from './gameMode';
 import { getSpell, SPELLS, type Spell, type SpellInput } from './spells';
 export type DodgeMode = 'natural' | 'hit' | 'dodge';
 export type DefenseMode = 'dodge' | 'parry' | 'brace';
@@ -245,10 +246,10 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
           parts.push(`${nameOf(targetId)} dodged`);
           return;
         }
-        const damage = spellDamage(spell, base, targetId, target), hp = Math.max(0, target.hp - damage), defeated = hp === 0;
+        const damage = scaleDamage(spellDamage(spell, base, targetId, target)), hp = Math.max(0, target.hp - damage), defeated = hp === 0;
         dealt += target.hp - hp;
         let statuses = target.statuses, energy = target.energy;
-        if (!defeated && spell.applies) statuses = withStatus(statuses, { id: spell.applies.id, remaining: targetId === 'knight' && spell.applies.id === 'frozen' ? 1 : spell.applies.turns, amount: spell.applies.amount, source: 'player', appliedAction: PLAYER_ACTION });
+        if (!defeated && spell.applies) statuses = withStatus(statuses, { id: spell.applies.id, remaining: targetId === 'knight' && spell.applies.id === 'frozen' ? 1 : spell.applies.turns, amount: spell.applies.amount === undefined ? undefined : scaleDamage(spell.applies.amount), source: 'player', appliedAction: PLAYER_ACTION });
         if (!defeated && spell.drain) energy = 0;
         next[targetId] = { ...target, hp, energy, defeated, statuses: defeated ? [] : statuses };
         const label = !defeated && spell.applies ? STATUS_EFFECTS[spell.applies.id].label : undefined;
