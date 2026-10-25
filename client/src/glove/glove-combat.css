@@ -1,20 +1,62 @@
-.glove-combat { position: absolute; z-index: 20; left: 50%; bottom: 176px; translate: -50% 0; width: min(560px, calc(100% - 24px)); box-sizing: border-box; padding: 8px 12px; background: #0b161bec; border: 2px solid var(--el, #7f978c); box-shadow: 4px 4px 0 #040b10, 0 0 28px var(--el-glow, #0000); color: #e6dfbd; font: 22px/1.15 'VT323', monospace; }
-.glove-combat[data-element='fire'] { --el: #ff8a3d; --el-glow: #ff8a3d55; }
-.glove-combat[data-element='frost'] { --el: #7fd8ff; --el-glow: #7fd8ff55; }
-.glove-combat[data-element='storm'] { --el: #c49bff; --el-glow: #c49bff55; }
-.glove-combat-elements { display: flex; gap: 6px; margin-bottom: 6px; }
-.glove-combat-elements span { flex: 1; text-align: center; text-transform: capitalize; padding: 0; line-height: 1.2; border: 1px solid #3a4f4a; color: #7f958f; }
-.glove-combat-elements span[data-active='true'] { color: #0b161b; background: var(--el); border-color: var(--el); }
-.glove-combat-spells { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.glove-combat-spells li { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; padding: 3px 8px; border: 1px solid #3a4f4a; color: #8aa09a; }
-.glove-combat-spells li[data-active='true'] { color: #fff3c4; border-color: var(--el); box-shadow: 0 0 14px var(--el-glow); background: #14262c; }
-.glove-combat-spells li[data-affordable='false'] small { color: #e1836b; }
-.glove-combat-spells small { font-size: 18px; color: #9fb5b0; }
-.glove-combat-detail { margin: 4px 0 0; font-size: 20px; color: #c1ccbf; }
-.glove-combat-target { color: #9fb5b0; white-space: nowrap; }
-.glove-combat-target b { color: #ffe5a1; font-weight: 400; }
-.glove-combat-message { margin: 2px 0 0; color: #e1c29b; min-height: 1.2em; }
-.glove-combat footer { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 4px; padding-top: 4px; border-top: 1px solid #3a4f4a; color: #9fb5b0; font-size: 18px; }
-.glove-combat kbd { font-size: 14px; }
-.glove-combat-glove { display: none; position: absolute; top: 4px; right: 8px; font-size: 16px; color: #6f857f; }
+.glove-combat { --el: #7f978c; --dock: 118px; --wheel-scale: 1; position: absolute; z-index: 20; inset: 0; pointer-events: none; color: #e6dfbd; font: 20px/1.15 'VT323', monospace; }
+@media (max-height: 800px) { .glove-combat { --wheel-scale: .84; } }
+@media (max-height: 640px) { .glove-combat { --wheel-scale: .66; } }
+
+/* The wheel: 12 wedges in a dark glass ring, element arcs on the rim, a gold pointer on the live wedge. */
+.spell-wheel { position: absolute; left: 50%; bottom: var(--dock); translate: -50% 0; width: 360px; transform-origin: 50% 100%; transform: scale(var(--wheel-scale)); opacity: 1; transition: transform .42s cubic-bezier(.3, 1.3, .5, 1), opacity .3s ease; }
+.glove-combat[data-phase='banner'] .spell-wheel { transform: scale(.1) translateY(40px); opacity: 0; pointer-events: none; transition: transform .34s ease-in, opacity .26s ease-in; }
+.glove-combat[data-phase='banner'] .spell-wheel * { pointer-events: none; }
+.spell-wheel-dial { position: relative; width: 360px; height: 360px; filter: drop-shadow(0 6px 14px #000a); }
+.spell-wheel-dial svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: auto; }
+.wheel-arc { opacity: .32; transition: opacity .2s; }
+.wheel-arc[data-active='true'] { opacity: 1; filter: drop-shadow(0 0 6px var(--el)); }
+.wheel-wedge { cursor: pointer; }
+.wheel-wedge path { fill: #08141be6; stroke: color-mix(in srgb, var(--wedge) 45%, #3a4f4a); stroke-width: 1.5; transition: fill .15s, stroke .15s; }
+.wheel-wedge:hover path { fill: color-mix(in srgb, var(--wedge) 14%, #08141b); }
+.wheel-wedge[data-active='true'] path { fill: color-mix(in srgb, var(--wedge) 30%, #0b1a20); stroke: var(--wedge); stroke-width: 2.5; filter: drop-shadow(0 0 7px var(--wedge)); }
+.wheel-wedge text { fill: #cbbd94; font: 14px 'Pixelify Sans', monospace; pointer-events: none; user-select: none; }
+.wheel-wedge[data-active='true'] text { fill: #fff3c4; }
+.wheel-wedge[data-affordable='false'] path, .wheel-wedge[data-affordable='false'] text { opacity: .42; }
+.wheel-cost-gem { fill: #1b1409; stroke: #c9a15a; stroke-width: 1.5; pointer-events: none; }
+.wheel-wedge[data-affordable='false'] .wheel-cost-gem { stroke: #e1836b; }
+.wheel-wedge text.wheel-cost { font: 14px 'VT323', monospace; fill: #ffe5a1; opacity: 1; }
+.wheel-wedge[data-affordable='false'] text.wheel-cost { fill: #f0a08a; opacity: 1; }
+.wheel-pointer { fill: #ffd479; stroke: #5b3f14; stroke-width: 1; transform-box: view-box; transform-origin: 50% 50%; transition: transform .16s ease-out; pointer-events: none; filter: drop-shadow(0 0 4px #ffd479); }
+
+/* The hub shows the live spell. */
+.wheel-hub { position: absolute; left: 50%; top: 50%; translate: -50% -50%; box-sizing: border-box; width: 196px; height: 196px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 16px 20px; text-align: center; border-radius: 50%; background: radial-gradient(circle at 50% 38%, #12262d, #08141bf2 72%); border: 2px solid #a8844a; box-shadow: inset 0 0 22px color-mix(in srgb, var(--el) 28%, transparent), 0 0 20px color-mix(in srgb, var(--el) 35%, transparent); pointer-events: none; }
+.wheel-hub-crest { font-size: 22px; line-height: 1; filter: drop-shadow(0 0 6px var(--el)); }
+.wheel-hub-name { font: 400 19px/1.1 'Pixelify Sans', monospace; color: #fff3c4; text-shadow: 0 0 10px color-mix(in srgb, var(--el) 70%, transparent); }
+.wheel-hub-cost { color: var(--el); font-size: 19px; }
+.wheel-hub-cost[data-affordable='false'] { color: #e1836b; }
+.wheel-hub-detail { margin: 2px 0; font-size: 16px; line-height: 1.05; color: #c1ccbf; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.wheel-hub-target { font-size: 17px; color: #9fb5b0; white-space: nowrap; }
+.wheel-hub-target b { color: #ffe5a1; font-weight: 400; }
+
+/* Keycap prompts under the wheel. */
+.wheel-prompts { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 14px; margin-top: 6px; padding: 5px 8px; background: #08141be6; border: 1px solid #6e5a35; color: #b9c8c2; font-size: 18px; pointer-events: auto; }
+.wheel-prompts span { white-space: nowrap; }
+.wheel-prompts small { flex-basis: 100%; text-align: center; font-size: 16px; color: #8aa09a; }
+.wheel-prompts .wheel-glove { color: #6f857f; }
+.glove-combat kbd { display: inline-block; margin: 0 2px; padding: 0 5px; font: 13px/1.5 'Pixelify Sans', monospace; color: #ffe5a1; background: #1b1409; border: 1px solid #b8964f; border-bottom-width: 2px; border-radius: 2px; }
+
+/* The wolves' turn: the wheel folds into this banner so the attacks stay in view. */
+.defense-banner { position: absolute; left: 50%; bottom: var(--dock); translate: -50% 0; box-sizing: border-box; width: min(720px, calc(100% - 24px)); display: grid; justify-items: center; gap: 2px; padding: 7px 16px; text-align: center; background: #08141bec; border: 2px solid #a8844a; box-shadow: 4px 4px 0 #040b10; opacity: 0; transform: translateY(16px) scale(.96); pointer-events: none; transition: opacity .2s ease, transform .25s ease; }
+.glove-combat[data-phase='banner'] .defense-banner { opacity: 1; transform: none; transition-delay: .16s; }
+.defense-prompt { margin: 0; font: 400 23px/1.15 'VT323', monospace; color: #e6dfbd; }
+.defense-prompt[data-calm='true'] { font-size: 21px; color: #b9c8c2; }
+.defense-meta { font-size: 16px; color: #8aa09a; }
+.defense-banner[data-urgent='true'] { border-color: #ff6a4d; background: linear-gradient(#2a0d0aee, #08141bec); animation: defense-urgent 1s ease-in-out infinite; }
+.defense-banner[data-urgent='true'] .defense-prompt { color: #ffd9a8; text-shadow: 0 0 10px #ff5a3c; }
+.defense-banner[data-defending='true'] { border-color: #7fd8ff; animation: none; box-shadow: 0 0 26px #7fd8ff88, 4px 4px 0 #040b10; }
+.defense-flash { font: 400 24px/1.1 'Pixelify Sans', monospace; letter-spacing: 1px; animation: defense-flash .35s ease-out; }
+.defense-flash[data-mode='dodge'] { color: #bff0ff; text-shadow: 0 0 14px #7fd8ff, 0 0 4px #fff; }
+.defense-flash[data-mode='parry'] { color: #ffe27a; text-shadow: 0 0 14px #ffb347, 0 0 4px #fff; }
+@keyframes defense-urgent { 0%, 100% { box-shadow: 0 0 8px #ff6a4d55, 4px 4px 0 #040b10; } 50% { box-shadow: 0 0 26px #ff6a4dcc, 4px 4px 0 #040b10; } }
+@keyframes defense-flash { from { transform: scale(1.35); opacity: .2; } to { transform: scale(1); opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spell-wheel, .defense-banner, .wheel-pointer, .wheel-arc, .wheel-wedge path { transition: none; }
+  .defense-banner[data-urgent='true'], .defense-flash { animation: none; }
+}
 .glove-target { filter: drop-shadow(0 0 14px #ffe5a1) drop-shadow(0 0 4px #ffe5a1); }

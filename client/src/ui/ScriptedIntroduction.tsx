@@ -79,7 +79,7 @@ export function ScriptedIntroduction() {
       initial={{ opacity: reduced ? .12 : .9, backgroundColor: '#ffffff' }}
       animate={{ opacity: 0, backgroundColor: '#a46bde' }}
       transition={{ duration: 1, ease: 'easeOut' }} />}
-    {rift && <button className="intro-skip" onClick={finish}>Skip introduction »</button>}
+    {rift && <button className="intro-skip" data-glove-hold-b2 onClick={finish}>Skip introduction » <kbd className="glove-key">Hold B2</kbd></button>}
     <button className="intro-sound" aria-pressed={muted} onClick={() => setMuted(!muted)}>{muted ? 'Sound off' : 'Sound on'}</button>
   </main>;
 }

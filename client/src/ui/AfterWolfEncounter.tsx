@@ -52,7 +52,7 @@ export function AfterWolfEncounter({ muted, onToggleSound }: { muted: boolean; o
         <WolfMoveAnimation move={moves.descent} sprite={knight.sprite} muted={muted} reduced={!!reduced} onImpact={() => {}} onComplete={() => setStage('warning')} />
       </motion.div>
       {landed && !reduced && <GroundSmash />}
-      <button className="boss-skip" onClick={() => setStage('warning')}>Skip arrival</button>
+      <button className="boss-skip" data-glove-hold-b2 onClick={() => setStage('warning')}>Skip arrival <kbd className="glove-key">Hold B2</kbd></button>
     </>}
     {stage === 'warning' && <>
       <div className="boss-waiting"><ScornFlames reduced={!!reduced} /><img style={{ position: 'relative', width: '100%', height: '100%', objectFit: 'contain' }} src={knight.sprite} alt="The huge ruined knight bars the gate with his corrupted axe" /></div>
@@ -63,7 +63,7 @@ export function AfterWolfEncounter({ muted, onToggleSound }: { muted: boolean; o
     </>}
     {stage === 'ending' && <section className="encounter-victory" aria-labelledby="demo-end-title">
       <p>Demo complete</p><h2 id="demo-end-title">Beyond the ruined gate</h2><span>The axe falls silent. For the first time, the kingdom lets you pass.</span>
-      <button onClick={() => window.location.reload()}>Return to title</button>
+      <button data-glove-b1="Title" onClick={() => window.location.reload()}>Return to title <kbd className="glove-key">B1</kbd></button>
     </section>}
     {!escape && stage !== 'castle' && <BossAtmosphere />}
     </motion.div>
