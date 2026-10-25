@@ -12,11 +12,14 @@
 import { createHash } from 'node:crypto';
 import dgram from 'node:dgram';
 import { createServer } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import type { Socket } from 'node:net';
 
 const GLOVE_UDP_PORT = Number(process.env.GLOVE_UDP_PORT ?? 4211);
 const GLOVE_CMD_PORT = 4210;
 const WS_PORT = Number(process.env.GLOVE_WS_PORT ?? 8765);
+/** Listens on every interface so other laptops on the network can use these gloves. Set GLOVE_WS_HOST=127.0.0.1 to keep it local. */
+const WS_HOST = process.env.GLOVE_WS_HOST ?? '0.0.0.0';
 const ONLINE_MS = 3000;
 const HELLO_MS = 2000;
 const simulate = process.argv.includes('--simulate');
@@ -50,6 +53,7 @@ interface Glove {
   ssid: string;
   rssi: number;
   acc: string;
+  touchPin: number | null;
   hubSeen: boolean;
   uptimeS: number;
   gloveFps: number;
@@ -65,6 +69,10 @@ interface Glove {
 
 const gloves = new Map<number, Glove>();
 const clients = new Set<Socket>();
+/** Which browser connection has each glove claimed. A glove can be used by one player at a time. */
+const owners = new Map<number, string>();
+const clientIds = new WeakMap<Socket, string>();
+let nextClient = 1;
 
 function summary(g: Glove) {
   const now = Date.now();
@@ -76,6 +84,7 @@ function summary(g: Glove) {
     ssid: g.ssid,
     rssi: g.rssi,
     acc: g.acc,
+    touchPin: g.touchPin,
     hubSeen: g.hubSeen,
     uptimeS: g.uptimeS,
     gloveFps: g.gloveFps,
@@ -86,6 +95,7 @@ function summary(g: Glove) {
     dropped: g.dropped,
     rxRate: g.rxRate,
     conflict: now < g.conflictUntil,
+    claimedBy: owners.get(g.id) ?? null,
   };
 }
 
@@ -107,6 +117,7 @@ function gloveFor(id: number, ip: string): Glove {
       ssid: '',
       rssi: 0,
       acc: '',
+      touchPin: null,
       hubSeen: false,
       uptimeS: 0,
       gloveFps: 0,
@@ -174,6 +185,7 @@ function handlePacket(text: string, ip: string): void {
     g.ssid = typeof data.ssid === 'string' ? data.ssid : g.ssid;
     g.rssi = num(data.rssi, g.rssi);
     g.acc = typeof data.acc === 'string' ? data.acc : g.acc;
+    g.touchPin = typeof data.tp === 'number' ? data.tp : g.touchPin;
     g.hubSeen = data.hub === 1;
     g.uptimeS = num(data.up);
     g.gloveFps = num(data.fps);
@@ -214,7 +226,7 @@ setInterval(() => {
     g.rxRate = g.windowCount;
     g.windowCount = 0;
   }
-  broadcast({ type: 'snapshot', gloves: [...gloves.values()].map(summary) });
+  broadcast({ type: 'snapshot', gloves: [...gloves.values()].sort((a, b) => a.id - b.id).map(summary) });
 }, 1000);
 
 setInterval(() => {
@@ -266,14 +278,39 @@ function decodeWs(buffer: Buffer): { opcode: number; text: string; used: number 
   return { opcode, text: payload.toString('utf8'), used: offset + maskBytes + length };
 }
 
-function handleClientMessage(text: string): void {
+function reply(socket: Socket, message: unknown): void {
+  socket.write(encodeWs(JSON.stringify(message)));
+}
+
+function handleClientMessage(socket: Socket, text: string): void {
   let message: Record<string, unknown>;
   try {
     message = JSON.parse(text) as Record<string, unknown>;
   } catch {
     return;
   }
-  if (message.type !== 'cmd' || typeof message.id !== 'number') return;
+  if (typeof message.id !== 'number') return;
+  const me = clientIds.get(socket);
+  if (message.type === 'claim') {
+    const g = gloves.get(message.id);
+    const owner = owners.get(message.id);
+    if (!g || !me) return reply(socket, { type: 'claim', id: message.id, ok: false, reason: 'unknown' });
+    if (owner && owner !== me) return reply(socket, { type: 'claim', id: message.id, ok: false, reason: 'in-use' });
+    if (Date.now() - g.lastSeen >= ONLINE_MS) return reply(socket, { type: 'claim', id: message.id, ok: false, reason: 'offline' });
+    owners.set(message.id, me);
+    reply(socket, { type: 'claim', id: message.id, ok: true });
+    broadcast({ type: 'glove', glove: summary(g) });
+    return;
+  }
+  if (message.type === 'release') {
+    if (owners.get(message.id) === me) {
+      owners.delete(message.id);
+      const g = gloves.get(message.id);
+      if (g) broadcast({ type: 'glove', glove: summary(g) });
+    }
+    return;
+  }
+  if (message.type !== 'cmd') return;
   const { type: _type, id, ...payload } = message;
   if (typeof payload.cmd === 'string') sendToGlove(id as number, payload);
 }
@@ -281,7 +318,7 @@ function handleClientMessage(text: string): void {
 const server = createServer((req, res) => {
   if (req.url === '/api/gloves') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify([...gloves.values()].map(summary)));
+    res.end(JSON.stringify([...gloves.values()].sort((a, b) => a.id - b.id).map(summary)));
     return;
   }
   res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -299,7 +336,10 @@ server.on('upgrade', (req, socket: Socket) => {
     `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`,
   );
   clients.add(socket);
-  socket.write(encodeWs(JSON.stringify({ type: 'snapshot', gloves: [...gloves.values()].map(summary) })));
+  const clientId = `c${nextClient++}`;
+  clientIds.set(socket, clientId);
+  reply(socket, { type: 'welcome', clientId });
+  socket.write(encodeWs(JSON.stringify({ type: 'snapshot', gloves: [...gloves.values()].sort((a, b) => a.id - b.id).map(summary) })));
   let pending: Buffer = Buffer.alloc(0);
   socket.on('data', (chunk: Buffer) => {
     pending = Buffer.concat([pending, chunk]);
@@ -307,15 +347,31 @@ server.on('upgrade', (req, socket: Socket) => {
       pending = pending.subarray(msg.used);
       if (msg.opcode === 0x8) socket.end();
       else if (msg.opcode === 0x9) socket.write(Buffer.from([0x8a, 0x00]));
-      else if (msg.opcode === 0x1) handleClientMessage(msg.text);
+      else if (msg.opcode === 0x1) handleClientMessage(socket, msg.text);
     }
   });
-  const drop = () => clients.delete(socket);
+  const drop = () => {
+    clients.delete(socket);
+    for (const [gloveId, owner] of [...owners]) {
+      if (owner !== clientId) continue;
+      owners.delete(gloveId);
+      const g = gloves.get(gloveId);
+      if (g) broadcast({ type: 'glove', glove: summary(g) });
+    }
+  };
   socket.on('close', drop);
   socket.on('error', drop);
 });
 
-server.listen(WS_PORT, '127.0.0.1', () => console.log(`[hub] browser feed on ws://localhost:${WS_PORT}`));
+server.listen(WS_PORT, WS_HOST, () => {
+  console.log(`[hub] browser feed on ws://localhost:${WS_PORT}`);
+  if (WS_HOST === '127.0.0.1') return;
+  for (const list of Object.values(networkInterfaces())) {
+    for (const addr of list ?? []) {
+      if (addr.family === 'IPv4' && !addr.internal) console.log(`[hub] other laptops: open the game with ?hub=ws://${addr.address}:${WS_PORT}`);
+    }
+  }
+});
 
 // --- Simulator ---------------------------------------------------------------
 
@@ -334,8 +390,8 @@ if (simulate) {
       ax: Math.round(Math.sin(t * 9) * 900 * swing + Math.sin(t * 2.1) * 30),
       ay: Math.round(Math.cos(t * 7) * 700 * swing + Math.cos(t * 1.3) * 30),
       az: Math.round(1000 + Math.sin(t * 5) * 400 * swing),
-      d3: Math.sin(t * 0.6) > 0.8 ? 1 : 0,
-      d7: 0,
+      d3: id === 2 && Math.sin(t * 0.6) > 0.8 ? 1 : 0,
+      d7: id === 1 && Math.sin(t * 0.6) > 0.8 ? 1 : 0,
       d4: Math.sin(t * 0.4 + 1) > 0.85 ? 1 : 0,
       d8: Math.sin(t * 0.5 + 2) > 0.85 ? 1 : 0,
       dial: Math.round(512 + Math.sin(t * 0.3) * 500),
@@ -360,7 +416,7 @@ if (simulate) {
   setInterval(() => {
     for (const [id, variant] of [[1, 4], [2, 2]] as const) {
       handlePacket(
-        JSON.stringify({ t: 'i', id, v: variant, fw: 'simulated', ip: `172.20.10.${id + 3}`, ssid: 'iPhone', rssi: -48 - id * 4, acc: 'MMA7660', hub: 1, up: Math.round((Date.now() - started) / 1000), fps: 40, i2c: [62, 76, 98] }),
+        JSON.stringify({ t: 'i', id, v: variant, fw: 'simulated', ip: `172.20.10.${id + 3}`, ssid: 'iPhone', rssi: -48 - id * 4, acc: 'MMA7660', tp: id === 1 ? 7 : 3, hub: 1, up: Math.round((Date.now() - started) / 1000), fps: 40, i2c: [62, 76, 98] }),
         `172.20.10.${id + 3}`,
       );
     }

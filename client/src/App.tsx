@@ -2,6 +2,7 @@ import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from '
 import { GameViewport } from './ui/GameViewport';
 import { LandingScreen } from './ui/LandingScreen';
 import { ScriptedIntroduction } from './ui/ScriptedIntroduction';
+import { GloveGate } from './glove/GloveGate';
 import { GameMusic } from './ui/GameMusic';
 import { useStoryStore } from './net/storyStore';
 import { isGamePath, isTestLabPath } from './debugRoutes';
@@ -18,8 +19,10 @@ function StoryApp() {
   const started = useStoryStore(s => s.started);
   const room = useStoryStore(s => s.room);
   return <GameViewport>
-    {started ? <ScriptedIntroduction /> : <><LandingScreen /><GameMusic /></>}
-    {started && room && <aside className="room-code">Room {room.code} · {room.players.length}/2 players</aside>}
+    <GloveGate>
+      {started ? <ScriptedIntroduction /> : <><LandingScreen /><GameMusic /></>}
+      {started && room && <aside className="room-code">Room {room.code} · {room.players.length}/2 players</aside>}
+    </GloveGate>
   </GameViewport>;
 }
 

@@ -9,18 +9,18 @@ Arduino **Uno R4 WiFi** plus a **Grove Base Shield V2** (VCC switch at **5V**). 
 3. Flash each glove with the script, one build per LCD:
 
 ```sh
-./flash.sh v4          # glove 1, Grove LCD v4: readable text, green-only backlight
-./flash.sh v2          # glove 2, Grove LCD v2: backlight colors, unreadable text
+./flash.sh v4          # glove 1, Grove LCD v4: readable text, green-only backlight, touch sensor on D7
+./flash.sh v2          # glove 2, Grove LCD v2: backlight colors, unreadable text, touch sensor on D3
 ./flash.sh v4 3        # same build with another glove id
 ./flash.sh v2 2 compile  # build without flashing
 ```
 
-Both builds are the same code. `GLOVE_ID` and `LCD_VARIANT` are compile flags (defaults at the top of the `.ino` if you flash from the Arduino IDE instead). Give every glove a different id.
+Both builds are the same code. `GLOVE_ID`, `LCD_VARIANT` and `TOUCH_PIN` (D7 for v4, D3 for v2; override with `TOUCH_PIN=3 ./flash.sh v4`) are compile flags (defaults at the top of the `.ino` if you flash from the Arduino IDE instead). Give every glove a different id.
 
 4. On the laptop, join the same hotspot, then run the hub and the client:
 
 ```sh
-pnpm --dir firmware hub          # receives the gloves (UDP :4211) and serves ws://localhost:8765
+pnpm --dir firmware hub          # receives the gloves (UDP :4211) and serves ws://localhost:8765 (and on your LAN IP, printed at start)
 pnpm dev                          # then open http://localhost:5173/debug/hardware
 pnpm --dir firmware hub:simulate  # two fake gloves, to try the page without hardware
 ```
@@ -29,7 +29,7 @@ pnpm --dir firmware hub:simulate  # two fake gloves, to try the page without har
 
 | Socket | Part | Reported as |
 | --- | --- | --- |
-| D3, D7 | Grove Touch Sensor (either socket) | `d3`, `d7` (1 = touched) |
+| D3 (v2 glove) or D7 (v4 glove) | Grove Touch Sensor | `d3` / `d7` (1 = touched); the info packet's `tp` says which pin is the touch sensor |
 | D4 | Button 1 | `d4` |
 | D8 | Button 2 | `d8` |
 | D5 | Buzzer | `beep` and `ident` commands |
@@ -83,3 +83,12 @@ Until a hub says hello, gloves broadcast to the subnet on port 4211. The hub rep
 - **Glove never appears:** the laptop must be on the same hotspot. A second glove with the same id shows a warning on the page.
 - **Red or `WIFI FAILED`:** check the SSID and password in `wifi_secrets.h`, and that the hotspot is on compatible with 2.4 GHz (turn on "Maximize Compatibility" in the iPhone hotspot settings).
 - **`NO HUB`:** the hub is not running, or the laptop firewall blocks UDP 4211.
+
+## Using the gloves from another laptop
+
+The hub must run on the computer the gloves send to. Other laptops open the game with `?hub=ws://<hub computer IP>:8765`
+(for example `http://localhost:5173/?hub=ws://172.20.10.3:8765`); the hub prints the exact address when it starts, and the
+choice is remembered for that tab. A game served from a LAN address picks the hub on that same host automatically.
+A page served over `https` cannot open a plain `ws://` socket (browsers block it), so use the dev server or an `http` page.
+Phone hotspots and some Wi-Fi networks isolate devices from each other; if the address does not answer, try another network.
+Each glove can be claimed by one player at a time, across laptops.
