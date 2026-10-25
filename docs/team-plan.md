@@ -6,7 +6,7 @@ This document proposes the tech stack for **Once Upon a Memory** and divides the
 
 ## 1. Recommended Tech Stack
 
-For an 18-hour build combining real-time multiplayer, browser computer vision, Arduino hardware over serial, an MCP server, and three Meta Muse models, **a single TypeScript monorepo (`pnpm` workspaces)** is the highest-leverage choice. Sharing one `shared/types.ts` contract across client and server allows parallel coding agents to build against identical types without integration drift.
+For a hackathon build combining real-time multiplayer, browser computer vision, Arduino hardware over serial, an MCP server, and three Meta Muse models, **a single TypeScript monorepo (`pnpm` workspaces)** is the highest-leverage choice. Sharing one `shared/types.ts` contract across client and server allows parallel coding agents to build against identical types without integration drift.
 
 ### Core Stack
 
@@ -36,7 +36,7 @@ once-upon-a-memory/
 ├── package.json
 ├── pnpm-workspace.yaml
 ├── packages/
-│   └── shared/                      # Locked in Phase 0 (15 mins)
+│   └── shared/                      # Locked in Phase 0
 │       └── src/
 │           ├── types.ts             # GameState, WorldSchema, SocketEvents, GloveFrame, PoseFrame
 │           └── constants.ts         # Round timings, element rules, attack templates
@@ -59,7 +59,7 @@ once-upon-a-memory/
 
 ---
 
-## 3. Phase 0: Lock the Shared Contract First (All 3 Teammates — 15 Mins)
+## 3. Phase 0: Lock the Shared Contract First (All 3 Teammates)
 
 Before launching parallel agents, initialize the workspace and commit `packages/shared/src/types.ts` with these core interfaces so every agent codes against the exact same contract:
 
@@ -206,15 +206,3 @@ Each teammate acts as an orchestrator running **3 parallel coding agents** on is
       - `M`: toggle hardware arm/disarm switch
 - **Testable independently via:** `/hardware-test` route in Vite testing both simulated keys and live Web Serial Arduino connection.
 
----
-
-## 5. Execution Timeline & Integration Checkpoints (18-Hour Schedule)
-
-| Milestone | Target Time | Integration Goal Across All 3 Teammates |
-| --- | --- | --- |
-| **M0: Repo & Shared Types** | **Next 15 mins** | Scaffold monorepo (`shared`, `server`, `client`, `firmware`), commit `shared/types.ts`, each teammate launches their 3 parallel agents. |
-| **M1: Vertical Slices Live** | **By 9:00 PM Sat** | **T1:** Room creation, clock sync, 1 Spark JSON call, 1 Transcribe call, and `/mcp` test endpoint working.<br>**T2:** Two browsers join a room and render the same scheduled telegraph at the exact same server timestamp.<br>**T3:** Arduino streams dial/button/accel/touch/light JSON over Web Serial; MediaPipe tracks 1 player + zone dodge on Laptop A. |
-| **M2: One Full Combat Round** | **By 1:00 AM Sun** | Connect T1 + T2 + T3: Telegraph -> Side-step / Duck / Parry -> Return to silhouette -> Spell wheel (dial on Laptop A, arm raise on Laptop B) -> Push-to-talk incantation check -> Swipe/Thrust release -> Damage resolves on both screens. |
-| **M3: Full P0 Story Loop & Agents** | **By 5:00 AM Sun** | Instagram chat upload -> Memory card pick + Color sensor boss token -> World generation -> Boss tool-calling agent + Ward + Twin Cast shatter -> Servo opens prop book -> Muse phone MCP quest setup -> Google Home narration + captions. |
-| **M4: Polish, Cache & Fallback** | **By 8:00 AM Sun** | Muse Image art integrated, `cached-demo-world.json` saved for offline/rate-limit safety, 10s disconnect bot takeover verified, full 2-laptop run under 4 minutes. |
-| **M5: Rehearsal & Video** | **By 10:30 AM Sun** | Rehearse live run twice in the actual 2m x 2m demo spot, record the 2–3 minute demo video, submit to Devpost by 11:30 AM CST. |
