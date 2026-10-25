@@ -17,8 +17,8 @@ For an 18-hour build combining real-time multiplayer, browser computer vision, A
 | **State & Rendering** | **Zustand + HTML5 2D Canvas** | Zustand handles high-frequency socket updates cleanly outside React render loops; 2D Canvas renders mirrored webcam + glowing silhouettes + 15 fps teammate outlines at 60 fps. | PixiJS / Three.js (heavier than needed for 2D outlines) |
 | **Computer Vision** | **`@mediapipe/tasks-vision` (`PoseLandmarker`)** | Runs locally in the browser on WebGL/WASM at 30 fps (lite/full model), outputs 33 normalized 3D landmarks, sends zero video over the network. | `@tensorflow-models/pose-detection` |
 | **Audio & Voice Input** | **`MediaRecorder` (WebM/WAV) + Web Audio API (`AnalyserNode`)** | Push-to-talk captures clean audio clips for Muse Voice Transcribe in P0; `AnalyserNode` computes RMS loudness and autocorrelation pitch for P1 tone checks. | RecordRTC |
-| **Hardware Bridge (Laptop A)** | **Web Serial API (`navigator.serial`) + Fallback Node Serial Bridge (`serialport`)** | Chrome/Edge on Laptop A reads 115200-baud JSON lines from the Arduino directly in the browser and writes `BUZZ` / `SERVO` commands back. A 50-line Node bridge is kept as a fallback. | Pure Node `serialport` -> local WebSocket |
-| **Hardware Firmware (`firmware/`)** | **Arduino C++ (`.ino` / PlatformIO) + Grove Libraries** | Reads all 8 sensors and drives buzzer + servo in a non-blocking `millis()` loop, streaming newline-delimited JSON at 50 Hz over USB serial. | Arduino IDE single `.ino` sketch |
+| **Hardware Bridge (Laptop A)** | **Web Serial API (`navigator.serial`) over USB-C + Optional Wi-Fi UDP/WebSocket (`WiFiS3`)** | Arduino Uno R4 WiFi connects over USB-C (`115200` baud) directly to Chrome/Edge via Web Serial for zero-latency demo reliability, while `WiFiS3` can optionally stream untethered over local hotspot/Wi-Fi. | Node `serialport` bridge or `WiFiS3` WebSocket client |
+| **Hardware Firmware (`firmware/`)** | **Arduino Uno R4 WiFi (`arduino:renesas_uno:unor4wifi`) C++ + Grove Libraries + `Arduino_LED_Matrix`** | Uses both I2C buses (`Wire` on SDA/SCL + `Wire1` on Qwiic connector) for the accelerometer and color sensor, drives the built-in 12x8 LED matrix for visual spell/ward feedback, and polls all 8 sensors at 50 Hz. | Arduino CLI / PlatformIO / Arduino IDE 2.x |
 | **Backend (`server/`)** | **Node.js + Express + Socket.IO + `tsx` + Zod** | Authoritative room state, sub-10ms clock sync (`ping`/`pong`), scheduled telegraphs, 15 Hz landmark relay, and REST endpoints (`/api/upload-chat`, `/api/transcribe`) on one port. | Fastify + native `ws` |
 | **AI Integration** | **`openai` Node SDK (pointed at Meta Muse API base URL) + Zod Structured Outputs** | Meta's Model API supports OpenAI-compatible chat/completions, structured JSON schemas, tool calling (**Muse Spark**), audio transcription (**Muse Voice Transcribe**), and image generation (**Muse Image**). | Direct `fetch` REST wrapper |
 | **Muse Connector (MCP)** | **`@modelcontextprotocol/sdk` (Streamable HTTP / SSE at `/mcp`)** | Exposes `list_memory_cards`, `create_quest`, `invite_player`, and `get_quest_status` on the same Express server with Bearer token auth so Muse on a phone can set up the quest. | FastMCP |
@@ -170,16 +170,28 @@ Each teammate acts as an orchestrator running **3 parallel coding agents** on is
     - `Swipe / Thrust`: tracks wrist velocity over a 200ms rolling window to trigger spell release.
 - **Testable independently via:** Dedicated `/vision-test` route in Vite showing live webcam, landmark overlay, zone box, and real-time classifier badges.
 
-#### Agent 3B — Arduino Firmware for Enchanted Glove & Props (`firmware/enchanted_glove/`)
+#### Agent 3B — Arduino Uno R4 WiFi Firmware for Enchanted Glove & Props (`firmware/enchanted_glove/`)
+- **Board Target:** **Arduino Uno R4 WiFi** (`arduino:renesas_uno:unor4wifi`, Renesas RA4M1 48 MHz Cortex-M4 + ESP32-S3 co-processor + built-in **12x8 red LED matrix** + **dual I2C buses**: headers `Wire` at 5V and Qwiic connector `Wire1` at 3.3V).
 - **Scope:**
-  - Single non-blocking Arduino sketch (`enchanted_glove.ino`) polling at 50 Hz (115200 baud):
-    - **Forearm & Glove Inputs**: Rotary angle sensor (`A0` -> mapped to `0..1023` & slot `0..2`), index finger button (`D2` -> click to lock element, hold for push-to-talk), palm light sensor (`A1` -> covered by closed fist = spell charge), I2C 3-axis accelerometer (peak magnitude + axis = swipe/thrust confirmation & power multiplier `1.0..1.5`), thumb touch pad (`D3` -> projectile parry), forearm hardware switch (`D4` -> master arm/disarm).
-    - **Table Inputs**: Sound sensor (`A2` -> room noise envelope), I2C color sensor (classifies Red/Blue/Green/Yellow token in the token well -> selects Boss memory card).
-    - **Outputs**: Forearm piezo buzzer (`D5` -> non-blocking tone patterns for `tick`, `cast`, `fizzle`, `hit`), storybook ward servo (`D6` -> sweeps from `0°` closed to `110°` open when ward breaks).
+  - Single non-blocking Arduino sketch (`enchanted_glove.ino`) polling at 50 Hz (`115200` baud over USB-C Serial, with optional `WiFiS3` WebSocket/UDP untethered telemetry):
+    - **Forearm & Glove Inputs**:
+      - Rotary angle sensor (`A0` -> 10-bit `0..1023` mapped to slot `0..2`)
+      - Index finger button (`D2` -> click to lock element, hold for push-to-talk)
+      - Palm light sensor (`A1` -> covered by closed fist = spell charge)
+      - I2C 3-axis accelerometer (`Wire` / `Wire1` -> peak magnitude + axis = swipe/thrust confirmation & power multiplier `1.0..1.5`)
+      - Thumb touch pad (`D3` -> projectile parry)
+      - Forearm hardware switch (`D4` -> master arm/disarm)
+    - **Table Inputs**:
+      - Sound sensor (`A2` -> room noise envelope)
+      - I2C color sensor (`Wire` -> classifies Red/Blue/Green/Yellow token in the token well -> selects Boss memory card; uses second I2C bus `Wire1` if sharing an address or voltage domain with the accelerometer)
+    - **Outputs**:
+      - Forearm piezo buzzer (`D5` -> non-blocking tone patterns for `tick`, `cast`, `fizzle`, `hit`)
+      - Storybook ward servo (`D6` -> standard `Servo.h` sweeps from `0°` closed to `110°` open when ward breaks)
+      - **Built-in 12x8 LED Matrix (`Arduino_LED_Matrix.h`)**: renders live element icons (flame for `Ember`, snowflake for `Frost`, flower for `Bloom`, shield for `Parry`, skull/crack for `Ward Broken`, or `OFF` when disarmed) right on the Spellbearer's forearm!
   - Bi-directional newline-delimited JSON serial protocol:
     - Outbound: `{"dial":1,"btn":1,"fist":true,"swipe":"thrust","accel":1.35,"parry":false,"armed":true,"noise":310,"color":"ember"}`
-    - Inbound: `{"cmd":"buzz","p":"cast"}` or `{"cmd":"servo","open":true}`
-- **Testable independently via:** Arduino Serial Monitor at 115200 baud sending test JSON commands and verifying sensor readouts.
+    - Inbound: `{"cmd":"buzz","p":"cast"}`, `{"cmd":"servo","open":true}`, or `{"cmd":"matrix","icon":"ember"}`
+- **Testable independently via:** `arduino-cli compile --fqbn arduino:renesas_uno:unor4wifi` and Arduino Serial Monitor at 115200 baud sending test JSON commands and verifying sensor readouts + 12x8 LED matrix icons.
 
 #### Agent 3C — Web Serial Bridge & Keyboard/UI Glove Simulator (`client/src/hardware/`)
 - **Scope:**

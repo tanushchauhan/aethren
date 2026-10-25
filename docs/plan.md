@@ -284,7 +284,7 @@ The boss's memory is still picked in the opening with the color token, so the ha
 
 ## Hardware: the enchanted glove
 
-The glove and forearm band are wired to one Arduino that talks to laptop A over USB serial. Every laptop needs a webcam and a headset or close mic. All of the parts below are used in P0. The build uses 11 of the 14 listed parts and leaves out the UV, air quality and infrared sensors.
+The glove and forearm band are wired to one **Arduino Uno R4 WiFi** (`arduino:renesas_uno:unor4wifi`) that talks to laptop A over USB-C serial (with optional `WiFiS3` wireless telemetry). Its built-in **12x8 LED matrix** on the forearm displays the active element icon (`Ember`, `Frost`, `Bloom`), parry flash, and ward-break animation, while its **two I2C buses** (`Wire` on the standard headers and `Wire1` on the Qwiic connector) cleanly host both the accelerometer and the I2C color sensor without wiring/address conflicts. Every laptop needs a webcam and a headset or close mic. All of the parts below are used in P0. The build uses 11 of the 14 listed parts and leaves out the UV, air quality and infrared sensors.
 
 | Part | Where it sits | Role in the game |
 | --- | --- | --- |
