@@ -44,7 +44,7 @@ describe('spell resolution', () => {
     expect(battle().castSpell(input)).toBe(false);
     battle().resolveCast(id);
     battle().resolveCast(id);
-    expect(battle().opponents.left.hp).toBe(32);
+    expect(battle().opponents.left.hp).toBe(26);
     battle().finishCast(id);
     expect(playerStore.getState().stance).toBe('guarding');
     expect(playerStore.getState().lastAttackRequest?.input).toEqual(input);
@@ -56,7 +56,7 @@ describe('spell resolution', () => {
     expect(battle().feedback[0].kind).toBe('dodge');
     expect(playerStore.getState().magicPower).toBe(4);
     const target = battle().opponents.center;
-    expect(resolveSpellHit(SPELLS['ember-bolt'], 'center', target, 'hit', .5).damage).toBe(7);
+    expect(resolveSpellHit(SPELLS['ember-bolt'], 'center', target, 'hit', .5).damage).toBe(13);
     expect(resolveSpellHit(SPELLS['ember-bolt'], 'center', target, 'natural', .05).dodged).toBe(true);
     expect(resolveSpellHit(SPELLS['ember-bolt'], 'center', target, 'natural', .5).dodged).toBe(false);
   });
@@ -93,36 +93,36 @@ describe('spell resolution', () => {
 describe('fire: damage', () => {
   it('Fire Lance ignores armor', () => {
     cast('fire-lance', 'center');
-    expect(battle().opponents.center.hp).toBe(42);
+    expect(battle().opponents.center.hp).toBe(28);
   });
   it('Immolate burns at the start of each of the next three turns, ignoring armor', () => {
     cast('immolate', 'center');
-    expect(battle().opponents.center.hp).toBe(56);
-    expect(battle().opponents.center.statuses).toContainEqual(expect.objectContaining({ id: 'burning', remaining: 3, amount: 4 }));
+    expect(battle().opponents.center.hp).toBe(53);
+    expect(battle().opponents.center.statuses).toContainEqual(expect.objectContaining({ id: 'burning', remaining: 3, amount: 6 }));
     for (let round = 0; round < 4; round++) {
       battle().endTurn();
       while (battle().activeId !== 'player') opponentTurn();
     }
-    expect(battle().opponents.center.hp).toBe(56 - 12);
+    expect(battle().opponents.center.hp).toBe(53 - 18);
     expect(battle().opponents.center.statuses.some(status => status.id === 'burning')).toBe(false);
   });
   it('shows a burn tick and can win the encounter during the opponents’ turn', () => {
     cast('immolate', 'left');
     battle().endTurn();
     battle().beginEnemy();
-    expect(battle().feedback[0]).toMatchObject({ targetId: 'left', damage: 4, label: 'Burning', castId: null });
+    expect(battle().feedback[0]).toMatchObject({ targetId: 'left', damage: 6, label: 'Burning', castId: null });
     battle().reset(); playerStore.getState().reset();
-    for (const id of ['center', 'right'] as const) for (let i = 0; i < 4; i++) cast('fire-lance', id);
-    cast('fire-lance', 'left'); cast('ember-bolt', 'left'); cast('ember-bolt', 'left');
+    for (const id of ['center', 'right'] as const) for (let i = 0; i < 2; i++) cast('fire-lance', id);
+    cast('ember-bolt', 'left'); cast('ember-bolt', 'left');
     cast('immolate', 'left');
-    expect(battle().opponents.left.hp).toBe(1);
+    expect(battle().opponents.left.hp).toBe(4);
     battle().endTurn();
     battle().beginEnemy();
     expect(battle()).toMatchObject({ status: 'won', enemyTurn: null });
   });
   it('Meteor hits the target and splashes every other wolf, and cannot be dodged', () => {
     cast('meteor', 'center', 'dodge');
-    expect([battle().opponents.left.hp, battle().opponents.center.hp, battle().opponents.right.hp]).toEqual([30, 39, 30]);
+    expect([battle().opponents.left.hp, battle().opponents.center.hp, battle().opponents.right.hp]).toEqual([24, 27, 24]);
   });
 });
 
@@ -160,7 +160,7 @@ describe('frost: defense and control', () => {
   });
   it('Frost Nova damages and chills every wolf, and cannot be dodged', () => {
     cast('frost-nova', 'left', 'dodge');
-    expect([battle().opponents.left.hp, battle().opponents.center.hp, battle().opponents.right.hp]).toEqual([35, 56, 35]);
+    expect([battle().opponents.left.hp, battle().opponents.center.hp, battle().opponents.right.hp]).toEqual([28, 49, 28]);
     expect(Object.values(battle().opponents).every(wolf => wolf.statuses.some(status => status.id === 'chilled'))).toBe(true);
   });
 });
@@ -169,11 +169,11 @@ describe('storm: tempo and disruption', () => {
   it('Chain Lightning jumps to the nearest wolf, then the last', () => {
     cast('chain-lightning', 'left');
     expect(battle().feedback.map(hit => hit.targetId)).toEqual(['left', 'center', 'right']);
-    expect([battle().opponents.left.hp, battle().opponents.center.hp, battle().opponents.right.hp]).toEqual([31, 55, 36]);
+    expect([battle().opponents.left.hp, battle().opponents.center.hp, battle().opponents.right.hp]).toEqual([24, 51, 34]);
   });
   it('Static Shock empties energy so the wolf can only rest', () => {
     cast('static-shock', 'left');
-    expect(battle().opponents.left).toMatchObject({ hp: 36, energy: 0 });
+    expect(battle().opponents.left).toMatchObject({ hp: 32, energy: 0 });
     battle().endTurn();
     battle().beginEnemy();
     expect(battle().enemyTurn?.action?.moveId).toBe('rest');
@@ -184,14 +184,14 @@ describe('storm: tempo and disruption', () => {
     cast('ice-shield');
     expect(playerStore.getState().statuses.some(status => status.id === 'overcharged')).toBe(true);
     cast('ember-bolt', 'left');
-    expect(battle().opponents.left.hp).toBe(28);
+    expect(battle().opponents.left.hp).toBe(19);
     expect(playerStore.getState().statuses.some(status => status.id === 'overcharged')).toBe(false);
     cast('overcharge');
     playerStore.getState().setMagicPower(5);
     battle().castSpell({ spellId: 'storm-spark', targetId: 'right' }, 'diagnostic', 'hit');
     expect(playerStore.getState().magicPower).toBe(5);
     battle().resolveCast(battle().pending!.id);
-    expect(battle().opponents.right.hp).toBe(34);
+    expect(battle().opponents.right.hp).toBe(30);
   });
 });
 
@@ -226,11 +226,11 @@ describe('diagnostic turn progression and victory', () => {
       expect(battle().status).toBe('active');
       battle().finishCast(id);
     };
-    for (let i = 0; i < 3; i++) hit('left');
+    for (let i = 0; i < 2; i++) hit('left');
     battle().endTurn();
     expect(battle().activeId).toBe('center');
     battle().reset(); playerStore.getState().reset();
-    for (const target of ['left', 'right', 'center']) for (let i = 0; i < (target === 'center' ? 4 : 3); i++) hit(target);
+    for (const target of ['left', 'right', 'center']) for (let i = 0; i < 2; i++) hit(target);
     expect(battle().status).toBe('won');
     const number = battle().turnNumber;
     battle().endTurn();

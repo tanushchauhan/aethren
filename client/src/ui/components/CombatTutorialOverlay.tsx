@@ -31,73 +31,87 @@ const STEP_CONFIG: Record<TutorialStep, {
 }> = {
   dial: {
     step: 1,
-    badge: 'GLOVE TRAINING',
+    badge: '⏸ GAME PAUSED · GLOVE TRAINING',
     title: 'Spin the Spell Wheel',
     lines: [
-      'Your Spell Wheel holds 12 spells across 3 elements: Fire, Frost, and Storm.',
-      'Twist the physical Rotary Dial on your glove to sweep the golden pointer around the wheel.',
+      '12 spells across Fire, Frost & Storm.',
+      'Twist the Glove Dial to select a spell.',
     ],
-    requirement: '◆ Turn [Dial] on your glove (or press ← / →) to continue',
+    requirement: '◆ Turn [Dial] or press ← / →',
     keys: [
-      { label: 'Dial', action: 'Rotate knob to pick any spell' },
-      { label: '← / →', action: 'Keyboard fallback' },
+      { label: 'Dial', action: 'Select spell' },
+      { label: '← / →', action: 'Keyboard' },
     ],
   },
   element: {
     step: 2,
-    badge: 'GLOVE TRAINING',
+    badge: '⏸ GAME PAUSED · GLOVE TRAINING',
     title: 'Jump Elements & Rest',
     lines: [
-      'Tap [B2] to leap straight to the next Element sector (Fire → Frost → Storm).',
-      'When your Magic Power runs low later in battle, HOLD [B2] to Rest (+3 MP & +45 Stance).',
+      'Tap [B2] to switch element sectors.',
+      'Hold [B2] to Rest (+3 MP & Stance).',
     ],
-    requirement: '◆ Tap [B2] on your glove (or press E) to jump elements',
+    requirement: '◆ Tap [B2] or press E',
     keys: [
-      { label: 'B2', action: 'Jump to next Element arc' },
-      { label: 'Hold B2', action: 'Rest (+3 MP & Stance)' },
+      { label: 'B2', action: 'Next element' },
+      { label: 'Hold B2', action: 'Rest (+3 MP)' },
     ],
   },
   target: {
     step: 3,
-    badge: 'GLOVE TRAINING',
+    badge: '⏸ GAME PAUSED · GLOVE TRAINING',
     title: 'Lock Onto Your Target',
     lines: [
-      'Three wolves stand before you in the clearing.',
-      'Tap the [T] Touch Sensor pad on your glove to cycle which wolf your spell will strike.',
+      'Tap [T] Touch Pad to switch wolves.',
+      'Check each wolf’s next move above its bar.',
     ],
-    requirement: '◆ Tap [T] Touch Sensor (or press T / Tab) to switch target wolf',
+    requirement: '◆ Tap [T] or press T / Tab',
     keys: [
-      { label: 'T', action: 'Cycle targeted wolf' },
-      { label: 'Tab', action: 'Keyboard fallback' },
+      { label: 'T', action: 'Switch target' },
+      { label: 'Tab', action: 'Keyboard' },
     ],
   },
   cast: {
     step: 4,
-    badge: 'GLOVE TRAINING',
-    title: 'Unleash Your Spell',
+    badge: '⏸ GAME PAUSED · GLOVE TRAINING',
+    title: 'Begin Casting a Spell',
     lines: [
-      'Press [B1] to cast — or SWING your glove forward to unleash the spell with up to 1.45× bonus kinetic power!',
-      'Turns switch automatically right after your spell lands.',
+      'Press [B1] / [Enter] to open the Spell Maneuver stage.',
+      'Simple spells take 3 steps; stronger spells take 4–5 steps.',
     ],
-    requirement: '◆ Press [B1] or SWING your glove to cast your first spell!',
+    requirement: '◆ Press [B1] / [Enter] or click Begin Ritual',
     keys: [
-      { label: 'B1', action: 'Cast selected spell' },
-      { label: 'Swing', action: 'Cast with kinetic power boost' },
+      { label: 'B1 / Enter', action: 'Open Spell Maneuver' },
+      { label: 'Click Wedge', action: 'Or click active spell' },
+    ],
+  },
+  ritual: {
+    step: 5,
+    badge: '⏸ GAME PAUSED · FIRST SPELL CAST!',
+    title: 'Spell Maneuvers & Timing',
+    lines: [
+      'Do each <kbd> step in order (↑ Arm / ↓ Duck + Glove buttons).',
+      'Act when the white cursor hits ★ PERFECT for 1.45× spell power!',
+      'Stronger spells require 4–5 steps; unlock ??? runes via hints.',
+    ],
+    requirement: '◆ Click Start Casting → (or press Space / Enter) to begin!',
+    keys: [
+      { label: '↑ Arm (W) / ↓ Duck (S)', action: 'Body Poses (Camera or Keys)' },
+      { label: '1: B1 · 2: B2 · 3: T · Space: Swing', action: 'Glove Inputs' },
     ],
   },
   parry: {
-    step: 5,
-    badge: '⏸ FREEZE FRAME · WOLF MID-ATTACK!',
+    step: 6,
+    badge: '⏸ FREEZE FRAME · WOLF ATTACK!',
     title: 'Parry or Dodge Now!',
     lines: [
-      'The wolf is mid-leap! Time is frozen just before impact.',
-      'SHAKE your glove or press [T] / [B2] right now to raise your Glove Ward — halving damage and reflecting 4 damage back!',
+      'Wolf lunge frozen right before impact!',
+      'Shake Glove or tap [T] / [B2] to Parry (−50% DMG, reflect 6).',
     ],
-    requirement: '◆ SHAKE Glove or Press [T] / [B2] NOW to Parry the attack!',
+    requirement: '◆ Shake Glove or press [T] / [B2] NOW!',
     keys: [
-      { label: 'Shake Glove', action: 'Raise Glove Ward & reflect 4 DMG' },
-      { label: 'T / B2', action: 'Instant Parry Ward' },
-      { label: 'Camera', action: 'Or Duck / Side-step to Dodge' },
+      { label: 'Shake / T / B2', action: 'Parry & reflect 6 DMG' },
+      { label: 'Camera', action: 'Duck or lean to Dodge' },
     ],
   },
 };
@@ -228,6 +242,35 @@ function TutorialDemo({ kind }: { kind: CombatTutorialKind }) {
     );
   }
 
+  if (kind === 'ritual') {
+    return (
+      <div className="ct-demo ct-demo-ritual" aria-hidden="true">
+        <div className="ct-demo-tag">LIVE DEMO · POSE + GLOVE COMBO IN ★ SWEET SPOT</div>
+        <svg viewBox="0 0 380 140" className="ct-svg">
+          {/* 3 kbd combo steps */}
+          {[
+            { x: 75, key: '↑ Arm', sub: '1 · POSE', color: '#7fd8ff' },
+            { x: 190, key: 'B1', sub: '2 · GLOVE', color: '#ffe5ad' },
+            { x: 305, key: 'Swing', sub: '3 · CAST', color: '#ff8a3d' },
+          ].map((item, idx) => (
+            <g key={item.key} transform={`translate(${item.x}, 54)`} className={`ct-el-card ct-reticle-${idx}`}>
+              <rect x="-42" y="-22" width="84" height="40" rx="5" fill="#0b1922" stroke={item.color} strokeWidth="2" />
+              <text y="-1" textAnchor="middle" fill="#fff3c4" fontSize="15">{item.key}</text>
+              <text y="13" textAnchor="middle" fill={item.color} fontSize="10">{item.sub}</text>
+            </g>
+          ))}
+          {/* Timing sweet-spot bar underneath */}
+          <g transform="translate(190, 112)">
+            <rect x="-140" y="-10" width="280" height="18" rx="3" fill="#08141b" stroke="#6b8580" strokeWidth="1.5" />
+            <rect x="-42" y="-9" width="104" height="16" fill="#a37c1b" stroke="#ffe27a" strokeWidth="1.5" />
+            <text x="10" y="3" textAnchor="middle" fill="#fff7cf" fontSize="11">★ PERFECT ×1.45</text>
+            <circle r="7" cy="-1" fill="#ffffff" stroke="#ffd479" strokeWidth="2" className="ct-anim-knob" />
+          </g>
+        </svg>
+      </div>
+    );
+  }
+
   if (kind === 'cast') {
     return (
       <div className="ct-demo ct-demo-cast" aria-hidden="true">
@@ -299,7 +342,7 @@ export function CombatTutorialOverlay(props?: Partial<CombatTutorialOverlayProps
   const lines = props?.lines ?? cfg.lines;
   const keys = props?.keys ?? cfg.keys;
   const step = props?.step ?? cfg.step;
-  const totalSteps = props?.totalSteps ?? 5;
+  const totalSteps = props?.totalSteps ?? 6;
   const handleContinue = props?.onContinue ?? (() => notifyAction(kind));
   const handleSkip = props?.onSkip ?? skipStep;
   const handleSkipAll = props?.onSkipAll ?? skipAll;
@@ -308,14 +351,19 @@ export function CombatTutorialOverlay(props?: Partial<CombatTutorialOverlayProps
     <div className={`combat-tutorial ct-${kind}`} data-step={kind} role="dialog" aria-modal="false" aria-label={title}>
       <div className="ct-scanlines" aria-hidden="true" />
       <div className="ct-panel">
-        <div className="ct-step">{cfg.badge} · STEP {step} / {totalSteps}</div>
+        <div className="ct-top-bar">
+          <div className="ct-step">{cfg.badge} · STEP {step} / {totalSteps}</div>
+          <button type="button" className="ct-skip-all-btn" onClick={handleSkipAll}>
+            Skip All Tutorials ✕
+          </button>
+        </div>
         <h2 className="ct-title">{title}</h2>
         <TutorialDemo kind={kind} />
-        <div className="ct-lines">
+        <ul className="ct-lines">
           {lines.map((line, i) => (
-            <p key={i} style={{ '--i': i } as React.CSSProperties}>{line}</p>
+            <li key={i} style={{ '--i': i } as React.CSSProperties}>{line}</li>
           ))}
-        </div>
+        </ul>
         <p className="ct-requirement" role="status">{cfg.requirement}</p>
         {keys && keys.length > 0 && (
           <ul className="ct-keys">
@@ -329,17 +377,12 @@ export function CombatTutorialOverlay(props?: Partial<CombatTutorialOverlayProps
         )}
         <div className="ct-actions">
           <button type="button" className="ct-continue" onClick={handleContinue}>
-            {props?.continueLabel ?? (kind === 'parry' ? 'Parry Now (T / B2)' : 'Next Lesson →')}
+            {props?.continueLabel ?? (kind === 'parry' ? 'Parry Now (T / B2)' : kind === 'ritual' ? 'Start Casting →' : 'Next Lesson →')}
           </button>
-          <button type="button" className="ct-skip" onClick={handleSkip}>Skip step</button>
-          <button type="button" className="ct-skip" onClick={handleSkipAll}>Skip tutorial</button>
+          <button type="button" className="ct-skip" onClick={handleSkip}>Skip Step</button>
+          <button type="button" className="ct-skip-all-btn" onClick={handleSkipAll}>Full Skip Tutorial ⏭</button>
         </div>
       </div>
-      {kind !== 'parry' && (
-        <div className="ct-wheel-callout" aria-hidden="true">
-          <span>▼ TRY IT ON THE SPELL WHEEL BELOW ▼</span>
-        </div>
-      )}
     </div>
   );
 }

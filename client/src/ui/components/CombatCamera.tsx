@@ -23,7 +23,7 @@ export function CombatCamera() {
   const action = useSpellBattle(state => state.enemyTurn?.action);
   const ownTurn = useSpellBattle(state => state.activeId === me && !state.pending);
   const activeCue = action && action.phase !== 'returning' && cue;
-  const weavingPose = Boolean(livePose && livePose.confidence >= .6 && (livePose.isRightArmRaised || livePose.isDucking || livePose.isSideStepLeft || livePose.isSideStepRight));
+  const weavingPose = Boolean(livePose && livePose.confidence >= .6 && (livePose.isRightArmRaised || livePose.isDucking));
   useEffect(() => {
     if (!video.current) return;
     const service = new PoseLandmarkerService();

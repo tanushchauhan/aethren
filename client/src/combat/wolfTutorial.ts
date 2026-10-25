@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type TutorialStep = 'dial' | 'element' | 'target' | 'cast' | 'parry';
+export type TutorialStep = 'dial' | 'element' | 'target' | 'ritual' | 'cast' | 'parry';
 
 const TUTORIAL_ENCOUNTER = 'wolves';
 const STEP_ORDER: TutorialStep[] = ['dial', 'element', 'target', 'cast'];
@@ -14,6 +14,8 @@ interface WolfTutorialState {
   /** True while the wolf attack is suspended mid-lunge for the parry lesson. */
   attackFrozen: boolean;
   startTurnTutorial: (encounterId: string, turnNumber: number) => void;
+  /** Triggered the very first time the player enters the spell-casting ritual stage. */
+  triggerFirstRitualTutorial: () => boolean;
   notifyAction: (action: TutorialStep) => void;
   triggerMidAttackPause: (encounterId: string) => boolean;
   skipStep: () => void;
@@ -35,9 +37,11 @@ export const useWolfTutorial = create<WolfTutorialState>((set, get) => {
     const done = { ...completed, [step]: true };
     if (step === 'parry') {
       set({ completed: done, attackFrozen: false, activeStep: activeStep === 'parry' ? null : activeStep });
+    } else if (step === 'ritual') {
+      set({ completed: done, activeStep: activeStep === 'ritual' ? null : activeStep });
     } else if (activeStep === step) {
       set({ completed: done, activeStep: nextStep(step, done) });
-    } else if (step === 'cast' && activeStep !== 'parry') {
+    } else if (step === 'cast' && activeStep !== 'parry' && activeStep !== 'ritual') {
       // Casting early (e.g. keyboard shortcut) ends the turn, so earlier lessons no longer apply.
       set({ completed: done, activeStep: null });
     } else {
@@ -55,6 +59,13 @@ export const useWolfTutorial = create<WolfTutorialState>((set, get) => {
       const { enabled, completed } = get();
       if (!enabled || encounterId !== TUTORIAL_ENCOUNTER || completed.dial) return;
       set({ activeStep: 'dial' });
+    },
+
+    triggerFirstRitualTutorial() {
+      const { enabled, completed, activeStep } = get();
+      if (!enabled || completed.ritual || activeStep === 'ritual') return false;
+      set({ completed: { ...completed, dial: true, element: true, target: true, cast: true }, activeStep: 'ritual' });
+      return true;
     },
 
     notifyAction: complete,
@@ -76,7 +87,7 @@ export const useWolfTutorial = create<WolfTutorialState>((set, get) => {
         enabled: false,
         activeStep: null,
         attackFrozen: false,
-        completed: { dial: true, element: true, target: true, cast: true, parry: true },
+        completed: { dial: true, element: true, target: true, ritual: true, cast: true, parry: true },
       });
     },
 

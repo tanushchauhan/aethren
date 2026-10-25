@@ -42,7 +42,7 @@ describe('co-op boss fight', () => {
   it('sends the knight’s swing at whoever hurt him most, and his Eclipse at both', () => {
     battle().endTurn();
     cast('fire-lance');
-    expect(battle().threat.ally).toBe(18);
+    expect(battle().threat.ally).toBe(32);
     battle().endTurn(); battle().beginEnemy();
     const id = battle().enemyTurn!.action!.id;
     battle().enemyStep('play', id); battle().enemyStep('impact', id);
