@@ -1,20 +1,28 @@
 /**
- * Authoritative rooms and combat (Agent 1A). STUB: replace freely, keeping the exported signatures.
+ * Authoritative rooms and combat (Agent 1A).
  *
  * Exports `createRoomService(deps)` (implements `EngineRoomService` from `../contracts.ts`).
- * The stub supports room create / join / quick start, clock sync, pose relay and opening
- * picks, so client teams can connect today. There is no combat loop yet.
+ * `createEngine(deps, options)` is the same service with an injectable clock, RNG, time
+ * scale and logger for tests and the two-laptop sim.
+ *
+ * Files:
+ * - `phases.ts`    one room's state machine (opening -> intro -> calibration -> rounds -> ending)
+ * - `combat.ts`    pure rules: HP, element effects, plan clamping
+ * - `twin-cast.ts` pure Twin Cast detector
+ * - `bot.ts`       bot seat decisions
+ * - `rooms.ts`     room codes and seat claiming
+ * - `clock.ts`     injectable clock and timer groups
  */
-import { randomUUID } from 'node:crypto';
-import { ROOM_CODE_LENGTH, TEAM_HEARTS_P0 } from '@once-upon/shared';
 import type {
   ElementType,
   GameState,
   JoinableRole,
+  P0ElementType,
   PlayerRole,
-  PlayerState,
+  QuestDifficulty,
   QuestStatus,
   RoomJoinAck,
+  TranscribeResponse,
 } from '@once-upon/shared';
 import { config } from '../config';
 import type {
@@ -24,232 +32,298 @@ import type {
   EngineRoomService,
   GameSocket,
 } from '../contracts';
+import { systemClock, type Clock } from './clock';
+import { GameRoom, type EngineRuntime } from './phases';
+import { generateCode, normalizeCode, toJoinableRole } from './rooms';
 
-/** Letters that are hard to confuse when read aloud or typed. */
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-const MAX_SEATS = 2;
-
-interface Room {
-  state: GameState;
-  hostPlayerId: string;
+export interface EngineOptions {
+  clock?: Clock;
+  rng?: () => number;
+  /**
+   * Multiplies every phase duration and engine timeout. Defaults to the `ENGINE_TIME_SCALE`
+   * env var (sim only), else 1. Server-time windows (Twin Cast, incantation freshness) never scale.
+   */
+  timeScale?: number;
+  log?: (msg: string) => void;
 }
 
-function normalizeCode(code: string): string {
-  return code.trim().toUpperCase();
+/** The engine plus a test hook into a room. */
+export interface Engine extends EngineRoomService {
+  /** Internal room object (tests and the sim only). */
+  debugRoom(roomCode: string): GameRoom | undefined;
 }
 
-function newPlayer(name: string, role: PlayerRole): PlayerState {
-  return {
-    id: randomUUID(),
-    name: name.trim() || 'Player',
-    role,
-    connected: false,
-    inZone: false,
-    canCast: true,
-    selectedElement: null,
-    fistCharged: false,
-  };
+/** Rooms nobody has been connected to for this long are dropped on the next `createRoom`. */
+export const ROOM_IDLE_TTL_MS = 30 * 60_000;
+
+const DIFFICULTIES: readonly QuestDifficulty[] = ['easy', 'normal', 'hard'];
+const ROLES: readonly PlayerRole[] = ['spellbearer', 'partner', 'bot'];
+
+function envTimeScale(): number {
+  const n = Number.parseFloat(process.env.ENGINE_TIME_SCALE ?? '');
+  return Number.isFinite(n) && n > 0 && n <= 10 ? n : 1;
+}
+
+function defaultLog(msg: string): void {
+  if (process.env.ENGINE_LOG) console.log(msg);
 }
 
 export function createRoomService(deps: EngineDeps): EngineRoomService {
-  const { io, ai } = deps;
-  const rooms = new Map<string, Room>();
+  return createEngine(deps);
+}
 
-  function generateCode(): string {
-    for (;;) {
-      let code = '';
-      for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
-        code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Engine {
+  const rt: EngineRuntime = {
+    io: deps.io,
+    ai: deps.ai,
+    boss: deps.boss,
+    clock: options.clock ?? systemClock,
+    rng: options.rng ?? Math.random,
+    timeScale: options.timeScale ?? envTimeScale(),
+    log: options.log ?? defaultLog,
+  };
+  const rooms = new Map<string, GameRoom>();
+  /** Live sockets by ID, so a seat taken over by a new tab can unhook the old socket. */
+  const sockets = new Map<string, GameSocket>();
+
+  function getRoom(code: string | undefined): GameRoom | undefined {
+    return code ? rooms.get(normalizeCode(code)) : undefined;
+  }
+
+  function sweep(): void {
+    const now = rt.clock.now();
+    for (const [code, room] of rooms) {
+      if (room.emptySince !== null && !room.hasConnectedHumans() && now - room.emptySince > ROOM_IDLE_TTL_MS) {
+        room.dispose();
+        rooms.delete(code);
       }
-      if (!rooms.has(code)) return code;
     }
-  }
-
-  function snapshot(room: Room): GameState {
-    room.state.serverTimestampMs = Date.now();
-    return room.state;
-  }
-
-  function broadcast(room: Room): void {
-    io.to(room.state.roomCode).emit('room:state', snapshot(room));
-  }
-
-  function getRoom(code: string): Room | undefined {
-    return rooms.get(normalizeCode(code));
   }
 
   async function createRoom(opts: CreateRoomOptions): Promise<CreateRoomResult> {
-    const roomCode = generateCode();
-    const host = newPlayer(opts.hostName, opts.hostRole);
-    const players = [host];
-    const otherRole: PlayerRole = opts.hostRole === 'spellbearer' ? 'partner' : 'spellbearer';
-    (opts.playerNames ?? []).forEach((name, i) => {
-      if (players.length < MAX_SEATS) players.push(newPlayer(name, i === 0 ? otherRole : 'partner'));
-    });
-
-    const picks = opts.quickStart
-      ? { ...ai.getCachedPicks() }
-      : { encounterCardId: opts.encounterCardId ?? null, bossCardId: null };
-    const world = opts.quickStart ? ai.getCachedWorld() : null;
-
-    const state: GameState = {
+    if (!opts || typeof opts !== 'object') throw new Error('createRoom options are required');
+    if (typeof opts.hostName !== 'string') throw new Error('hostName is required');
+    if (!ROLES.includes(opts.hostRole)) throw new Error(`hostRole must be one of ${ROLES.join(', ')}`);
+    if (opts.difficulty !== undefined && !DIFFICULTIES.includes(opts.difficulty)) {
+      throw new Error(`difficulty must be one of ${DIFFICULTIES.join(', ')}`);
+    }
+    if (opts.playerNames !== undefined && !Array.isArray(opts.playerNames)) {
+      throw new Error('playerNames must be an array');
+    }
+    sweep();
+    const roomCode = generateCode((c) => rooms.has(c));
+    const room = new GameRoom(rt, {
       roomCode,
-      phase: 'lobby',
-      hearts: TEAM_HEARTS_P0,
-      maxHearts: TEAM_HEARTS_P0,
-      wardActive: false,
-      wardSpell: null,
-      players,
-      world,
-      currentEncounter: world?.encounters[0] ?? null,
-      fightingBoss: false,
-      enemyHp: 0,
-      enemyMaxHp: 0,
-      roundIndex: 0,
-      serverTimestampMs: Date.now(),
-      memoryCards: ai.listMemoryCards(),
-      picks,
-      images: {},
-      paused: false,
-      lastResolution: null,
-    };
-    rooms.set(roomCode, { state, hostPlayerId: host.id });
-    return { roomCode, hostPlayerId: host.id };
+      hostName: opts.hostName,
+      hostRole: toJoinableRole(opts.hostRole),
+      difficulty: opts.difficulty ?? 'normal',
+      encounterCardId: typeof opts.encounterCardId === 'string' ? opts.encounterCardId : undefined,
+      playerNames: (opts.playerNames ?? []).filter((n): n is string => typeof n === 'string'),
+      quickStart: Boolean(opts.quickStart),
+    });
+    rooms.set(roomCode, room);
+    rt.log(`[engine ${roomCode}] created (${opts.quickStart ? 'quick start' : opts.difficulty ?? 'normal'})`);
+    return { roomCode, hostPlayerId: room.hostPlayerId };
+  }
+
+  function leaveCurrent(socket: GameSocket): void {
+    const { roomCode, playerId } = socket.data;
+    socket.data.roomCode = undefined;
+    socket.data.playerId = undefined;
+    if (!roomCode) return;
+    void socket.leave(roomCode);
+    if (playerId) getRoom(roomCode)?.detach(playerId, socket.id);
   }
 
   /** Claims a reserved seat with a matching name, or takes a free seat. */
-  function seatSocket(socket: GameSocket, room: Room, name: string, role: JoinableRole): RoomJoinAck {
-    const wanted = name.trim().toLowerCase();
-    let player = room.state.players.find((p) => !p.connected && p.name.toLowerCase() === wanted);
-    if (!player) {
-      if (room.state.players.length >= MAX_SEATS) {
-        player = room.state.players.find((p) => !p.connected);
-        if (!player) return { ok: false, error: 'Room is full' };
-        player.name = name.trim() || player.name;
-      } else {
-        player = newPlayer(name, role);
-        room.state.players.push(player);
+  function seatSocket(socket: GameSocket, room: GameRoom, name: string, role: JoinableRole): RoomJoinAck {
+    const claim = room.claim(name, toJoinableRole(role));
+    if (!claim.ok) return { ok: false, error: claim.error };
+    const seat = claim.seat;
+    const code = room.state.roomCode;
+    const alreadyHere = seat.socketId === socket.id && socket.data.roomCode === code;
+    if (!alreadyHere) {
+      if (socket.data.roomCode) leaveCurrent(socket);
+      const previous = room.attach(seat, socket.id);
+      if (previous) {
+        const old = sockets.get(previous);
+        if (old && old.data.playerId === seat.player.id) {
+          old.data.roomCode = undefined;
+          old.data.playerId = undefined;
+          void old.leave(code);
+        }
       }
     }
-    player.connected = true;
-    socket.data.roomCode = room.state.roomCode;
-    socket.data.playerId = player.id;
-    void socket.join(room.state.roomCode);
-    broadcast(room);
-    return { ok: true, roomCode: room.state.roomCode, playerId: player.id, state: snapshot(room) };
+    socket.data.roomCode = code;
+    socket.data.playerId = seat.player.id;
+    void socket.join(code);
+    room.broadcast();
+    if (room.state.phase === 'opening') socket.emit('memory:cards', room.state.memoryCards ?? []);
+    return { ok: true, roomCode: code, playerId: seat.player.id, state: room.snapshot() };
+  }
+
+  /** Wraps a handler so a malformed payload can never take the server down. */
+  function safe<A extends unknown[]>(fn: (...args: A) => void | Promise<void>): (...args: A) => void {
+    return (...args: A) => {
+      try {
+        const out = fn(...args);
+        if (out instanceof Promise) out.catch((err: unknown) => rt.log(`[engine] handler failed: ${String(err)}`));
+      } catch (err) {
+        rt.log(`[engine] handler failed: ${(err as Error).stack ?? String(err)}`);
+      }
+    };
   }
 
   function registerSocketHandlers(socket: GameSocket): void {
-    const currentRoom = () => (socket.data.roomCode ? getRoom(socket.data.roomCode) : undefined);
+    sockets.set(socket.id, socket);
+    const currentRoom = () => getRoom(socket.data.roomCode);
 
-    socket.on('clock:ping', (payload) => {
-      const serverRecvMs = Date.now();
-      socket.emit('clock:pong', {
-        clientSendMs: payload?.clientSendMs ?? 0,
-        serverRecvMs,
-        serverSendMs: Date.now(),
-      });
-    });
+    socket.on(
+      'clock:ping',
+      safe((payload) => {
+        const serverRecvMs = rt.clock.now();
+        socket.emit('clock:pong', {
+          clientSendMs: typeof payload?.clientSendMs === 'number' ? payload.clientSendMs : 0,
+          serverRecvMs,
+          serverSendMs: rt.clock.now(),
+        });
+      }),
+    );
 
-    socket.on('room:create', async (payload, ack) => {
-      if (typeof ack !== 'function') return;
-      if (!payload?.playerName) return ack({ ok: false, error: 'playerName is required' });
-      const { roomCode, hostPlayerId } = await createRoom({
-        hostName: payload.playerName,
-        hostRole: payload.role,
-        difficulty: payload.difficulty,
-      });
-      const room = rooms.get(roomCode)!;
-      const host = room.state.players.find((p) => p.id === hostPlayerId)!;
-      ack(seatSocket(socket, room, host.name, payload.role));
-    });
+    socket.on(
+      'room:create',
+      safe(async (payload, ack) => {
+        if (typeof ack !== 'function') return;
+        if (!payload?.playerName) return ack({ ok: false, error: 'playerName is required' });
+        try {
+          const { roomCode, hostPlayerId } = await createRoom({
+            hostName: payload.playerName,
+            hostRole: toJoinableRole(payload.role),
+            difficulty: DIFFICULTIES.includes(payload.difficulty as QuestDifficulty) ? payload.difficulty : undefined,
+          });
+          const room = rooms.get(roomCode)!;
+          const host = room.state.players.find((p) => p.id === hostPlayerId)!;
+          ack(seatSocket(socket, room, host.name, toJoinableRole(payload.role)));
+        } catch (err) {
+          ack({ ok: false, error: (err as Error).message });
+        }
+      }),
+    );
 
-    socket.on('room:quick_start', async (payload, ack) => {
-      if (typeof ack !== 'function') return;
-      if (!payload?.playerName) return ack({ ok: false, error: 'playerName is required' });
-      const { roomCode } = await createRoom({
-        hostName: payload.playerName,
-        hostRole: payload.role,
-        quickStart: true,
-      });
-      ack(seatSocket(socket, rooms.get(roomCode)!, payload.playerName, payload.role));
-    });
+    socket.on(
+      'room:quick_start',
+      safe(async (payload, ack) => {
+        if (typeof ack !== 'function') return;
+        if (!payload?.playerName) return ack({ ok: false, error: 'playerName is required' });
+        try {
+          const { roomCode } = await createRoom({
+            hostName: payload.playerName,
+            hostRole: toJoinableRole(payload.role),
+            quickStart: true,
+          });
+          ack(seatSocket(socket, rooms.get(roomCode)!, payload.playerName, toJoinableRole(payload.role)));
+        } catch (err) {
+          ack({ ok: false, error: (err as Error).message });
+        }
+      }),
+    );
 
-    socket.on('room:join', (payload, ack) => {
-      if (typeof ack !== 'function') return;
-      const room = payload?.roomCode ? getRoom(payload.roomCode) : undefined;
-      if (!room) return ack({ ok: false, error: 'Room not found' });
-      if (!payload.playerName) return ack({ ok: false, error: 'playerName is required' });
-      ack(seatSocket(socket, room, payload.playerName, payload.role));
-    });
+    socket.on(
+      'room:join',
+      safe((payload, ack) => {
+        if (typeof ack !== 'function') return;
+        const room = typeof payload?.roomCode === 'string' ? getRoom(payload.roomCode) : undefined;
+        if (!room) return ack({ ok: false, error: 'Room not found' });
+        if (!payload.playerName) return ack({ ok: false, error: 'playerName is required' });
+        ack(seatSocket(socket, room, payload.playerName, toJoinableRole(payload.role)));
+      }),
+    );
 
-    socket.on('player:pose', (frame) => {
-      const room = currentRoom();
-      if (!room || !socket.data.playerId) return;
-      socket.to(room.state.roomCode).emit('player:pose', { ...frame, playerId: socket.data.playerId });
-    });
+    socket.on(
+      'player:pose',
+      safe((frame) => {
+        const room = currentRoom();
+        const playerId = socket.data.playerId;
+        if (!room || !playerId || !frame || typeof frame !== 'object') return;
+        room.pose(playerId, frame);
+        socket.to(room.state.roomCode).emit('player:pose', { ...frame, playerId });
+      }),
+    );
 
-    socket.on('opening:pick_card', ({ cardId, slot }) => {
-      const room = currentRoom();
-      if (!room) return;
-      const picks = room.state.picks ?? { encounterCardId: null, bossCardId: null };
-      if (slot === 'encounter') picks.encounterCardId = cardId;
-      else if (slot === 'boss') picks.bossCardId = cardId;
-      room.state.picks = picks;
-      broadcast(room);
-    });
+    socket.on(
+      'player:dodge_result',
+      safe((payload) => {
+        currentRoom()?.dodgeReport(socket.data.playerId, payload ?? {});
+      }),
+    );
 
-    socket.on('game:start', () => {
-      const room = currentRoom();
-      if (!room || room.hostPlayerId !== socket.data.playerId) return;
-      if (room.state.phase === 'lobby') {
-        room.state.phase = 'opening';
-        broadcast(room);
-      }
-    });
+    socket.on(
+      'player:cast',
+      safe((payload) => {
+        currentRoom()?.cast(socket.data.playerId, payload ?? {});
+      }),
+    );
 
-    socket.on('disconnect', () => {
-      const room = currentRoom();
-      const player = room?.state.players.find((p) => p.id === socket.data.playerId);
-      if (!room || !player) return;
-      player.connected = false;
-      broadcast(room);
-    });
+    socket.on(
+      'hardware:event',
+      safe((event) => {
+        currentRoom()?.hardwareEvent(socket.data.playerId, event);
+      }),
+    );
+
+    socket.on(
+      'opening:pick_card',
+      safe((payload) => {
+        currentRoom()?.pickCard(payload?.cardId, payload?.slot);
+      }),
+    );
+
+    socket.on(
+      'calibration:done',
+      safe(() => {
+        currentRoom()?.calibrationDone(socket.data.playerId);
+      }),
+    );
+
+    socket.on(
+      'game:start',
+      safe(() => {
+        currentRoom()?.start(socket.data.playerId);
+      }),
+    );
+
+    socket.on(
+      'disconnect',
+      safe(() => {
+        sockets.delete(socket.id);
+        leaveCurrent(socket);
+      }),
+    );
   }
 
   return {
     createRoom,
-    getState: (code) => {
+    getState: (code): GameState | null => {
       const room = getRoom(code);
-      return room ? snapshot(room) : null;
+      return room ? structuredClone(room.snapshot()) : null;
     },
-    getQuestStatus: (code): QuestStatus | null => {
-      const room = getRoom(code);
-      if (!room) return null;
-      const s = room.state;
-      return {
-        roomCode: s.roomCode,
-        phase: s.phase,
-        hearts: s.hearts,
-        maxHearts: s.maxHearts,
-        enemyName: s.currentEncounter?.name ?? null,
-        enemyHp: s.enemyHp,
-        enemyMaxHp: s.enemyMaxHp,
-        wardActive: s.wardActive,
-      };
-    },
-    getIncantation: (code, element: ElementType) =>
-      getRoom(code)?.state.world?.incantations[element] ?? null,
+    getQuestStatus: (code): QuestStatus | null => getRoom(code)?.questStatus() ?? null,
+    getIncantation: (code, element: ElementType) => getRoom(code)?.state.world?.incantations?.[element] ?? null,
     buildJoinLink: (code, playerName) => {
       const url = new URL(config.publicBaseUrl);
       url.searchParams.set('room', normalizeCode(code));
       if (playerName) url.searchParams.set('name', playerName);
       return url.toString();
     },
-    recordIncantation: () => {
-      // Stub: casts are not gated on incantations yet.
+    recordIncantation: (code, playerId, element: P0ElementType, result: TranscribeResponse) => {
+      getRoom(code)?.recordIncantation(playerId, element, result);
     },
     registerSocketHandlers,
-    dispose: () => rooms.clear(),
+    dispose: () => {
+      for (const room of rooms.values()) room.dispose();
+      rooms.clear();
+      sockets.clear();
+    },
+    debugRoom: (code) => getRoom(code),
   };
 }
