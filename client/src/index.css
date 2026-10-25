@@ -1,6 +1,39 @@
 @import "tailwindcss";
 
+@theme {
+  --color-parchment: #f3e6c8;
+  --color-parchment-deep: #e7d3a4;
+  --color-ink: #2b2118;
+  --color-ember: #e85d04;
+  --color-frost: #4cc9f0;
+  --color-bloom: #80b918;
+  --font-story: 'VT323', monospace;
+}
+
+:root {
+  --parchment: #f3e6c8;
+  --ink: #2b2118;
+  --ember: #e85d04;
+  --frost: #4cc9f0;
+  --bloom: #80b918;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 body {
   margin: 0;
-  min-height: 100vh;
+  color: var(--ink);
+  background-color: var(--parchment);
+  background-image: none;
+  font-family: 'VT323', monospace;
 }
+
+@font-face { font-family: 'VT323'; src: url('/fonts/VT323-Regular.ttf') format('truetype'); font-display: swap; }
+@font-face { font-family: 'Silkscreen'; src: url('/fonts/Silkscreen-Regular.ttf') format('truetype'); font-display: swap; }
+:root { --font-story: 'VT323', monospace; --font-sans: 'VT323', monospace; }
+body { background: #101c22; font-family: 'VT323', monospace; }
+button, input, textarea, select { font-family: inherit; }

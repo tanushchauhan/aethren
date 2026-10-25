@@ -1,0 +1,61 @@
+.title-screen { min-height: 100svh; position: relative; isolation: isolate; overflow: hidden; background: #071015; color: #efe9c9; }
+.title-backdrop { position: absolute; z-index: -2; inset: 0; background: #071015 url('/art/moonlit-forest.png') center center / cover no-repeat; }
+.title-rain { position: absolute; inset: -10% -5% 0; overflow: hidden; pointer-events: none; z-index: -1; }
+.title-rain i { position: absolute; top: -80px; width: 1px; height: 65px; background: #b5d5df; box-shadow: 0 0 4px #8ec5d5; transform: rotate(15deg); animation: title-rain-fall 1s linear infinite; }
+@keyframes title-rain-fall { to { translate: -15vw 115vh; } }
+.title-content { padding: clamp(75px, 17vh, 180px) 6vw 110px 8vw; min-height: 100svh; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; box-sizing: border-box; }
+.game-title { margin: 0 0 60px; color: #ecdfac; font-family: 'Silkscreen', monospace; font-weight: 400; line-height: 1.15; letter-spacing: -3px; text-shadow: 4px 5px 0 #111a1b, 0 0 26px #d6ddae40; }
+.game-title span { display: block; font-size: clamp(23px, 3.1vw, 48px); }
+.game-title strong { display: block; font: inherit; font-size: clamp(35px, 4.6vw, 72px); margin-top: 10px; }
+.title-menu { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.title-menu button { position: relative; border: 0; background: transparent; color: #c1ccbf; padding: 6px 22px 6px 0; font: 30px 'VT323', monospace; letter-spacing: 2px; text-shadow: 2px 3px #071015; cursor: pointer; text-align: left; }
+.title-menu button::before { content: ''; position: absolute; left: -22px; top: 16px; width: 0; height: 0; border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-left: 8px solid #f4dc99; opacity: 0; }
+.title-menu button:hover, .title-menu button:focus-visible { color: #ffe5a1; text-shadow: 0 0 15px #f4dc9966, 2px 3px #071015; }
+.title-menu button:hover::before, .title-menu button:focus-visible::before { opacity: 1; }
+.title-menu button:focus-visible { outline: 1px solid #e6d6aa; outline-offset: 8px; }
+.title-footer { position: absolute; bottom: 25px; left: 5vw; right: 5vw; display: flex; justify-content: space-between; gap: 16px; color: #9fb5b0; font: 18px 'VT323', monospace; letter-spacing: 1px; text-shadow: 2px 2px #071015; }
+.title-dialog { margin: auto; box-sizing: border-box; width: min(440px, calc(100% - 32px)); padding: 36px; border: 2px solid #7f978c; border-radius: 0; color: #e6dfbd; background: #101e23; box-shadow: 6px 6px 0 #040b10, 0 0 55px #78a7a326; font: 24px 'VT323', monospace; }
+.title-dialog::backdrop { background: #040b10b8; backdrop-filter: blur(5px); }
+.title-dialog h2 { font: 18px/1.5 'Silkscreen', monospace; padding-right: 15px; margin: 0 0 28px; color: #ebdfb6; }
+.title-dialog label { display: grid; gap: 8px; margin-bottom: 20px; }
+.title-dialog input, .title-dialog textarea { box-sizing: border-box; width: 100%; border: 1px solid #748d83; border-radius: 0; padding: 10px; background: #071116; color: #f1e8c9; font: 24px 'VT323', monospace; }
+.title-dialog textarea { min-height: 110px; resize: vertical; }
+.dialog-close { position: absolute; top: 8px; right: 12px; border: 0; background: transparent; color: #cbd0bc; font: 32px 'VT323', monospace; cursor: pointer; }
+.title-connection { display: flex; justify-content: space-between; font-size: 20px; margin: 24px 0; gap: 12px; }
+.title-connection button { background: transparent; color: #d6d6af; border: 0; font: inherit; text-decoration: underline; cursor: pointer; }
+.title-confirm { width: 100%; padding: 10px; color: #e7dfb9; background: #28453e; border: 1px solid #87a38d; box-shadow: 3px 3px #06100d; font: 26px 'VT323', monospace; cursor: pointer; }
+.title-confirm:disabled { opacity: .5; cursor: not-allowed; }
+.title-dialog :focus-visible { outline: 2px solid #f4dfa0; outline-offset: 4px; }
+.title-error { color: #e1c29b; font-size: 21px; line-height: 1.2; }
+@media (max-width:700px) { .title-backdrop { background-position: 58% center; } .title-content { padding: 100px 26px 100px; justify-content: flex-start; background: #03101745; } .game-title { letter-spacing: -2px; margin-bottom: 55px; } .game-title span { font-size: 26px; } .game-title strong { font-size: 38px; } .title-menu { margin-left: 22px; } .title-footer { font-size: 16px; flex-direction: column; gap: 4px; } }
+@media (max-height:600px) and (min-width:701px) { .title-content { padding-top: 40px; padding-bottom: 65px; } .game-title { margin-bottom: 25px; } .title-menu { gap: 4px; } }
+@media (prefers-reduced-motion:reduce) { .title-rain i { animation: none; display: none; } }
+
+@font-face { font-family: 'Pixelify Sans'; src: url('/fonts/PixelifySans.ttf') format('truetype'); font-weight: 400 700; font-display: swap; }
+.forest-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; background: #071015; }
+.game-title { margin-bottom: 28px; width: min(570px, 44vw); }
+.game-title img { display: block; width: 100%; height: auto; filter: drop-shadow(2px 4px 3px #071015); }
+.title-menu button { font: 36px/1.2 'Pixelify Sans', monospace; letter-spacing: .5px; display: flex; align-items: center; gap: 15px; padding: 12px 24px; width: 100%; box-sizing: border-box; }
+.title-menu button::before { display: none; }
+.menu-diamond { color: #b7b99b; font-size: 13px; text-shadow: none; }
+.title-menu button:hover .menu-diamond, .title-menu button:focus-visible .menu-diamond { color: #ffe0a1; text-shadow: 0 0 10px #f8d996; }
+.title-dialog, .title-dialog input, .title-dialog textarea, .title-confirm, .title-dialog h2 { font-family: 'Pixelify Sans', monospace; }
+.title-content { padding-left: 6vw; }
+.music-control { position: fixed; z-index: 30; bottom: 14px; right: 20px; padding: 8px 12px; border: 1px solid #8b9c7c70; background: #081317d9; color: #dfd9b8; font: 15px 'Pixelify Sans', monospace; cursor: pointer; }
+.music-control:focus-visible { outline: 2px solid #ffe2ab; outline-offset: 4px; }
+.title-footer { bottom: 25px; right: 190px; }
+@media(max-width:700px) { .title-content { padding-left: 24px; padding-top: 100px; background: transparent; } .game-title { width: min(100%, 420px); margin-bottom: 30px; } .title-menu { margin-left: 0; } .title-menu button { font-size: 29px; padding: 12px 16px; } .title-footer { bottom: 64px; right: 20px; } }
+
+/* A single illuminated choice, framed like the reference's game menu. */
+.title-menu { width: min(390px, 100%); gap: 10px; }
+.title-menu button::before, .title-menu button::after { content: ''; display: block; position: absolute; left: 12px; right: 12px; width: auto; height: 1px; border: 0; background: #d6b77b; opacity: 0; box-shadow: 0 0 8px #e5bd6255; }
+.title-menu button::before { top: 0; }
+.title-menu button::after { bottom: 0; }
+.title-menu button[data-active="true"] { color: #ffe5ad; background: #dca34b0d; text-shadow: 0 0 14px #f4c57066, 2px 3px #071015; }
+.title-menu button[data-active="true"]::before, .title-menu button[data-active="true"]::after { opacity: .85; }
+.title-menu button:not([data-active="true"])::before { opacity: 0; }
+.menu-diamond { flex: 0 0 13px; }
+.title-menu button[data-active="true"] .menu-diamond { color: #ffe0a1; font-size: 0; height: 16px; background: #ffe0a1; clip-path: polygon(15% 0, 100% 50%, 15% 100%); filter: drop-shadow(0 0 5px #efc576); }
+.menu-flourish { margin-left: auto; color: #e7c68b; font-size: 15px; opacity: 0; }
+.title-menu button[data-active="true"] .menu-flourish { opacity: 1; }
+.title-menu button:focus-visible { outline: 1px solid #e6d6aa; outline-offset: 4px; }

@@ -1,16 +1,44 @@
-import { ELEMENT_META, P0_ELEMENTS, ROUND_TIMINGS_MS } from '@once-upon/shared';
+import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
+import { MockToolbar } from './net';
+import { useGameStore } from './net/store';
+import { AppRoutes } from './ui/AppRoutes';
+import { CombatLayer } from './combat-ui/CombatLayer';
+import { GameMusic } from './combat-ui/audio/GameMusic';
+import { Narrator } from './combat-ui/Narrator';
+function StoryPlaceholder() { return <main role="alert">The story could not load. Reload to try again.</main>; }
+class ScreenBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error): void {
+    console.error('Screen failed to render', error);
+  }
+
+  render() {
+    if (this.state.failed) return <StoryPlaceholder />;
+    return this.props.children;
+  }
+}
+
+function GameApp() {
+  const phase = useGameStore(s => s.gameState?.phase);
+  return <ScreenBoundary><AppRoutes /><CombatLayer /><Narrator /><GameMusic />{import.meta.env.DEV && phase && phase !== 'lobby' && <MockToolbar />}</ScreenBoundary>;
+}
+
+const LabsApp = lazy(() => import('./LabsApp'));
 
 export default function App() {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-stone-950 p-8 text-amber-50">
-      <div className="max-w-lg space-y-4 text-center">
-        <p className="text-xs uppercase tracking-[0.3em] text-amber-200/70">HackTX 2026</p>
-        <h1 className="font-serif text-4xl">Once Upon a Memory</h1>
-        <p className="text-amber-100/80">
-          Phase 0 scaffold. The spell wheel is {P0_ELEMENTS.map((id) => ELEMENT_META[id].label).join(', ')}.
-          A telegraph lasts {ROUND_TIMINGS_MS.telegraph} ms.
-        </p>
-      </div>
-    </main>
-  );
+  const [path, setPath] = useState(window.location.pathname);
+  useEffect(() => {
+    const update = () => setPath(window.location.pathname);
+    window.addEventListener('popstate', update);
+    return () => window.removeEventListener('popstate', update);
+  }, []);
+  if (path.replace(/\/+$/, '') !== '') {
+    return <ScreenBoundary><Suspense fallback={<p>Opening the lab…</p>}><LabsApp /></Suspense></ScreenBoundary>;
+  }
+  return <GameApp />;
 }

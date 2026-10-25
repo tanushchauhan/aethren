@@ -1,10 +1,25 @@
 # Once Upon a Memory: HackTX Meta + Hardware Game Design
 
+> Current art direction and Muse asset handoff: [Meta Muse asset-generation instructions](muse-asset-generation.md). Use this guide for the visual-novel presentation and generated artwork.
+
+## Two glove wearers (P0 contract)
+
+Both collaborators wear enchanted gloves: **a spellbearer on Laptop A** and **a spellbearer on Laptop B**. Each glove connects to its wearer's laptop through its own Arduino and serial bridge. Both players have the same dial, finger-button push-to-talk, fist charge, motion, touch-parry, and arm/disarm controls. Keyboard and on-screen inputs remain fallback controls for either player.
+
+- Each laptop sends its own glove events. Relayed `hardware:event` payloads carry `playerId`; the server derives and validates ownership from the socket. A remote player's glove never changes local selection, recording, charge, or arming.
+- Buzzer/servo commands go to the owning socket, or carry a target `playerId`. Both clients can execute their own commands. Untagged hardware-state broadcasts are ignored.
+- Both players dodge, parry, and cast. Match elements and release within three seconds for Twin Cast, breaking the boss ward together. Team hearts and progress are shared.
+- Disarming a glove stops only its wearer's inputs. Narration plays on the first player’s laptop to avoid duplicate audio; captions appear on both screens.
+- Either player's color-token selection can request the shared boss memory; the server resolves requests into authoritative room state.
+
+
+
+
 Last updated October 24, 2026. Design doc for our HackTX 2026 project (Meta track and Brick House).
 
 ## Pitch
 
-Once Upon a Memory is an online co-op fairy-tale battle game for 2 to 4 players, each at their own laptop, built from real moments in the group's Instagram chat. One player wears an enchanted glove with a spell wheel on the forearm. Everyone speaks incantations into their mic and dodges with their whole body in front of their own webcam. The magic words come from the group's own stories, and the strongest spells only land when players in different places act at the same moment.
+Once Upon a Memory is an online co-op fairy-tale battle game for 2 to 4 players, each at their own laptop, built from real moments in the group's Instagram chat. Each player wears an enchanted glove with a spell wheel on the forearm. Everyone speaks incantations into their mic and dodges with their whole body in front of their own webcam. The magic words come from the group's own stories, and the strongest spells only land when players in different places act at the same moment.
 
 It's built for HackTX's fairy-tale theme ("Once upon a time, incredible things were built..."). It targets two tracks: Meta's "Bringing people closer together with AI" and Brick House (Best Hardware Hack). Under Meta's official rules, judges weigh human connection 30%, AI centrality 25%, originality 20% and execution and demo quality 25%.
 
@@ -39,13 +54,13 @@ Instagram's messaging APIs can't do this: they only serve professional accounts,
 
 ## P0: the demo build
 
-P0 is a 2-player run on 2 laptops that fits in about 4 minutes and uses every input, output and model at least once. Laptop A belongs to the Spellbearer, who wears the glove; laptop B belongs to the Partner, who plays bare-handed with a headset mic.
+P0 is a 2-player run on 2 laptops that fits in about 4 minutes and uses every input, output and model at least once. Both laptops belong to spellbearers. Both wear their own enchanted glove and headset mic, collaborating on shared hearts and Twin Cast.
 
 ### The P0 run
 
 **Setup (about 20 seconds).** A player asks Muse on their phone to set up the quest; Muse calls the game's tools and the room appears on both laptops (see Agentic AI).
 
-1. **Opening (about 30 seconds).** Memory cards from the group chat appear on screen. The Spellbearer turns the dial to browse them and clicks to keep one, and the Partner raises an arm to keep another. Holding a card's colored token under the token well makes that memory the boss. Muse Spark builds the encounter, the boss and 3 incantations while the Narrator reads the intro, and Muse Image paints 3 pictures.
+1. **Opening (about 30 seconds).** Memory cards from the group chat appear on screen. One spellbearer turns the dial to browse them and clicks to keep one, and the other spellbearer uses their own dial and button to keep another. Holding a card's colored token under the token well makes that memory the boss. Muse Spark builds the encounter, the boss and 3 incantations while the Narrator reads the intro, and Muse Image paints 3 pictures.
 2. **Encounter (about 60 seconds).** One monster, about 4 rounds. It uses a side sweep, a high swing and a projectile, so players side-step, duck and parry.
 3. **Boss (about 90 seconds).** The boss raises a ward that only Twin Cast breaks. When it shatters, the servo opens the prop storybook. A few more rounds finish it.
 4. **Ending (about 15 seconds).** Happily Ever After, read aloud, with the run's illustrations.
@@ -56,7 +71,7 @@ The team shares 5 hearts in P0, so there's no revive mechanic yet. If the team r
 
 | Component | P0 use |
 | --- | --- |
-| Webcam (each laptop) | Zone dodge, duck, the Partner's swipes and thrusts, and the Partner's arm-raise wheel control |
+| Webcam (each laptop) | Zone dodge, duck, each spellbearer’s swipes and thrusts, and fallback arm-raise wheel control |
 | Headset or close mic (each laptop) | Incantations, push-to-talk only |
 | Rotary dial | Browses memory cards in the opening, then turns the Spellbearer's spell wheel through 3 elements |
 | Finger button | Click to lock an element; hold to speak an incantation |
@@ -127,13 +142,13 @@ P0 uses 5 shared team hearts. From P1, each player has 3 hearts, and a player at
 
 A spell is built from three choices: the element from the dial, the tone of the incantation, and the gesture that releases it. The code combines them by fixed rules, so every combination works without hand-designing each one.
 
-**The Spellbearer (glove):**
+**Both players (one glove each):**
 
 1. Turn the forearm dial; the on-screen wheel rotates and the buzzer ticks at each slot. Click the finger button to lock the element.
 2. Make a fist and hold the finger button with the thumb, then speak the element's incantation. The closed fist covers the palm light sensor and charges the spell.
 3. Open the hand and swipe (aims left or right) or thrust (straight ahead) to release. The accelerometer confirms the motion and adds power for speed.
 
-**Bare-handed players:**
+**Fallback controls for either player:**
 
 1. Raise the right arm to turn the wheel one slot; hold still for 1 second to lock the element.
 2. Hold the spacebar and speak the incantation.
@@ -198,7 +213,7 @@ Teammates appear as outlines beside your own, so everyone can see who dodged and
 | --- | --- | --- | --- |
 | Side step | P0 | Shoulders and hips leave the zone's box | Dodge a side sweep or a projectile |
 | Duck | P0 | Shoulders drop well below the standing baseline | Dodge a high swing |
-| Raise the right arm | P0 | Right wrist above the head | Turn a bare-handed player's spell wheel |
+| Raise the right arm | P0 | Right wrist above the head | Fallback spell-wheel control for either player |
 | Swipe and thrust | P0 | Wrist speed and direction | Release a spell |
 | Jump | P1 | Hips rise above the standing baseline | Dodge a ground wave |
 | Shield | P1 | Forearms crossed in front of the face | Block a heavy blow at half damage |
@@ -226,14 +241,14 @@ With players in different places, these spells need talk over voice chat or acro
 
 ## Online multiplayer
 
-A small hosted server runs the game, and each laptop is a client that tracks its own player. The glove plugs into laptop A only.
+A small hosted server runs the game, and each laptop is a client that tracks its own player. Each glove plugs into its own player’s laptop.
 
 1. **Rooms.** Laptop A creates a room and shows a short code; other players open the game's link and enter it.
 2. **One source of truth.** The server owns the round timer, the enemy, hearts and damage. Clients send what their player did; the server decides what happened and sends the result to every screen.
 3. **Clock sync.** On joining, and every 10 seconds after, each client pings the server to estimate the difference between their clocks. Every action is stamped in server time, which is how collaborative spells are judged fairly.
 4. **Scheduled telegraphs.** The server sends each attack with its impact time in server time, so every screen shows it at the same moment.
 5. **Dodges are judged locally.** Each laptop checks its own player's position at the impact time, then reports the result, so network delay never costs anyone a dodge.
-6. **What each laptop sends:** its player's body landmarks about 15 times a second, so teammates can be drawn as outlines (no video leaves the laptop); recognized actions and incantation results with timestamps; and, from laptop A, the glove's events.
+6. **What each laptop sends:** its player's body landmarks about 15 times a second, so teammates can be drawn as outlines (no video leaves the laptop); recognized actions and incantation results with timestamps; and its own glove’s events, identified by the player’s ID.
 7. **Muse calls run on the server,** so the API key never reaches a laptop.
 8. **Dropped players.** If a player disconnects, the game pauses for 10 seconds, then a simple bot takes their turns so the run can finish.
 
@@ -284,7 +299,7 @@ The boss's memory is still picked in the opening with the color token, so the ha
 
 ## Hardware: the enchanted glove
 
-The glove and forearm band are wired to one **Arduino Uno R4 WiFi** (`arduino:renesas_uno:unor4wifi`) topped with a **Grove Base Shield V2** (set to 5V) that talks to laptop A over USB-C serial. The Grove Base Shield covers the board's built-in LED matrix, but gives plug-and-play 4-pin Grove sockets for every sensor (`A0–A2`, `D2–D6`, and 4 parallel `I2C` sockets on `Wire` so both the accelerometer and the I2C color sensor plug straight in without breadboarding). Every laptop needs a webcam and a headset or close mic. All of the parts below are used in P0. The build uses 11 of the 14 listed parts and leaves out the UV, air quality and infrared sensors.
+Each player’s glove and forearm band are wired to their own **Arduino Uno R4 WiFi** (`arduino:renesas_uno:unor4wifi`) topped with a **Grove Base Shield V2** (set to 5V) that talks to that player’s laptop over USB-C serial. P0 requires two glove/Arduino/shield assemblies, one per player. The Grove Base Shield covers the board's built-in LED matrix, but gives plug-and-play 4-pin Grove sockets for every sensor (`A0–A2`, `D2–D6`, and 4 parallel `I2C` sockets on `Wire` so both the accelerometer and the I2C color sensor plug straight in without breadboarding). Every laptop needs a webcam and a headset or close mic. All of the parts below are used in P0. The build uses 11 of the 14 listed parts and leaves out the UV, air quality and infrared sensors.
 
 | Part | Where it sits | Role in the game |
 | --- | --- | --- |
@@ -318,7 +333,7 @@ Each laptop tracks only its own player, which keeps tracking fast and simple. At
 2. MediaPipe Pose Landmarker finds 33 landmarks on the one person in the frame.
 3. Zone checks measure how much of the player's shoulders and hips sit inside the zone, and how well their body overlaps the silhouette.
 4. Pose rules compare landmarks with the player's baseline from calibration: shoulders down for a duck, right wrist above the head for a wheel turn, and so on.
-5. Swipes and thrusts come from wrist speed and direction over the last few frames. For the Spellbearer, the accelerometer confirms them.
+5. Swipes and thrusts come from wrist speed and direction over the last few frames. Each player’s glove accelerometer confirms their gestures.
 6. Each recognized action is stamped in server time and sent to the server, along with the landmarks for teammates' outlines.
 
 ### Risks and fallbacks
@@ -425,7 +440,7 @@ If time is short, a quick-start button skips card selection and uses saved picks
 - Each player needs a 2 m by 2 m spot facing their laptop, ideally with the camera pointed at a wall so passersby stay out of frame.
 - Put both laptops where judges can see them. Every screen shows the whole battle, so either one tells the story.
 - Telegraphs, team hearts and the ward meter are drawn large enough to read from a few steps away.
-- The glove's switch disarms everything while the team talks to judges.
+- Each glove’s switch disarms its wearer’s glove, camera, and microphone while the team talks to judges.
 
 ### Network
 
@@ -442,8 +457,8 @@ The script follows Meta's suggested breakdown. Build only what it shows.
 | Time | What's on screen | Covers |
 | --- | --- | --- |
 | 0:00 to 0:25 | A player asks Muse to set up a quest, and two friends on two laptops load their Instagram group chat; real moments appear as memory cards, and their inside jokes become incantation phrases | The problem and human connection |
-| 0:25 to 1:05 | Both players calibrate in their silhouettes. A side sweep hits; one player steps out and snaps back into the outline while the other ducks a high swing; the Spellbearer parries a projectile | Full-body play and the glove |
-| 1:05 to 1:40 | The Spellbearer turns the dial to Ember, makes a fist, speaks the incantation and thrusts; the Partner raises an arm to pick Frost and swipes | Spell wheel, incantations and gestures |
+| 0:25 to 1:05 | Both players calibrate in their silhouettes. A side sweep hits; one player steps out and snaps back into the outline while the other ducks a high swing; a spellbearer parries a projectile | Full-body play and the glove |
+| 1:05 to 1:40 | One spellbearer turns the dial to Ember, makes a fist, speaks the incantation and thrusts; the second spellbearer turns their glove dial to pick Frost and swipes | Spell wheel, incantations and gestures |
 | 1:40 to 2:10 | The boss agent targets the player who keeps dodging left, then raises its ward. The players count in over voice chat and Twin Cast; the ward shatters and the storybook opens | Collaborative spells |
 | 2:10 to 2:35 | Diagram of the pipeline: two laptops, the server, the glove, and Voice Transcribe, Spark and Image | How AI is integrated |
 | 2:35 to 3:00 | Tools, models and coding assistants used during the build | Required tools section |
@@ -475,7 +490,7 @@ Four constraints shape the build.
 
 - **Originality:** keep all names, art and incantations original, and write all code during the hacking period. MediaPipe is a permitted library, but identify your own contribution clearly in the repo.
 - **Consent:** Meta's rules prohibit collecting personal information without express written consent. Use only a group chat whose members have all agreed in writing, ideally your own team's. Show only the selected quotes, delete the raw export after processing, and send only body landmarks between laptops, never video.
-- **One Arduino:** the glove plugs into laptop A only, so the Spellbearer always plays there.
+- **Two Arduinos:** each player’s glove connects to its own laptop; hardware events and feedback are routed by player identity.
 - **Space and network:** body tracking needs room and light, and online play needs a connection the venue doesn't block. Test both in the real demo spot in the first hours.
 
 ## Sources
@@ -485,3 +500,7 @@ Four constraints shape the build.
 - [Meta Model API guide (Layer3 Labs)](https://www.layer3labs.io/guides/meta-model-api-guide)
 - [Meta ships Muse Image API at $0.01 per image (RuntimeWire)](https://runtimewire.com/article/meta-ships-muse-image-api-at-one-cent-per-image)
 - MLH Hardware
+
+## All players are spellbearers
+
+There is no laptop role selection. Create, join, and quick-start automatically use the `spellbearer` class for every player, with identical glove controls. Players are distinguished by unique `playerId`, never by class. The server emits `room:joined { playerId }` to the joining socket before room snapshots; names are only a fallback when uniquely matched. Hardware messages remain scoped to player IDs. The first player in room order handles narration to avoid duplicate audio, independently of class. Shared hearts, encounters, and Twin Cast remain collaborative.

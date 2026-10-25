@@ -1,5 +1,20 @@
 # Tech Stack & 3-Teammate Parallel Agent Plan
 
+> Current art direction and Muse asset handoff: [Meta Muse asset-generation instructions](muse-asset-generation.md). Use this guide for the visual-novel presentation and generated artwork.
+
+## Two glove wearers (P0 contract)
+
+Both collaborators wear enchanted gloves: **a spellbearer on Laptop A** and **a spellbearer on Laptop B**. Each glove connects to its wearer's laptop through its own Arduino and serial bridge. Both players have the same dial, finger-button push-to-talk, fist charge, motion, touch-parry, and arm/disarm controls. Keyboard and on-screen inputs remain fallback controls for either player.
+
+- Each laptop sends its own glove events. Relayed `hardware:event` payloads carry `playerId`; the server derives and validates ownership from the socket. A remote player's glove never changes local selection, recording, charge, or arming.
+- Buzzer/servo commands go to the owning socket, or carry a target `playerId`. Both clients can execute their own commands. Untagged hardware-state broadcasts are ignored.
+- Both players dodge, parry, and cast. Match elements and release within three seconds for Twin Cast, breaking the boss ward together. Team hearts and progress are shared.
+- Disarming a glove stops only its wearer's inputs. Narration plays on the first player’s laptop to avoid duplicate audio; captions appear on both screens.
+- Either player's color-token selection can request the shared boss memory; the server resolves requests into authoritative room state.
+
+
+
+
 This document proposes the tech stack for **Once Upon a Memory** and divides the P0 implementation across **3 teammates**, structured so each teammate can run **3 parallel coding agents** on isolated task streams without merge conflicts.
 
 ---
@@ -17,7 +32,7 @@ For a hackathon build combining real-time multiplayer, browser computer vision, 
 | **State & Rendering** | **Zustand + HTML5 2D Canvas** | Zustand handles high-frequency socket updates cleanly outside React render loops; 2D Canvas renders mirrored webcam + glowing silhouettes + 15 fps teammate outlines at 60 fps. | PixiJS / Three.js (heavier than needed for 2D outlines) |
 | **Computer Vision** | **`@mediapipe/tasks-vision` (`PoseLandmarker`)** | Runs locally in the browser on WebGL/WASM at 30 fps (lite/full model), outputs 33 normalized 3D landmarks, sends zero video over the network. | `@tensorflow-models/pose-detection` |
 | **Audio & Voice Input** | **`MediaRecorder` (WebM/WAV) + Web Audio API (`AnalyserNode`)** | Push-to-talk captures clean audio clips for Muse Voice Transcribe in P0; `AnalyserNode` computes RMS loudness and autocorrelation pitch for P1 tone checks. | RecordRTC |
-| **Hardware Bridge (Laptop A)** | **Web Serial API (`navigator.serial`) over USB-C + Optional Wi-Fi UDP/WebSocket (`WiFiS3`)** | Arduino Uno R4 WiFi connects over USB-C (`115200` baud) directly to Chrome/Edge via Web Serial for zero-latency demo reliability, while `WiFiS3` can optionally stream untethered over local hotspot/Wi-Fi. | Node `serialport` bridge or `WiFiS3` WebSocket client |
+| **Hardware Bridge (both laptops)** | **Web Serial API (`navigator.serial`) over USB-C + Optional Wi-Fi UDP/WebSocket (`WiFiS3`)** | Arduino Uno R4 WiFi connects over USB-C (`115200` baud) directly to Chrome/Edge via Web Serial for zero-latency demo reliability, while `WiFiS3` can optionally stream untethered over local hotspot/Wi-Fi. | Node `serialport` bridge or `WiFiS3` WebSocket client |
 | **Hardware Firmware (`firmware/`)** | **Arduino Uno R4 WiFi (`arduino:renesas_uno:unor4wifi`) + Grove Base Shield V2 + Grove Libraries** | All 8 Grove sensors, buzzer, and servo plug directly into the Grove Base Shield V2 ports (`A0–A2`, `D2–D6`, and the 4 `I2C` ports on `Wire`), polling at 50 Hz in a non-blocking `millis()` loop. | Arduino CLI / PlatformIO / Arduino IDE 2.x |
 | **Backend (`server/`)** | **Node.js + Express + Socket.IO + `tsx` + Zod** | Authoritative room state, sub-10ms clock sync (`ping`/`pong`), scheduled telegraphs, 15 Hz landmark relay, and REST endpoints (`/api/upload-chat`, `/api/transcribe`) on one port. | Fastify + native `ws` |
 | **AI Integration** | **`openai` Node SDK (pointed at Meta Muse API base URL) + Zod Structured Outputs** | Meta's Model API supports OpenAI-compatible chat/completions, structured JSON schemas, tool calling (**Muse Spark**), audio transcription (**Muse Voice Transcribe**), and image generation (**Muse Image**). | Direct `fetch` REST wrapper |
@@ -139,9 +154,9 @@ Each teammate acts as an orchestrator running **3 parallel coding agents** on is
 
 #### Agent 2B — Opening, Memory Cards & Storybook Screens (`client/src/ui/`)
 - **Scope:**
-  - Fairy-tale themed landing screen: Create Room, Join Room (4-letter code), Role selector (`Spellbearer (Laptop A)` vs `Partner (Laptop B)`), and **Quick-Start Demo Button** (skips card selection to save 30s).
+  - Fairy-tale themed landing screen: Create Room, Join Room (4-letter code), no role selector (every player automatically joins as a spellbearer), and **Quick-Start Demo Button** (skips card selection to save 30s).
   - Instagram JSON upload dropzone + In-App Quest Master prompt box.
-  - **Opening Memory Card Carousel**: displays 3–5 extracted memory cards with quote, date, mood, and color badge. Responds to Rotary Dial ticks (Spellbearer), Right-Arm Raise (Partner), and Color Sensor token well picks (sets the Boss memory).
+  - **Opening Memory Card Carousel**: displays 3–5 extracted memory cards with quote, date, mood, and color badge. Responds to Rotary Dial ticks (either player), Right-Arm Raise (fallback), and Color Sensor token well picks (sets the Boss memory).
   - **Storybook Intro & Happily Ever After Screens**: animated parchment book layout displaying Muse Image cover/boss art and synchronized Narrator captions.
 - **Testable independently via:** Mock `MemoryCard[]` and `WorldSchema` fixtures in Storybook/Vite dev mode.
 
@@ -151,7 +166,7 @@ Each teammate acts as an orchestrator running **3 parallel coding agents** on is
   - **Scheduled Telegraph Overlay**: huge directional sweep/duck/projectile warning arrows timed precisely against `getServerNow()` and `impactServerMs`.
   - **3-Element Spell Wheel (`Ember`, `Frost`, `Bloom`)**: rotates smoothly with rotary dial or arm-raise, displays the generated group-chat incantation phrase for the selected element, and shows fist-charge / out-of-position status.
   - **Push-to-Talk & Narrator Audio Engine**:
-    - Captures mic audio ONLY while finger button (Laptop A) or `Spacebar` (Laptop B) is held; uploads blob to `/api/transcribe`.
+    - Captures mic audio ONLY while their own glove’s finger button or `Spacebar` (either laptop) is held; uploads blob to `/api/transcribe`.
     - Plays Narrator & Boss TTS lines on Laptop A (routed to the Google Home Mini): requests audio from `/api/tts` (which tries **Meta Muse TTS** first, then falls back to **ElevenLabs `eleven_flash_v2_5` / OpenAI TTS**), and automatically falls back to browser `window.speechSynthesis` if offline/slow, while rendering high-contrast captions on every screen.
     - Displays "Room Too Loud — Mic Gate Raised" banner when the Arduino sound sensor crosses threshold.
 - **Testable independently via:** Dev Mock Toolbar triggering telegraphs, wheel rotations, and push-to-talk recordings.
@@ -170,7 +185,7 @@ Each teammate acts as an orchestrator running **3 parallel coding agents** on is
     - `Side Step`: shoulders & hips exit the zone box horizontally -> dodges `low_sweep` / `projectile`.
     - `Duck`: shoulder midpoint drops below `baselineShoulderY + 0.18` -> dodges `high_swing`.
     - `In-Zone Check`: verifies player has returned inside the silhouette before `team_turn` starts (plays chime on snap-in).
-    - `Arm Raise (Partner)`: right wrist above nose for 1s locks next spell wheel slot.
+    - `Arm Raise (fallback for either player)`: right wrist above nose for 1s locks next spell wheel slot.
     - `Swipe / Thrust`: tracks wrist velocity over a 200ms rolling window to trigger spell release.
 - **Testable independently via:** Dedicated `/vision-test` route in Vite showing live webcam, landmark overlay, zone box, and real-time classifier badges.
 
@@ -184,7 +199,7 @@ Each teammate acts as an orchestrator running **3 parallel coding agents** on is
   - **Digital Ports:**
     - `D2`: **Grove Button** (side of index finger -> click to lock element, hold with thumb for push-to-talk)
     - `D3`: **Grove Touch Sensor** (palm under thumb -> projectile parry)
-    - `D4`: **Grove Switch (Slide/Toggle)** (forearm band -> master arm/disarm for glove, camera, and mic)
+    - `D4`: **Grove Switch (Slide/Toggle)** (forearm band -> master arm/disarm for the wearer’s glove, camera, and mic)
     - `D5`: **Grove Buzzer** (forearm band -> non-blocking tone patterns for `tick`, `cast`, `fizzle`, `hit`)
     - `D6`: **Grove Servo** (table prop storybook -> standard `Servo.h` sweeps from `0°` closed to `110°` open when boss ward shatters)
   - **I2C Ports (Grove Base Shield has 4 parallel `I2C` ports on `Wire`, all with distinct addresses):**
@@ -200,7 +215,7 @@ Each teammate acts as an orchestrator running **3 parallel coding agents** on is
   - **Web Serial Manager (`useGloveSerial`)**: connects to the Arduino directly from Chrome/Edge via `navigator.serial`, parses newline JSON frames, debounces rotary ticks, triggers push-to-talk on button hold, and dispatches `buzz` / `servo` commands when combat events fire.
   - **Fallback Local Serial-to-WS Script (`firmware/serial-bridge.ts`)**: 50-line Node script in case a browser doesn't support Web Serial.
   - **On-Screen & Keyboard Glove Simulator**:
-    - Lets any developer or laptop test all Spellbearer hardware mechanics without the physical Arduino:
+    - Lets any developer or laptop test all glove hardware mechanics for either player without the physical Arduino:
       - `1 / 2 / 3` or `[ / ]`: turn rotary dial & tick buzzer
       - `Hold E`: finger button push-to-talk
       - `Hold F`: cover palm light sensor (fist charge)
@@ -210,3 +225,29 @@ Each teammate acts as an orchestrator running **3 parallel coding agents** on is
       - `M`: toggle hardware arm/disarm switch
 - **Testable independently via:** `/hardware-test` route in Vite testing both simulated keys and live Web Serial Arduino connection.
 
+
+
+## Teammate 2 implementation audit (October 24)
+
+The current checkout contains the frontend only. Completed here: storybook routes, explicit local/online mode, memory upload store integration, player-isolated glove controls, combat screen assembly, spell wheel, push-to-talk recording and transcription, swipe/thrust release buttons, narrator playback on Laptop A, captions, noise warning, telegraph timer cleanup, and responsive layouts.
+
+Integration contracts for teammates 1 and 3:
+- `room:advance { phase }` requests a server-authorized transition; live clients do not advance their own phase. Server must validate host permissions and prerequisites. Room creation/join and role uniqueness remain server-owned.
+- `POST /api/quest-chat { prompt, roomCode }`, `POST /api/chat-upload?room=CODE`, `/api/transcribe`, and `/api/tts` require teammate 1's server. Failed transcription never silently creates a successful cast.
+- Vision dispatches `ouam:arm-raise` after its one-second fallback gesture latch, and `ouam:gesture` with `{ gesture: 'swipe' | 'thrust' }` to release an accepted incantation. It must publish calibrated local in-zone state and dodge results. Until that module lands, the combat outline explicitly identifies itself as a guide, not a working camera.
+- Both hardware bridges call `sendHardware` locally. Relays include a server-validated `playerId`; `ouam:hardware-command` delivers feedback only to the targeted player’s serial bridge. Each glove is independent.
+- Server validates cast phase, position, incantation/mercy rules and Twin Cast; client preview is not an authoritative combat engine.
+
+Pending integration verification: two-laptop clock skew, real microphone/API responses, camera calibration/gestures, physical serial feedback, server-enforced role ownership, synchronized phase advancement and Twin Cast resolution. The frontend alone cannot certify these.
+
+Validation must cover both players’ glove dial, button, charge and disarm controls, player-scoped hardware relays, and collaborative Twin Cast. Physical hardware, camera, backend, and noise-gate integration remain pending in this frontend-only checkout.
+
+Two-glove frontend validation passed: TypeScript, production build, and browser checks for both roles’ player-tagged glove events, dial selection, arm/disarm behavior, and projectile parry guidance. Real two-glove hardware and server collaboration still require the absent integration modules.
+
+## All players are spellbearers
+
+There is no laptop role selection. Create, join, and quick-start automatically use the `spellbearer` class for every player, with identical glove controls. Players are distinguished by unique `playerId`, never by class. The server emits `room:joined { playerId }` to the joining socket before room snapshots; names are only a fallback when uniquely matched. Hardware messages remain scoped to player IDs. The first player in room order handles narration to avoid duplicate audio, independently of class. Shared hearts, encounters, and Twin Cast remain collaborative.
+
+## Merged client entry points
+
+The player game opens at `/`. Teammate 3’s command center remains at `/labs`, with `/vision-test`, `/hardware-test`, and `/combined` preserved. Install and run from the repository root with the workspace lockfile (`pnpm install`, `pnpm dev`). Run `pnpm build`, `pnpm typecheck`, and `pnpm --filter @once-upon/client test` to validate the merged client.

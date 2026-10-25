@@ -62,6 +62,11 @@ export interface CalibrationBaseline {
   hipY: number;
   centerX: number;
   calibratedAt: number;
+  /**
+   * Head center height (nose, eyes, and ears averaged) while standing. Optional: it is left out
+   * when the face was never visible, and older baselines do not have it.
+   */
+  noseY?: number;
 }
 
 export type PoseActionType =

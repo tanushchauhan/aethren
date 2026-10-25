@@ -1,0 +1,97 @@
+/* Shared dialogue framing across setup, memories, and the story. */
+.vn-nameplate {
+  position: absolute; top: -19px; left: 28px; padding: 6px 22px;
+  background: #253b43; border: 1px solid #c9b883; color: #f8e6b7;
+  font: 18px/1.25 'Pixelify Sans', monospace; letter-spacing: .04em;
+}
+.vn-chapter { margin: 0; color: #d7c18d; font: 14px/1.5 'Pixelify Sans', monospace; letter-spacing: .12em; text-transform: uppercase; }
+.vn-dialogue-diamond { position: absolute; bottom: 12px; right: 20px; color: #d9bd80; font-size: 14px; }
+.title-dialog.vn-setup {
+  inset: auto 0 8vh; margin: 0 auto; width: min(1060px, calc(100% - 64px)); max-height: 80svh;
+  overflow: visible; padding: 40px; border: 1px solid #c9b883;
+  background: #0e2028f5; box-shadow: 0 0 0 4px #081319, 0 0 0 5px #a6936555, 0 24px 70px #0009;
+}
+.title-dialog.vn-setup[open] { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
+.title-dialog.vn-setup::backdrop { background: #030b1259; backdrop-filter: blur(2px); }
+.vn-setup-story h2 { margin: 20px 0; font: 36px/1.15 'Pixelify Sans', monospace; color: #fae9bf; }
+.vn-setup-story > p:last-child { font: 22px/1.6 'Pixelify Sans', monospace; color: #c4d0cb; margin-bottom: 0; }
+.vn-setup form { min-width: 0; max-height: 63svh; overflow-y: auto; padding: 4px; }
+.vn-setup label { font-size: 18px; color: #cfbf98; }
+.vn-setup input, .vn-setup textarea { background: #08141cbf; border: 0; border-bottom: 1px solid #bba675; font-size: 24px; padding: 12px 10px; }
+.vn-setup .title-confirm { background: #d7c08b14; border: 1px solid #c9b883; color: #ffe9b7; font-size: 24px; box-shadow: none; }
+.vn-setup .title-confirm:hover:not(:disabled) { background: #d7c08b2e; }
+.vn-setup .title-connection { font-size: 15px; color: #adbcb6; margin: 18px 0; }
+.vn-setup .title-error { font-size: 17px; }
+.vn-setup .dialog-close { top: 8px; right: 15px; color: #d8c28c; }
+.ouam-stage {
+  --ouam-ink: #e5e3cf; --ouam-gold: #d4bd85; --ouam-gold-deep: #9f8c63;
+  background: #091820 url('/art/forest-base.png') center / cover fixed no-repeat;
+  font: 20px/1.5 'Pixelify Sans', monospace; color: #e5e3cf; color-scheme: dark;
+  padding: 28px 5vw 64px; min-height: 100svh;
+}
+.ouam-stage::before { display: block; position: fixed; inset: 0; background: #05121a99; opacity: 1; }
+.ouam-stage-captioned { padding-bottom: 200px; }
+.ouam-shell { width: min(1120px,100%); }
+.ouam-stage button, .ouam-stage input, .ouam-stage textarea { font-family: 'Pixelify Sans',monospace; }
+.ouam-topbar { align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 50px; padding-right: 0; }
+.ouam-room-label { font-size: 13px; color: #b9c9c7; }
+.ouam-room-code { font: 24px 'Pixelify Sans',monospace; color: #e9d49f; }
+.ouam-title { font: 400 clamp(32px,4vw,54px)/1.2 'Pixelify Sans',monospace; letter-spacing: 0; text-shadow: 0 3px 14px #000; }
+.ouam-subtitle { font: 20px/1.5 'Pixelify Sans',monospace; color: #c1cfcc; margin-top: 14px; }
+.ouam-parchment, .ouam-card, .ouam-book, .ouam-book-page {
+  background: #10232cef; color: #e5e3cf; border: 1px solid #ae996a; border-radius: 0;
+  box-shadow: 0 0 0 3px #07141b, 0 0 0 4px #ae996a44, 0 16px 36px #0005;
+}
+.ouam-parchment { padding: 28px; }
+.ouam-panel-title, .ouam-book-title { font-family: 'Pixelify Sans',monospace; color: #f4dfae; }
+.ouam-panel-title { font-size: 23px; }
+.ouam-book-title { font-size: clamp(28px,3vw,40px); line-height: 1.2; }
+.ouam-note, .ouam-help, .ouam-role-tag, .ouam-eyebrow { color: #c4c9b5; }
+.ouam-error { color: #ffb6a0; }
+.ouam-button, .ouam-button-gold {
+  background: #132d36; color: #f8e5b4; border: 1px solid #b5a071; border-radius: 0;
+  box-shadow: none; font: 20px/1.3 'Pixelify Sans',monospace; min-height: 48px;
+}
+.ouam-button:hover:not(:disabled), .ouam-button-gold:hover:not(:disabled) { background: #34483e; color: #fff0c9; transform: none; box-shadow: 0 0 18px #d5ba7920; }
+.ouam-dropzone { min-height: 180px; background: #c9b88308; border: 1px dashed #a4956c; border-radius: 0; }
+.ouam-dropzone.is-dragging { background: #c9b88322; }
+.ouam-drop-title { font: 26px/1.3 'Pixelify Sans',monospace; color: #f4dfae; }
+.ouam-consent { border-left: 2px solid #d4bd85; background: #d4bd850a; }
+.ouam-card { min-height: 300px; }
+.ouam-card.is-boss { background: #262638ee; }
+.ouam-card-quote { font-size: 22px; }
+.ouam-color-badge { border-radius: 0; background: #0a1921; color: #e5e3cf; }
+.ouam-book { grid-template-columns: minmax(240px,.85fr) minmax(0,1.15fr); }
+.ouam-book-cover { background: #07141a; padding: 0; border-right: 1px solid #ae996a; }
+.ouam-book-cover .ouam-art { border-radius: 0; object-fit: cover; }
+.ouam-book-page { border: 0; box-shadow: none; padding: 32px; }
+.ouam-intro { font-size: 21px; line-height: 1.6; }
+.ouam-intro::first-letter { float: none; padding: 0; font: inherit; color: inherit; }
+.ouam-spells li { font-size: 18px; }
+.ouam-art { border-radius: 0; }
+.ouam-caption {
+  bottom: 44px; width: min(1120px,calc(100% - 48px)); min-height: 112px;
+  padding: 32px 38px 26px; text-align: left; font: 22px/1.5 'Pixelify Sans',monospace;
+  background: #0c1d27f5; border: 1px solid #c9b883; border-radius: 0;
+  box-shadow: 0 0 0 4px #07141b, 0 0 0 5px #ae996a55, 0 18px 50px #0006;
+}
+.ouam-ending-line { font-family: 'Pixelify Sans',monospace; color: #f0dba7; }
+.ouam-parchment :focus-visible, .ouam-card:focus-visible, .ouam-book :focus-visible { outline-color: #f3d98a; box-shadow: none; }
+@media(max-width:700px) {
+  .title-dialog.vn-setup { inset: auto 0 28px; width: calc(100% - 28px); padding: 28px 20px 20px; overflow-y: auto; max-height: calc(100svh - 56px); }
+  .title-dialog.vn-setup[open] { grid-template-columns: 1fr; gap: 22px; }
+  .vn-setup .vn-nameplate { position: static; justify-self: start; }
+  .vn-setup-story h2 { font-size: 28px; margin: 12px 0; }
+  .vn-setup-story > p:last-child { font-size: 18px; line-height: 1.5; }
+  .vn-setup form { max-height: none; overflow: visible; }
+  .ouam-stage { padding: 24px 20px 64px; }
+  .ouam-stage-captioned { padding-bottom: 40px; }
+  .ouam-topbar { margin-bottom: 28px; }
+  .ouam-parchment, .ouam-book-page { padding: 20px; }
+  .ouam-book { grid-template-columns: minmax(0,1fr); }
+  .ouam-book-cover { border-right: 0; }
+  .ouam-book-cover .ouam-art { min-height: 200px; height: 240px; }
+  .ouam-caption { position: relative; left: auto; bottom: auto; transform: none; width: 100%; margin: 42px 0 24px; font-size: 18px; padding: 30px 24px; }
+  .vn-nameplate { left: 18px; font-size: 16px; }
+  .ouam-carousel li, .ouam-carousel li.is-focused { flex-basis: min(290px,85vw); }
+}
