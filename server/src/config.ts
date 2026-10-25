@@ -18,6 +18,27 @@ const optionalString = z
   .optional()
   .transform((v) => (v && v.trim() !== '' ? v.trim() : undefined));
 
+/** Like {@link optionalString}, but a blank or missing value falls back to `fallback`. */
+const stringWithDefault = (fallback: string) =>
+  optionalString.transform((v) => v ?? fallback);
+
+/**
+ * Researched defaults (2026-10-25), so only `MUSE_API_KEY` has to be set. Sources are listed
+ * next to each value in `server/.env.example`. Muse has no TTS model as far as public docs show,
+ * so `MUSE_TTS_MODEL` has no default and Muse TTS stays off unless it is set.
+ */
+export const AI_DEFAULTS = {
+  museBaseUrl: 'https://api.meta.ai/v1',
+  museSparkModel: 'muse-spark-1.3',
+  museTranscribeModel: 'muse-voice-transcribe-1.0',
+  museImageModel: 'muse-image-1.0',
+  /** ElevenLabs premade "George - Warm, Captivating Storyteller". */
+  elevenLabsVoiceId: 'JBFqnCBsd6RMkjVDRZzb',
+  elevenLabsModelId: 'eleven_flash_v2_5',
+  openaiTtsModel: 'gpt-4o-mini-tts',
+  openaiTtsVoice: 'marin',
+} as const;
+
 const booleanFlag = z
   .string()
   .optional()
@@ -38,17 +59,18 @@ const EnvSchema = z.object({
   PUBLIC_BASE_URL: optionalString,
   CLIENT_ORIGIN: optionalString,
   MUSE_API_KEY: optionalString,
-  MUSE_BASE_URL: optionalString,
-  MUSE_SPARK_MODEL: optionalString,
-  MUSE_TRANSCRIBE_MODEL: optionalString,
-  MUSE_IMAGE_MODEL: optionalString,
+  MUSE_BASE_URL: stringWithDefault(AI_DEFAULTS.museBaseUrl),
+  MUSE_SPARK_MODEL: stringWithDefault(AI_DEFAULTS.museSparkModel),
+  MUSE_TRANSCRIBE_MODEL: stringWithDefault(AI_DEFAULTS.museTranscribeModel),
+  MUSE_IMAGE_MODEL: stringWithDefault(AI_DEFAULTS.museImageModel),
   MUSE_TTS_MODEL: optionalString,
   MUSE_TTS_VOICE: optionalString,
   ELEVENLABS_API_KEY: optionalString,
-  ELEVENLABS_VOICE_ID: optionalString,
-  ELEVENLABS_MODEL_ID: optionalString,
+  ELEVENLABS_VOICE_ID: stringWithDefault(AI_DEFAULTS.elevenLabsVoiceId),
+  ELEVENLABS_MODEL_ID: stringWithDefault(AI_DEFAULTS.elevenLabsModelId),
   OPENAI_API_KEY: optionalString,
-  OPENAI_TTS_MODEL: optionalString,
+  OPENAI_TTS_MODEL: stringWithDefault(AI_DEFAULTS.openaiTtsModel),
+  OPENAI_TTS_VOICE: stringWithDefault(AI_DEFAULTS.openaiTtsVoice),
   MCP_BEARER_TOKEN: optionalString,
   USE_CACHED_WORLD: booleanFlag,
   AI_TIMEOUT_MS: positiveInt(AI_DEFAULT_TIMEOUT_MS),
@@ -64,15 +86,17 @@ export interface AppConfig {
   clientOrigin: string[] | true;
   muse: {
     apiKey?: string;
-    baseUrl?: string;
-    sparkModel?: string;
-    transcribeModel?: string;
-    imageModel?: string;
+    /** Always set: falls back to {@link AI_DEFAULTS} when blank. Same for the model IDs below. */
+    baseUrl: string;
+    sparkModel: string;
+    transcribeModel: string;
+    imageModel: string;
+    /** No researched default: Muse TTS is off unless `MUSE_TTS_MODEL` is set. */
     ttsModel?: string;
     ttsVoice?: string;
   };
-  elevenLabs: { apiKey?: string; voiceId?: string; modelId?: string };
-  openai: { apiKey?: string; ttsModel?: string };
+  elevenLabs: { apiKey?: string; voiceId: string; modelId: string };
+  openai: { apiKey?: string; ttsModel: string; ttsVoice: string };
   mcpBearerToken?: string;
   /** Skip Muse world generation and serve `ai/cached-demo-world.json`. */
   useCachedWorld: boolean;
@@ -106,7 +130,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       voiceId: e.ELEVENLABS_VOICE_ID,
       modelId: e.ELEVENLABS_MODEL_ID,
     },
-    openai: { apiKey: e.OPENAI_API_KEY, ttsModel: e.OPENAI_TTS_MODEL },
+    openai: { apiKey: e.OPENAI_API_KEY, ttsModel: e.OPENAI_TTS_MODEL, ttsVoice: e.OPENAI_TTS_VOICE },
     mcpBearerToken: e.MCP_BEARER_TOKEN,
     useCachedWorld: e.USE_CACHED_WORLD,
     aiTimeoutMs: e.AI_TIMEOUT_MS,
@@ -115,10 +139,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
 export const config: AppConfig = loadConfig();
 
-/** Muse key and base URL are both set. Check the per-model flags below before each call. */
+/** Muse key is set (the base URL always has a default). Check the per-model flags below before each call. */
 export const hasMuse = Boolean(config.muse.apiKey && config.muse.baseUrl);
 
-/** Per-capability Muse availability: the key, base URL, and that model's ID are all set. */
+/**
+ * Per-capability Muse availability: the key is set and that model's ID resolves (a researched
+ * default counts as set). `tts` has no default, so it needs `MUSE_TTS_MODEL`.
+ */
 export const museCapabilities = {
   spark: hasMuse && Boolean(config.muse.sparkModel),
   transcribe: hasMuse && Boolean(config.muse.transcribeModel),
