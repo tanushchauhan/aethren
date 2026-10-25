@@ -19,7 +19,7 @@ import type {
   PlayerRole,
   QuestDifficulty,
   RoomJoinAck,
-} from '@once-upon/shared';
+} from '@aethren/shared';
 import type {
   CreateRoomOptions,
   CreateRoomResult,

@@ -1,5 +1,5 @@
 {
-  "name": "@once-upon/client",
+  "name": "@aethren/client",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.22",
-    "@once-upon/shared": "workspace:*",
+    "@aethren/shared": "workspace:*",
     "kokoro-js": "^1.2.1",
     "lucide-react": "^0.469.0",
     "motion": "12.23.24",

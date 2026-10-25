@@ -23,7 +23,7 @@ import {
   TAUNT_MAX_CHARS,
   TEAM_HEARTS_P0,
   TWIN_CAST_WINDOW_MS,
-} from '@once-upon/shared';
+} from '@aethren/shared';
 import type {
   AttackType,
   BossPlan,
@@ -41,7 +41,7 @@ import type {
   RoundResolution,
   ServerToClientEvents,
   WorldSchema,
-} from '@once-upon/shared';
+} from '@aethren/shared';
 import type { GameServer, NarrationEvent } from '../contracts';
 import { demoWorld } from '../content';
 import { BOT_NAME, botCastDelayMs, botDodge, botGesture, botPickElement, botPower, type Rng } from './bot';

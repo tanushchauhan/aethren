@@ -1,6 +1,6 @@
 # Aethren: one service (Express + Socket.IO + /mcp) that also serves the built client.
-# Build:  docker build -t once-upon .
-# Run:    docker run --rm -p 3001:3001 --env-file server/.env once-upon
+# Build:  docker build -t aethren .
+# Run:    docker run --rm -p 3001:3001 --env-file server/.env aethren
 
 # ---------------------------------------------------------------------------
 # base: Node 22 + pnpm (version pinned by the root package.json "packageManager")
@@ -27,7 +27,7 @@ RUN pnpm install --frozen-lockfile
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY client client
-RUN pnpm --filter @once-upon/client build
+RUN pnpm --filter @aethren/client build
 
 # ---------------------------------------------------------------------------
 # runtime: server deps only (incl. tsx, a server devDependency), TS source, built client
@@ -41,7 +41,7 @@ RUN if [ "$INSTALL_CURL" = "true" ]; then \
     fi
 # Server + its workspace deps only; skips client-only packages (vite, mediapipe, tailwind).
 # Runs before NODE_ENV=production is set, since that would make pnpm skip devDependencies (tsx).
-RUN pnpm install --frozen-lockfile --filter "@once-upon/server..."
+RUN pnpm install --frozen-lockfile --filter "@aethren/server..."
 
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
@@ -59,6 +59,6 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://localhost:'+(process.env.PORT||3001)+'/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 
-# Same as `pnpm --filter @once-upon/server start` (tsx src/index.ts), but runs tsx in-process
+# Same as `pnpm --filter @aethren/server start` (tsx src/index.ts), but runs tsx in-process
 # so node is PID 1 and receives SIGTERM directly for a clean shutdown.
 CMD ["node", "--import", "tsx", "src/index.ts"]

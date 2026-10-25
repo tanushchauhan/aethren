@@ -12,7 +12,7 @@ import type {
   PlayerRole,
   QuestDifficulty,
   ServerToClientEvents,
-} from '@once-upon/shared';
+} from '@aethren/shared';
 
 // ---------------------------------------------------------------------------
 // Socket.IO typing

@@ -1,5 +1,5 @@
-import { POSE_LANDMARK_COUNT, POSE_TRACK_HZ } from '@once-upon/shared';
-import type { NormalizedLandmark } from '@once-upon/shared';
+import { POSE_LANDMARK_COUNT, POSE_TRACK_HZ } from '@aethren/shared';
+import type { NormalizedLandmark } from '@aethren/shared';
 
 /**
  * Cloud / no-webcam puppet. Landmarks use MediaPipe image space:

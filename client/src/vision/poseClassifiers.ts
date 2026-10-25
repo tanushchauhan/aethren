@@ -6,14 +6,14 @@ import {
   POSE_LANDMARK,
   SWIPE_WINDOW_MS,
   ZONE_WIDTH_MULTIPLIER,
-} from '@once-upon/shared';
+} from '@aethren/shared';
 import type {
   AttackType,
   CalibrationBaseline,
   NormalizedLandmark,
   PoseActionType,
   PoseFrame,
-} from '@once-upon/shared';
+} from '@aethren/shared';
 
 /**
  * Right wrist must sit this far above the nose (smaller y) to count as an arm raise.

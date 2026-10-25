@@ -2,8 +2,8 @@
  * Bot seat behavior (pure decisions; the engine schedules them). A bot fills a dropped seat
  * after `DISCONNECT_PAUSE_MS`, or an empty P0 seat when a run starts with one human.
  */
-import { P0_ELEMENTS } from '@once-upon/shared';
-import type { AttackType, GestureType, P0ElementType } from '@once-upon/shared';
+import { P0_ELEMENTS } from '@aethren/shared';
+import type { AttackType, GestureType, P0ElementType } from '@aethren/shared';
 
 export const BOT_DODGE_CHANCE = 0.7;
 /** Of the bot's successful defenses against a projectile, this share are parries (Spellbearer seat only). */

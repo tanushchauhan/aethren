@@ -5,8 +5,8 @@ import {
   P0_ELEMENTS,
   POSE_SEND_HZ,
   POSE_TRACK_HZ,
-} from '@once-upon/shared';
-import type { CalibrationBaseline, NormalizedLandmark, PoseFrame } from '@once-upon/shared';
+} from '@aethren/shared';
+import type { CalibrationBaseline, NormalizedLandmark, PoseFrame } from '@aethren/shared';
 import {
   VisionCanvas,
   primeVisionAudio,

@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import type { CalibrationBaseline, NormalizedLandmark } from '@once-upon/shared';
-import { DUCK_THRESHOLD } from '@once-upon/shared';
+import type { CalibrationBaseline, NormalizedLandmark } from '@aethren/shared';
+import { DUCK_THRESHOLD } from '@aethren/shared';
 import { getZoneBounds, resolveTorso } from '../../vision/poseClassifiers';
 import type { DefenseCue, DefenseResult } from '../../combat/defense';
 

@@ -139,7 +139,7 @@ export function debugTtsPlugin(): Plugin {
   }
 
   return {
-    name: 'once-upon-debug-tts',
+    name: 'aethren-debug-tts',
     configureServer(server) {
       server.middlewares.use(handler);
     },
