@@ -356,6 +356,8 @@ server.on('upgrade', (req, socket: Socket) => {
   socket.write(
     `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`,
   );
+  // Without this Nagle batches the small 40 Hz frames and delayed ACKs can add 40-200 ms over Wi-Fi.
+  socket.setNoDelay(true);
   clients.add(socket);
   const clientId = `c${nextClient++}`;
   clientIds.set(socket, clientId);
