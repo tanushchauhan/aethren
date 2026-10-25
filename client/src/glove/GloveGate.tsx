@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { GloveMenuNav } from './GloveMenuNav';
 import { GloveSelect } from './GloveSelect';
 import { GloveSessionProvider, useGloveSession } from './GloveSession';
 import { CONTROL_LABELS, gloveProfile } from './gloveProfile';
@@ -15,6 +16,7 @@ function GateContents({ children }: { children: ReactNode }) {
   const profile = gloveProfile(glove);
   return <>
     {children}
+    <GloveMenuNav />
     <aside className="glove-badge" aria-label="Your glove">
       <span>Glove {glove.id}</span>
       <span>{profile.label}</span>

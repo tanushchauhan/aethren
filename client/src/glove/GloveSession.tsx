@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useGloveHub, type GloveHub, type GloveSummary } from '../hardware/useGloveHub';
-import { pressPins } from './gloveProfile';
+import { GloveInputTracker, type GloveInputEvent } from './gloveInput';
 
 const SAVED_GLOVE_KEY = 'memory.glove';
 
@@ -22,7 +22,7 @@ function saveGlove(id: number | null): void {
   }
 }
 
-export type PressListener = (gloveId: number) => void;
+export type InputListener = (event: GloveInputEvent, gloveId: number) => void;
 
 export interface GloveSession {
   hub: GloveHub;
@@ -32,15 +32,15 @@ export interface GloveSession {
   choose: (id: number) => Promise<boolean>;
   /** Gives the glove back so another player can use it. */
   leave: () => void;
-  /** Fires when a glove's touch sensor or either button goes down. Returns an unsubscribe function. */
-  onPress: (listener: PressListener) => () => void;
+  /** Every press, release, hold and dial move from every glove. Returns an unsubscribe function. */
+  onInput: (listener: InputListener) => () => void;
 }
 
 const GloveSessionContext = createContext<GloveSession | null>(null);
 
 export function GloveSessionProvider({ children }: { children: ReactNode }) {
   const hub = useGloveHub();
-  const { gloves, clientId, claim, release, edges, tick, send, status } = hub;
+  const { gloves, clientId, claim, release, send, status, subscribeFrames } = hub;
   const glove = useMemo(
     () => (clientId ? gloves.find((g) => g.claimedBy === clientId) ?? null : null),
     [gloves, clientId],
@@ -75,34 +75,50 @@ export function GloveSessionProvider({ children }: { children: ReactNode }) {
     if (saved.online && !saved.claimedBy) void claim(id);
   }, [clientId, glove, gloves, claim]);
 
-  const listeners = useRef(new Set<PressListener>());
-  const onPress = useCallback((listener: PressListener) => {
+  const listeners = useRef(new Set<InputListener>());
+  const onInput = useCallback((listener: InputListener) => {
     listeners.current.add(listener);
     return () => { listeners.current.delete(listener); };
   }, []);
 
-  // Edge counters only go up, so comparing totals between ticks never misses a quick tap.
-  const totals = useRef(new Map<number, number>());
-  useEffect(() => {
-    for (const g of gloves) {
-      const counts = edges.current.get(g.id);
-      if (!counts) continue;
-      const total = pressPins(g).reduce((sum, pin) => sum + counts.hits[pin], 0);
-      const before = totals.current.get(g.id);
-      totals.current.set(g.id, total);
-      if (before !== undefined && total > before) for (const listener of listeners.current) listener(g.id);
-    }
-  }, [tick, gloves, edges]);
+  const trackers = useRef(new Map<number, GloveInputTracker>());
+  const glovesRef = useRef(gloves);
+  glovesRef.current = gloves;
+  useEffect(() => subscribeFrames((id, sample) => {
+    let tracker = trackers.current.get(id);
+    if (!tracker) trackers.current.set(id, tracker = new GloveInputTracker());
+    const touchPin = glovesRef.current.find((g) => g.id === id)?.touchPin ?? null;
+    for (const event of tracker.feed(sample, touchPin)) for (const listener of listeners.current) listener(event, id);
+  }), [subscribeFrames]);
 
   const session = useMemo<GloveSession>(
-    () => ({ hub, glove, choose, leave, onPress }),
-    [hub, glove, choose, leave, onPress],
+    () => ({ hub, glove, choose, leave, onInput }),
+    [hub, glove, choose, leave, onInput],
   );
   return <GloveSessionContext.Provider value={session}>{children}</GloveSessionContext.Provider>;
+}
+
+/** Null when the glove requirement is waived (`/?noglove`) and there is no session. */
+export function useOptionalGloveSession(): GloveSession | null {
+  return useContext(GloveSessionContext);
 }
 
 export function useGloveSession(): GloveSession {
   const session = useContext(GloveSessionContext);
   if (!session) throw new Error('useGloveSession must be used inside GloveSessionProvider');
   return session;
+}
+
+/** Runs the handler for input from the glove this player claimed. */
+export function useGloveInput(handler: (event: GloveInputEvent) => void): void {
+  const { glove, onInput } = useGloveSession();
+  const latest = useRef(handler);
+  latest.current = handler;
+  const id = glove?.id ?? null;
+  useEffect(() => onInput((event, gloveId) => { if (gloveId === id) latest.current(event); }), [onInput, id]);
+}
+
+/** The dial's current 0-1023 reading, or null before any frame has arrived. */
+export function readDial(hub: GloveHub, gloveId: number): number | null {
+  return hub.samples.current.get(gloveId)?.at(-1)?.dial ?? null;
 }

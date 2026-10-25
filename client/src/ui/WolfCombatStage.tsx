@@ -12,6 +12,7 @@ import { PlayerWards, WolfStatusAura } from './components/StatusAuras';
 import { WolfMoveAnimation } from './components/WolfMoveAnimation';
 import { SpellEffect } from './components/SpellEffect';
 import { PlayerStatusPanel } from './components/PlayerStatusPanel';
+import { GloveCombatControl } from '../glove/GloveCombatControl';
 import { RainOverlay } from './components/RainOverlay';
 import './wolf-combat-stage.css';
 import { useBattleMusic } from './useBattleMusic';
@@ -154,6 +155,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
       </ol>
     </aside>
     {status === 'active' && <PlayerStatusPanel />}
+    <GloveCombatControl />
     {status === 'won' && <motion.section className="encounter-victory" aria-labelledby="victory-title" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: reduced ? .1 : .8 }}>
       <p>Encounter won</p><h2 id="victory-title">The vale falls silent</h2>
       <span>The path beyond the clearing is open.</span>

@@ -20,7 +20,7 @@ Both builds are the same code. `GLOVE_ID`, `LCD_VARIANT` and `TOUCH_PIN` (D7 for
 4. On the laptop, join the same hotspot, then run the hub and the client:
 
 ```sh
-pnpm --dir firmware hub          # receives the gloves (UDP :4211) and serves ws://localhost:8765
+pnpm --dir firmware hub          # receives the gloves (UDP :4211) and serves ws://localhost:8765 (and on your LAN IP, printed at start)
 pnpm dev                          # then open http://localhost:5173/debug/hardware
 pnpm --dir firmware hub:simulate  # two fake gloves, to try the page without hardware
 ```
@@ -83,3 +83,12 @@ Until a hub says hello, gloves broadcast to the subnet on port 4211. The hub rep
 - **Glove never appears:** the laptop must be on the same hotspot. A second glove with the same id shows a warning on the page.
 - **Red or `WIFI FAILED`:** check the SSID and password in `wifi_secrets.h`, and that the hotspot is on compatible with 2.4 GHz (turn on "Maximize Compatibility" in the iPhone hotspot settings).
 - **`NO HUB`:** the hub is not running, or the laptop firewall blocks UDP 4211.
+
+## Using the gloves from another laptop
+
+The hub must run on the computer the gloves send to. Other laptops open the game with `?hub=ws://<hub computer IP>:8765`
+(for example `http://localhost:5173/?hub=ws://172.20.10.3:8765`); the hub prints the exact address when it starts, and the
+choice is remembered for that tab. A game served from a LAN address picks the hub on that same host automatically.
+A page served over `https` cannot open a plain `ws://` socket (browsers block it), so use the dev server or an `http` page.
+Phone hotspots and some Wi-Fi networks isolate devices from each other; if the address does not answer, try another network.
+Each glove can be claimed by one player at a time, across laptops.

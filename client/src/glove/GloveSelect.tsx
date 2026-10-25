@@ -22,7 +22,7 @@ const STATUS_TEXT: Record<Availability, string> = {
 
 /** Shown until a glove is claimed. Gloves are required to play, so there is no way past this screen without one. */
 export function GloveSelect({ lostGlove = false }: { lostGlove?: boolean }) {
-  const { hub, choose, onPress } = useGloveSession();
+  const { hub, choose, onInput } = useGloveSession();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -35,7 +35,8 @@ export function GloveSelect({ lostGlove = false }: { lostGlove?: boolean }) {
   }
 
   // Pressing T, B1 or B2 on a free glove picks it, so the player never needs the mouse.
-  useEffect(() => onPress((id) => {
+  useEffect(() => onInput((event, id) => {
+    if (event.type !== 'down') return;
     const glove = hub.gloves.find((g) => g.id === id);
     if (glove && availability(glove, hub.clientId) === 'available') void pick(glove);
   }));

@@ -1,7 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/** The glove hub (`pnpm --dir firmware hub`) relays every glove's Wi-Fi packets on this WebSocket. */
-export const GLOVE_HUB_URL = 'ws://localhost:8765';
+const HUB_PARAM = 'hub';
+
+/**
+ * The glove hub (`pnpm --dir firmware hub`) relays every glove's Wi-Fi packets on this WebSocket.
+ * It runs on the computer the gloves talk to, so other laptops point at it with `?hub=ws://<that computer's IP>:8765`
+ * (the hub prints the address). The choice is remembered for the tab. Without one, a game served from a
+ * LAN address or a local machine looks for the hub on that same host.
+ */
+export function resolveHubUrl(): string {
+  try {
+    const asked = new URLSearchParams(window.location.search).get(HUB_PARAM);
+    if (asked) {
+      const url = /^wss?:\/\//.test(asked) ? asked : `ws://${asked}`;
+      window.sessionStorage.setItem(HUB_PARAM, url);
+      return url;
+    }
+    const saved = window.sessionStorage.getItem(HUB_PARAM);
+    if (saved) return saved;
+    const host = window.location.hostname;
+    if (host && host !== 'localhost' && /^(\d+\.){3}\d+$|\.local$/.test(host)) return `ws://${host}:8765`;
+  } catch {
+    /* no window or storage: fall through to the local hub */
+  }
+  return 'ws://localhost:8765';
+}
+
+export const GLOVE_HUB_URL = resolveHubUrl();
 
 export interface GloveSample {
   /** Browser clock (performance.now) when the frame arrived. */
@@ -70,7 +95,11 @@ export type HubStatus = 'connecting' | 'open' | 'closed';
 export const SAMPLE_WINDOW_MS = 12_000;
 const MAX_SAMPLES = 1200;
 
+export type FrameListener = (gloveId: number, sample: GloveSample) => void;
+
 export interface GloveHub {
+  /** Calls the listener for every frame of every glove as it arrives. Returns an unsubscribe function. */
+  subscribeFrames: (listener: FrameListener) => () => void;
   status: HubStatus;
   gloves: GloveSummary[];
   /** Mutable: read inside a render tick or animation frame. */
@@ -95,6 +124,7 @@ export function useGloveHub(url: string = GLOVE_HUB_URL): GloveHub {
   const edges = useRef(new Map<number, GloveEdgeCounts>());
   const [clientId, setClientId] = useState<string | null>(null);
   const socket = useRef<WebSocket | null>(null);
+  const frameListeners = useRef(new Set<FrameListener>());
   const pendingClaims = useRef(new Map<number, (ok: boolean) => void>());
 
   useEffect(() => {
@@ -137,7 +167,9 @@ export function useGloveHub(url: string = GLOVE_HUB_URL): GloveHub {
           const now = performance.now();
           const list = samples.current.get(id) ?? [];
           const prev = list[list.length - 1];
-          list.push({ ...f, t: now });
+          const sample = { ...f, t: now };
+          list.push(sample);
+          for (const listener of frameListeners.current) listener(id, sample);
           while (list.length > MAX_SAMPLES || (list[0] && now - list[0].t > SAMPLE_WINDOW_MS)) list.shift();
           samples.current.set(id, list);
           const counts = edges.current.get(id) ?? emptyEdges();
@@ -168,6 +200,11 @@ export function useGloveHub(url: string = GLOVE_HUB_URL): GloveHub {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'cmd', id, ...command }));
   }, []);
 
+  const subscribeFrames = useCallback((listener: FrameListener) => {
+    frameListeners.current.add(listener);
+    return () => { frameListeners.current.delete(listener); };
+  }, []);
+
   const claim = useCallback((id: number) => new Promise<boolean>((resolve) => {
     const ws = socket.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return resolve(false);
@@ -191,5 +228,5 @@ export function useGloveHub(url: string = GLOVE_HUB_URL): GloveHub {
     }
   }, []);
 
-  return { status, gloves, samples, edges, tick, send, clientId, claim, release, clear };
+  return { status, gloves, samples, edges, tick, send, subscribeFrames, clientId, claim, release, clear };
 }

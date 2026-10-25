@@ -28,3 +28,5 @@ kbd { display: inline-block; min-width: 26px; padding: 0 6px; text-align: center
 .glove-list li { display: grid; gap: 8px; align-content: start; }
 .glove-buzz { padding: 6px 10px; font: 20px 'VT323', monospace; color: #e7dfb9; background: #28453e; border: 1px solid #87a38d; box-shadow: 3px 3px #06100d; cursor: pointer; }
 .glove-buzz:hover, .glove-buzz:focus-visible { color: #ffe5a1; border-color: #f4dc99; outline: none; }
+
+[data-glove-focus] { outline: 2px solid #f4dc99 !important; outline-offset: 6px; color: #ffe5a1 !important; box-shadow: 0 0 22px #f4dc9988; }

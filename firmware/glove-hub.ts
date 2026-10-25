@@ -12,11 +12,14 @@
 import { createHash } from 'node:crypto';
 import dgram from 'node:dgram';
 import { createServer } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import type { Socket } from 'node:net';
 
 const GLOVE_UDP_PORT = Number(process.env.GLOVE_UDP_PORT ?? 4211);
 const GLOVE_CMD_PORT = 4210;
 const WS_PORT = Number(process.env.GLOVE_WS_PORT ?? 8765);
+/** Listens on every interface so other laptops on the network can use these gloves. Set GLOVE_WS_HOST=127.0.0.1 to keep it local. */
+const WS_HOST = process.env.GLOVE_WS_HOST ?? '0.0.0.0';
 const ONLINE_MS = 3000;
 const HELLO_MS = 2000;
 const simulate = process.argv.includes('--simulate');
@@ -360,7 +363,15 @@ server.on('upgrade', (req, socket: Socket) => {
   socket.on('error', drop);
 });
 
-server.listen(WS_PORT, '127.0.0.1', () => console.log(`[hub] browser feed on ws://localhost:${WS_PORT}`));
+server.listen(WS_PORT, WS_HOST, () => {
+  console.log(`[hub] browser feed on ws://localhost:${WS_PORT}`);
+  if (WS_HOST === '127.0.0.1') return;
+  for (const list of Object.values(networkInterfaces())) {
+    for (const addr of list ?? []) {
+      if (addr.family === 'IPv4' && !addr.internal) console.log(`[hub] other laptops: open the game with ?hub=ws://${addr.address}:${WS_PORT}`);
+    }
+  }
+});
 
 // --- Simulator ---------------------------------------------------------------
 
