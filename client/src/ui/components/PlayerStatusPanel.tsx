@@ -74,6 +74,7 @@ export function PlayerStatusPanel() {
       {diagnostics && <><p role="status" aria-live="polite">{!targets.length ? 'The clearing is safe.' : player.magicPower < spell.cost && !battle.pending ? 'Not enough Magic Power — rest or end your turn to recover it.' : battle.message}</p>
       <button type="button" disabled={!!battle.pending || battle.activeId !== me} onClick={() => heroStore(me).getState().setMagicPower(player.maxMagicPower)}>Refill magic</button>
       <button type="button" onClick={() => battle.diagnosticKillAll()}>Instant kill all</button>
+      <button type="button" onClick={() => battle.discoverAllSpells()}>Unlock all spells</button>
       <button type="button" onClick={() => { battle.reset(); playerStore.getState().reset(); }}>Reset encounter</button></>}
       <label className="diagnostics-toggle"><input type="checkbox" checked={diagnostics} onChange={event => setDiagnostics(event.target.checked)} />Enable diagnostics</label>
     </footer>

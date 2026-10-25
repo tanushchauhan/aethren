@@ -52,7 +52,28 @@ export const attackDamage = (id: string, actor: ActorState) => Math.floor(defini
 export const armorValue = (id: string, actor: ActorState) => definition(id).armor + (isRoused(actor) ? 2 : 0);
 export function canUseMove(id: string, actor: ActorState, move: MoveId) {
   return !actor.defeated && definition(id).moves.includes(move) && actor.energy >= moves[move].cost && !(actor.cooldowns[move] ?? 0)
-    && (move !== 'roar' || !isRoused(actor));
+    && (move !== 'roar' || !isRoused(actor))
+    && (move !== 'jaw-grab' || !hasStatus(actor.statuses, 'chilled'));
+}
+/** Preview what move an enemy will choose on its next turn, and which element counters it. */
+export function previewIntent(id: string, actor: ActorState): { moveId: MoveId; moveName: string; counterTip: string } | null {
+  if (actor.defeated) return null;
+  if (hasStatus(actor.statuses, 'frozen')) return { moveId: 'rest', moveName: 'Frozen', counterTip: 'Fire shatters ice (+50% dmg)!' };
+  const ready: ActorState = {
+    ...actor,
+    energy: Math.min(definition(id).maxEnergy, actor.energy + 3),
+    cooldowns: Object.fromEntries(Object.entries(actor.cooldowns).map(([k, v]) => [k, Math.max(0, (v ?? 0) - 1)])),
+  };
+  const moveId = selectMove(id, ready);
+  const moveName = moves[moveId].name;
+  const counterTip =
+    moveId === 'jaw-grab' ? 'Counter: Frost chills grab · Static Shock strips Roused'
+    : moveId === 'roar' ? 'Counter: Static Shock drains energy · Frost Prison freezes'
+    : moveId === 'scorn-inferno' || moveId === 'aura-flash' ? 'Counter: Ice Shield blocks curse · Static Shock drains'
+    : moveId === 'rest' ? 'Vulnerable: Punish with Fire!'
+    : isRoused(actor) ? 'Roused (+2 Armor): Counter with Fire Lance or Static Shock'
+    : 'Counter: Chill with Frost or Dodge on impact';
+  return { moveId, moveName, counterTip };
 }
 export function selectMove(id: string, actor: ActorState): MoveId {
   if (hasStatus(actor.statuses, 'drained')) return 'rest';

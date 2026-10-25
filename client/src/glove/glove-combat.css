@@ -1,11 +1,27 @@
-.glove-combat { --el: #7f978c; --dock: 118px; --wheel-scale: 1; position: absolute; z-index: 20; inset: 0; pointer-events: none; color: #e6dfbd; font: 18px/1.2 'Pixelify Sans', monospace; }
+.glove-combat { --el: #7f978c; --dock: 118px; --wheel-scale: 1; position: absolute; z-index: 20; inset: 0; pointer-events: none; color: #e6dfbd; font: 20px/1.15 'VT323', monospace; }
 @media (max-height: 800px) { .glove-combat { --wheel-scale: .84; } }
 @media (max-height: 640px) { .glove-combat { --wheel-scale: .66; } }
 
+/* Top turn countdown bar and Pass Turn control */
+.player-turn-timer { position: absolute; top: 10px; left: 50%; translate: -50% 0; width: min(560px, calc(100% - 160px)); padding: 6px 12px; background: #07131be8; border: 1px solid #a8844a; box-shadow: 0 4px 12px #000b; pointer-events: auto; z-index: 25; }
+.player-turn-timer[data-urgent='true'] { border-color: #ff6a4d; background: linear-gradient(90deg, #2a0c0ce8, #09141be8); }
+.turn-timer-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.turn-timer-label { font: 16px 'Pixelify Sans', monospace; color: #ffe5a1; white-space: nowrap; }
+.turn-timer-label b { color: #fff; font-weight: 400; }
+.player-turn-timer[data-urgent='true'] .turn-timer-label b { color: #ff8e75; }
+.turn-timer-sub { font-size: 16px; color: #b9c8c2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.turn-pass-btn { border: 1px solid #c9a15a; background: #142630; color: #ffe5a1; font: 13px 'Pixelify Sans', monospace; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
+.turn-pass-btn:hover { background: #213a48; color: #fff; }
+.turn-timer-track { height: 6px; background: #0e2028; border: 1px solid #526a65; overflow: hidden; }
+.turn-timer-fill { display: block; height: 100%; background: linear-gradient(90deg, #63d297, #ffd479); transition: width .08s linear; }
+.player-turn-timer[data-urgent='true'] .turn-timer-fill { background: linear-gradient(90deg, #ff4b3a, #ff9e44); }
+
 /* The wheel: 12 wedges in a dark glass ring, element arcs on the rim, a gold pointer on the live wedge. */
-.spell-wheel { position: absolute; left: 50%; bottom: var(--dock); translate: -50% 0; width: 360px; transform-origin: 50% 100%; transform: scale(var(--wheel-scale)); opacity: 1; transition: transform .42s cubic-bezier(.3, 1.3, .5, 1), opacity .3s ease; }
-.glove-combat[data-phase='banner'] .spell-wheel { transform: scale(.1) translateY(40px); opacity: 0; pointer-events: none; transition: transform .34s ease-in, opacity .26s ease-in; }
-.glove-combat[data-phase='banner'] .spell-wheel * { pointer-events: none; }
+.spell-wheel { position: absolute; left: 50%; bottom: var(--dock); translate: -50% 0; width: 360px; transform-origin: 50% 100%; transform: scale(var(--wheel-scale)); opacity: 1; transition: transform .36s cubic-bezier(.3, 1.3, .5, 1), opacity .26s ease; }
+.glove-combat[data-phase='banner'] .spell-wheel,
+.glove-combat[data-phase='ritual'] .spell-wheel { transform: scale(.1) translateY(40px); opacity: 0; pointer-events: none; transition: transform .28s ease-in, opacity .2s ease-in; }
+.glove-combat[data-phase='banner'] .spell-wheel *,
+.glove-combat[data-phase='ritual'] .spell-wheel * { pointer-events: none; }
 .spell-wheel-dial { position: relative; width: 360px; height: 360px; filter: drop-shadow(0 6px 14px #000a); }
 .spell-wheel-dial svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: auto; }
 .wheel-arc { opacity: .32; transition: opacity .2s; }
@@ -14,38 +30,95 @@
 .wheel-wedge path { fill: #08141be6; stroke: color-mix(in srgb, var(--wedge) 45%, #3a4f4a); stroke-width: 1.5; transition: fill .15s, stroke .15s; }
 .wheel-wedge:hover path { fill: color-mix(in srgb, var(--wedge) 14%, #08141b); }
 .wheel-wedge[data-active='true'] path { fill: color-mix(in srgb, var(--wedge) 30%, #0b1a20); stroke: var(--wedge); stroke-width: 2.5; filter: drop-shadow(0 0 7px var(--wedge)); }
-.wheel-wedge text { fill: #cbbd94; font: 12px 'Pixelify Sans', monospace; pointer-events: none; user-select: none; }
+.wheel-wedge text { fill: #cbbd94; font: 14px 'Pixelify Sans', monospace; pointer-events: none; user-select: none; }
 .wheel-wedge[data-active='true'] text { fill: #fff3c4; }
 .wheel-wedge[data-affordable='false'] path, .wheel-wedge[data-affordable='false'] text { opacity: .42; }
-.wheel-cost-gem { fill: #0b1922; stroke: #c9a15a; stroke-width: 1.5; pointer-events: none; }
+.wheel-wedge[data-locked='true'] path { fill: #060e14e0; stroke-dasharray: 4 3; opacity: .72; }
+.wheel-wedge[data-locked='true'] text { fill: #7f9590; font-style: italic; }
+.wheel-wedge[data-hinted='true'] path { stroke: #ffe27a; stroke-dasharray: none; filter: drop-shadow(0 0 6px #ffe27a88); }
+.wheel-wedge[data-hinted='true'] text { fill: #ffe5a1; }
+.wheel-cost-gem { fill: #1b1409; stroke: #c9a15a; stroke-width: 1.5; pointer-events: none; }
 .wheel-wedge[data-affordable='false'] .wheel-cost-gem { stroke: #e1836b; }
-.wheel-wedge text.wheel-cost { font: 12px 'Pixelify Sans', monospace; fill: #ffe5a1; opacity: 1; }
+.wheel-wedge text.wheel-cost { font: 14px 'VT323', monospace; fill: #ffe5a1; opacity: 1; }
 .wheel-wedge[data-affordable='false'] text.wheel-cost { fill: #f0a08a; opacity: 1; }
 .wheel-pointer { fill: #ffd479; stroke: #5b3f14; stroke-width: 1; transform-box: view-box; transform-origin: 50% 50%; transition: transform .16s ease-out; pointer-events: none; filter: drop-shadow(0 0 4px #ffd479); }
 
 /* The hub shows the live spell. */
-.wheel-hub { position: absolute; left: 50%; top: 50%; translate: -50% -50%; box-sizing: border-box; width: 196px; height: 196px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 16px 20px; text-align: center; border-radius: 50%; background: radial-gradient(circle at 50% 38%, #12262d, #08141bf2 72%); border: 2px solid #a8844a; box-shadow: inset 0 0 22px color-mix(in srgb, var(--el) 28%, transparent), 0 0 20px color-mix(in srgb, var(--el) 35%, transparent); pointer-events: none; }
-.wheel-hub-crest { font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--el); filter: drop-shadow(0 0 6px var(--el)); }
-.wheel-hub-name { font: 400 18px/1.15 'Pixelify Sans', monospace; color: #fff3c4; text-shadow: 0 0 10px color-mix(in srgb, var(--el) 70%, transparent); }
-.wheel-hub-cost { color: var(--el); font-size: 15px; }
+.wheel-hub { position: absolute; left: 50%; top: 50%; translate: -50% -50%; box-sizing: border-box; width: 198px; height: 198px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 14px 18px; text-align: center; border-radius: 50%; background: radial-gradient(circle at 50% 38%, #12262d, #08141bf2 72%); border: 2px solid #a8844a; box-shadow: inset 0 0 22px color-mix(in srgb, var(--el) 28%, transparent), 0 0 20px color-mix(in srgb, var(--el) 35%, transparent); pointer-events: auto; }
+.wheel-hub-crest { font-size: 20px; line-height: 1; filter: drop-shadow(0 0 6px var(--el)); }
+.wheel-hub-name { font: 400 18px/1.1 'Pixelify Sans', monospace; color: #fff3c4; text-shadow: 0 0 10px color-mix(in srgb, var(--el) 70%, transparent); }
+.wheel-hub-cost { color: var(--el); font-size: 17px; }
 .wheel-hub-cost[data-affordable='false'] { color: #e1836b; }
-.wheel-hub-detail { margin: 2px 0; font-size: 13px; line-height: 1.2; color: #c1ccbf; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.wheel-hub-detail { margin: 1px 0; font-size: 13px; line-height: 1.08; color: #c1ccbf; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .wheel-hub-target { font-size: 14px; color: #9fb5b0; white-space: nowrap; }
 .wheel-hub-target b { color: #ffe5a1; font-weight: 400; }
+.wheel-begin-btn { margin-top: 2px; padding: 3px 9px; border: 1px solid #ffd479; background: #1d313b; color: #fff3c4; font: 12px 'Pixelify Sans', monospace; cursor: pointer; }
+.wheel-begin-btn:hover:not(:disabled) { background: #2b4756; }
+.wheel-begin-btn:disabled { opacity: .45; cursor: default; }
+
+.wheel-notice { margin-top: 5px; padding: 4px 10px; background: #261216eb; border: 1px solid #f0937b; color: #ffd7cc; font-size: 16px; text-align: center; pointer-events: auto; }
 
 /* Keycap prompts under the wheel. */
-.wheel-prompts { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; margin-top: 6px; padding: 6px 10px; background: #08141be6; border: 1px solid #6e5a35; color: #b9c8c2; font-size: 14px; pointer-events: auto; }
-.wheel-prompts span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-.wheel-prompts small { flex-basis: 100%; text-align: center; font-size: 13px; color: #8aa09a; }
+.wheel-prompts { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 12px; margin-top: 6px; padding: 5px 8px; background: #08141be6; border: 1px solid #6e5a35; color: #b9c8c2; font-size: 17px; pointer-events: auto; }
+.wheel-prompts span { white-space: nowrap; }
+.wheel-prompts small { flex-basis: 100%; text-align: center; font-size: 15px; color: #8aa09a; }
 .wheel-prompts .wheel-glove { color: #6f857f; }
-.glove-combat kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 19px; margin: 0 2px; padding: 0 5px; font: 12px/1 'Pixelify Sans', monospace; color: #ffe5a1; background: #0b1922; border: 1px solid #b8964f; border-bottom-width: 2px; border-radius: 2px; }
+.ritual-hint-btn { border: 1px solid #c9a15a; background: #19262e; color: #ffe5a1; font: 12px 'Pixelify Sans', monospace; padding: 2px 6px; cursor: pointer; white-space: nowrap; }
+.ritual-hint-btn:hover { background: #253844; }
+.glove-combat kbd { display: inline-block; margin: 0 2px; padding: 0 5px; font: 12px/1.45 'Pixelify Sans', monospace; color: #ffe5a1; background: #1b1409; border: 1px solid #b8964f; border-bottom-width: 2px; border-radius: 2px; }
+
+/* ON-SCREEN RITUAL COMMAND STAGE (replaces the wheel while casting a spell!) */
+.ritual-stage-overlay { position: absolute; left: 50%; bottom: var(--dock); translate: -50% 0; width: min(760px, calc(100% - 32px)); padding: 12px 16px; background: #07131bf2; border: 2px solid var(--el); box-shadow: 0 0 28px color-mix(in srgb, var(--el) 35%, transparent), 0 8px 24px #000d; pointer-events: auto; display: grid; gap: 10px; }
+.ritual-stage-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #ffffff24; padding-bottom: 6px; }
+.ritual-stage-element { display: block; font: 12px 'Pixelify Sans', monospace; letter-spacing: 2px; color: var(--el); }
+.ritual-stage-title { margin: 0; font: 400 22px/1.1 'Pixelify Sans', monospace; color: #fff3c4; }
+.ritual-stage-title small { font-size: 15px; color: #9fb5b0; }
+.ritual-last-grade { padding: 3px 10px; background: #18342b; border: 1px solid #79f2b0; color: #d8ffea; font: 14px 'Pixelify Sans', monospace; }
+.ritual-cancel-btn { border: 1px solid #9fb5b080; background: #102029; color: #d4e3df; font: 13px 'Pixelify Sans', monospace; padding: 4px 10px; cursor: pointer; }
+.ritual-cancel-btn:hover { background: #1b3340; color: #fff; }
+
+/* Command sequence cards on screen */
+.ritual-command-cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.ritual-command-card { padding: 8px 10px; background: #0c1d26; border: 1px solid #48615d; display: grid; gap: 2px; transition: transform .15s, border-color .15s, box-shadow .15s; }
+.ritual-command-card[data-kind='pose'] { border-color: #4f8ea3; }
+.ritual-command-card[data-state='current'] { background: #142c38; border: 2px solid #ffd479; box-shadow: 0 0 16px #ffd47966; transform: translateY(-2px); }
+.ritual-command-card[data-state='done'] { background: #102a22; border-color: #63d297; opacity: .9; }
+.ritual-command-card[data-grade='perfect'] { border-color: #ffd479; background: #262312; }
+.ritual-command-card[data-grade='sloppy'] { border-color: #e1836b; background: #261515; }
+.ritual-card-step { font: 11px 'Pixelify Sans', monospace; text-transform: uppercase; letter-spacing: 1px; color: #8fb0aa; }
+.ritual-card-action { font: 400 17px/1.15 'Pixelify Sans', monospace; color: #fff5d6; }
+.ritual-card-sub { font-size: 14px; color: #b9d2cd; }
+.ritual-command-card[data-state='current'] .ritual-card-sub { color: #ffe27a; }
+
+/* Timing window bar & sweet-spot explanation */
+.ritual-timing-box { padding: 8px 12px; background: #050e14; border: 1px solid #6b8580; display: grid; gap: 6px; }
+.ritual-timing-box[data-sweet='true'] { border-color: #ffd479; box-shadow: inset 0 0 18px #ffd47933, 0 0 12px #ffd47955; }
+.ritual-timing-instructions { display: flex; align-items: center; justify-content: space-between; gap: 10px; font: 15px 'Pixelify Sans', monospace; color: #ffe5a1; }
+.ritual-step-clock { color: #cfe3df; white-space: nowrap; }
+.ritual-step-clock b { color: #fff; }
+.ritual-timing-track { position: relative; height: 26px; display: flex; border: 1px solid #8ea8a3; overflow: hidden; font: 11px/26px 'Pixelify Sans', monospace; text-align: center; user-select: none; }
+.ritual-zone { height: 100%; overflow: hidden; white-space: nowrap; }
+.ritual-zone.early { width: 16%; background: #3a191d; color: #f2a2a8; }
+.ritual-zone.good-left { width: 19%; background: #17333b; color: #9fe3ff; }
+.ritual-zone.perfect { width: 37%; background: linear-gradient(90deg, #6b5314, #a37c1b, #6b5314); color: #fff7cf; font-weight: 700; border-left: 2px solid #ffe27a; border-right: 2px solid #ffe27a; text-shadow: 0 1px 2px #000; }
+.ritual-zone.good-right { width: 16%; background: #17333b; color: #9fe3ff; }
+.ritual-zone.late { width: 12%; background: #3a191d; color: #f2a2a8; }
+.ritual-timing-cursor { position: absolute; top: -2px; bottom: -2px; width: 6px; translate: -50% 0; background: #fff; border: 1px solid #000; box-shadow: 0 0 10px #fff, 0 0 18px #ffd479; pointer-events: none; }
+.ritual-timing-explain { margin: 0; font-size: 15px; color: #b9ccc7; text-align: center; }
+.ritual-timing-explain b { color: #ffe5a1; font-weight: 400; }
+
+.ritual-step-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; }
+.ritual-step-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; background: #10222c; border: 1px solid #6b8580; color: #e6dfbd; font: 13px 'Pixelify Sans', monospace; cursor: pointer; }
+.ritual-step-btn[data-kind='pose'] { border-color: #5ca9bf; color: #c4f4ff; }
+.ritual-step-btn[data-expected='true'] { border-color: #ffd479; background: #2b2612; color: #fff6cf; box-shadow: 0 0 10px #ffd47966; }
+.ritual-step-btn:hover { background: #1c3644; border-color: #ffe5a1; }
 
 /* The wolves' turn: the wheel folds into this banner so the attacks stay in view. */
-.defense-banner { position: absolute; left: 50%; bottom: var(--dock); translate: -50% 0; box-sizing: border-box; width: min(720px, calc(100% - 24px)); display: grid; justify-items: center; gap: 3px; padding: 8px 16px; text-align: center; background: #08141bec; border: 2px solid #a8844a; box-shadow: 4px 4px 0 #040b10; opacity: 0; transform: translateY(16px) scale(.96); pointer-events: none; transition: opacity .2s ease, transform .25s ease; }
+.defense-banner { position: absolute; left: 50%; bottom: var(--dock); translate: -50% 0; box-sizing: border-box; width: min(720px, calc(100% - 24px)); display: grid; justify-items: center; gap: 2px; padding: 7px 16px; text-align: center; background: #08141bec; border: 2px solid #a8844a; box-shadow: 4px 4px 0 #040b10; opacity: 0; transform: translateY(16px) scale(.96); pointer-events: none; transition: opacity .2s ease, transform .25s ease; }
 .glove-combat[data-phase='banner'] .defense-banner { opacity: 1; transform: none; transition-delay: .16s; }
-.defense-prompt { margin: 0; font: 400 18px/1.25 'Pixelify Sans', monospace; color: #e6dfbd; }
-.defense-prompt[data-calm='true'] { font-size: 17px; color: #b9c8c2; }
-.defense-meta { font-size: 13px; color: #8aa09a; }
+.defense-prompt { margin: 0; font: 400 23px/1.15 'VT323', monospace; color: #e6dfbd; }
+.defense-prompt[data-calm='true'] { font-size: 21px; color: #b9c8c2; }
+.defense-meta { font-size: 16px; color: #8aa09a; }
 .defense-banner[data-urgent='true'] { border-color: #ff6a4d; background: linear-gradient(#2a0d0aee, #08141bec); animation: defense-urgent 1s ease-in-out infinite; }
 .defense-banner[data-urgent='true'] .defense-prompt { color: #ffd9a8; text-shadow: 0 0 10px #ff5a3c; }
 .defense-banner[data-defending='true'] { border-color: #7fd8ff; animation: none; box-shadow: 0 0 26px #7fd8ff88, 4px 4px 0 #040b10; }
@@ -56,7 +129,7 @@
 @keyframes defense-flash { from { transform: scale(1.35); opacity: .2; } to { transform: scale(1); opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .spell-wheel, .defense-banner, .wheel-pointer, .wheel-arc, .wheel-wedge path { transition: none; }
+  .spell-wheel, .defense-banner, .wheel-pointer, .wheel-arc, .wheel-wedge path, .turn-timer-fill { transition: none; }
   .defense-banner[data-urgent='true'], .defense-flash { animation: none; }
 }
 .glove-target { filter: drop-shadow(0 0 14px #ffe5a1) drop-shadow(0 0 4px #ffe5a1); }

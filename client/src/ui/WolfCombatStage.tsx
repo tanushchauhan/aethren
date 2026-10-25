@@ -2,7 +2,7 @@ import { CombatCamera } from './components/CombatCamera';
 import { useDefense } from '../combat/defense';
 import { useEffect, useRef, useState } from 'react';
 import { motion, useAnimate, useReducedMotion } from 'motion/react';
-import { combatants, isRoused, moves } from '../combat/encounter';
+import { combatants, isRoused, moves, previewIntent } from '../combat/encounter';
 import { useSpellBattle } from '../combat/spellBattle';
 import { isHero, playerStore, resetHeroes, useLocalHero, usePlayerState, type HeroId } from '../combat/playerState';
 import { CoopPartnerCard } from './components/CoopGather';
@@ -156,6 +156,13 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue, onFightAlone
                   <img className="wolf-stat-icon" src={`/art/resources/${stat.id}.png`} alt="" />
                 </div>)}
               <div className="wolf-status-icons">{stats.statuses.map(effect => <StatusEffectIcon key={effect.id} effect={effect} />)}</div>
+              {activeId === me && !stats.defeated && (() => {
+                const intent = previewIntent(wolf.id, stats);
+                return intent ? <div className={`wolf-intent-tag ${intent.moveId}`} title={intent.counterTip}>
+                  <span>Next: <b>{intent.moveName}</b></span>
+                  {targetedId === wolf.id && <small>{intent.counterTip}</small>}
+                </div> : null;
+              })()}
             </div>
             <div className="wolf-turn-ring" aria-hidden="true" />
             {targetedId === wolf.id && !stats.defeated && status === 'active' && <span className="wolf-target-badge" role="status">◆ Targeted · <kbd>T</kbd> Switch</span>}

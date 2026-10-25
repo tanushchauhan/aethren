@@ -116,3 +116,8 @@
 .defense-result.dodged { color: #d9f4ff; text-shadow: 3px 0 #12324a, -3px 0 #12324a, 0 3px #12324a, 0 -3px #12324a, 0 0 22px #6cc6ff; }
 .defense-result.parried { color: #ffe27a; text-shadow: 3px 0 #4a2a08, -3px 0 #4a2a08, 0 3px #4a2a08, 0 -3px #4a2a08, 0 0 22px #ffb347; }
 @media (prefers-reduced-motion: reduce) { .wolf-target-badge { animation: none; } }
+.wolf-intent-tag { justify-self: center; padding: 2px 8px; background: #08141be8; border: 1px solid #9bafac80; color: #d8e5e1; font-size: 13px; text-align: center; white-space: nowrap; pointer-events: none; box-shadow: 0 2px 6px #000a; }
+.wolf-intent-tag b { color: #ffe5a1; font-weight: 400; }
+.wolf-intent-tag.jaw-grab, .wolf-intent-tag.scorn-inferno, .wolf-intent-tag.aura-flash { border-color: #ff6a4daa; background: #260d12eb; }
+.wolf-intent-tag.jaw-grab b, .wolf-intent-tag.scorn-inferno b, .wolf-intent-tag.aura-flash b { color: #ffb3a1; }
+.wolf-intent-tag small { display: block; margin-top: 1px; font-size: 11px; color: #9fe3ff; }

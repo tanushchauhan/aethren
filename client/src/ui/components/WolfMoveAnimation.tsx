@@ -4,6 +4,11 @@ import { useSpellBattle } from '../../combat/spellBattle';
 import { useWolfTutorial } from '../../combat/wolfTutorial';
 
 const NON_ATTACK_MOVES = new Set(['rest', 'roar', 'descent']);
+const WOLF_PLAYBACK_RATE = 3.6;
+const BOSS_PLAYBACK_RATE = 2.4;
+function clipPlaybackRate(video?: string) {
+  return video?.startsWith('/art/combat/') ? WOLF_PLAYBACK_RATE : BOSS_PLAYBACK_RATE;
+}
 
 /** Remove only edge-connected near-white background, retaining enclosed eyes/teeth. */
 function clearBackdrop(frame: ImageData, visited: Uint8Array, queue: Int32Array) {
@@ -57,7 +62,8 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, paused = false
     const finish = () => { if (!done) { done = true; impact(); callbacks.current.onComplete(); } };
     const track = document.createElement('video');
     video.current = track;
-    track.playbackRate = 2.4; track.muted = !!move.sound || mutedRef.current; track.volume = .65; track.playsInline = true; track.preload = 'auto';
+    const rate = clipPlaybackRate(move.video);
+    track.playbackRate = rate; track.muted = !!move.sound || mutedRef.current; track.volume = .65; track.playsInline = true; track.preload = 'auto';
     const ctx = canvas.current?.getContext('2d', { willReadFrequently: true });
     const width = 768, height = 512;
     const visited = new Uint8Array(width * height), queue = new Int32Array(width * height);
@@ -71,6 +77,7 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, paused = false
     };
     const freeze = () => { wasFrozen = true; if (!track.paused) track.pause(); if (sound && !sound.paused) sound.pause(); };
     const start = () => {
+      track.playbackRate = rate;
       if (document.hidden || done || reduced || !move.video || isFrozen()) return;
       void track.play().catch(() => {
         // Muted playback is allowed even when the browser blocks audible autoplay.
@@ -130,7 +137,7 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, paused = false
             }
           }
           // Finite, visible-time fallback covers loading errors and stalled media.
-          if (elapsed > (move.end - move.start) / 2.4 * 1000 + 6000) finish();
+          if (elapsed > (move.end - move.start) / rate * 1000 + 6000) finish();
         }
       }
       if (!done) raf = requestAnimationFrame(tick);

@@ -2,16 +2,16 @@ import { useDefense } from './defense';
 import { create } from 'zustand';
 import { combatants, createEncounter, armorValue, encounterReducer, PLAYER_ACTION, type AttackEvent, type EncounterId, type EncounterState, type ActorState } from './encounter';
 import { HEROES, heroStore, isHero, localHeroStore, stanceFromValue, type HeroId, type PlayerStance } from './playerState';
-import { STATUS_EFFECTS, withStatus } from './statusEffects';
+import { hasStatus, STATUS_EFFECTS, withStatus } from './statusEffects';
 import { scaleDamage } from './gameMode';
-import { getSpell, SPELLS, type Spell, type SpellInput } from './spells';
+import { getSpell, SPELLS, STARTER_SPELLS, type Spell, type SpellId, type SpellInput } from './spells';
 export type DodgeMode = 'natural' | 'hit' | 'dodge';
 export type DefenseMode = 'dodge' | 'parry' | 'brace';
 /** An active defensive pose or glove move, valid until `untilMs` (Date.now clock). */
 export type PlayerDefense = { mode: 'none' | DefenseMode; label: string; untilMs: number };
 export const DEFENSE_MS: Record<DefenseMode, number> = { dodge: 1200, parry: 900, brace: 1500 };
 /** Damage a successful parry bounces back at the attacker. */
-export const PARRY_REFLECT_DAMAGE = 4;
+export const PARRY_REFLECT_DAMAGE = 6;
 /** The Gatekeeper's health when two heroes face him. */
 export const COOP_KNIGHT_HP = 360;
 export type CastOptions = { powerBoost?: number; autoEndTurn?: boolean };
@@ -39,6 +39,13 @@ interface SpellBattle {
   activeId: string;
   turnNumber: number;
   status: 'active' | 'won' | 'lost';
+  /** Spells unlocked so far. A fight starts with the three starter spells. */
+  discoveredSpells: SpellId[];
+  hintedSpellId: SpellId | null;
+  lastDiscovered: SpellId | null;
+  discoverSpell: (spellId: SpellId) => boolean;
+  discoverAllSpells: () => void;
+  cycleHint: (element?: Spell['element']) => SpellId | null;
   endTurn: () => void;
   rest: () => void;
   beginEnemy: () => void;
@@ -65,6 +72,13 @@ const opponentsOf = (engine: EncounterState) => Object.fromEntries(Object.entrie
 const nameOf = (id: string) => combatants.find(actor => actor.id === id)!.name;
 const enemyOrder = combatants.filter(actor => actor.side === 'enemy').map(actor => actor.id);
 const NO_THREAT: Record<HeroId, number> = { player: 0, ally: 0 };
+const allSpellIds = Object.keys(SPELLS) as SpellId[];
+const nextUndiscovered = (discovered: readonly SpellId[], current?: SpellId | null, element?: Spell['element']): SpellId | null => {
+  const locked = allSpellIds.filter(id => !discovered.includes(id) && (!element || SPELLS[id].element === element));
+  if (!locked.length) return allSpellIds.find(id => !discovered.includes(id)) ?? null;
+  const idx = current ? locked.indexOf(current) : -1;
+  return locked[(idx + 1) % locked.length]!;
+};
 let nextCastId = 0;
 let nextTurnSession = 0;
 let nextFeedbackId = 0;
@@ -91,13 +105,13 @@ export const canBeDodged = (spell: Spell) => spell.target === 'enemy' && !spell.
 export function spellHits(spell: Spell, primaryId: string, living: string[], power = 1) {
   const primary = { targetId: primaryId, base: Math.floor(spell.damage * power) };
   const others = living.filter(id => id !== primaryId);
-  if (spell.area) return [primary, ...others.map(targetId => ({ targetId, base: spell.damage }))];
-  if (spell.splash) return [primary, ...others.map(targetId => ({ targetId, base: spell.splash! }))];
+  if (spell.area) return [primary, ...others.map(targetId => ({ targetId, base: Math.floor(spell.damage * power) }))];
+  if (spell.splash) return [primary, ...others.map(targetId => ({ targetId, base: Math.floor(spell.splash! * power) }))];
   if (spell.chain) {
     // The bolt jumps to the nearest wolf in the formation, then onward.
     const index = enemyOrder.indexOf(primaryId);
     const order = [...others].sort((a, b) => Math.abs(enemyOrder.indexOf(a) - index) - Math.abs(enemyOrder.indexOf(b) - index) || enemyOrder.indexOf(a) - enemyOrder.indexOf(b));
-    return [primary, ...order.slice(0, spell.chain.length).map((targetId, i) => ({ targetId, base: spell.chain![i] }))];
+    return [primary, ...order.slice(0, spell.chain.length).map((targetId, i) => ({ targetId, base: Math.floor(spell.chain![i] * power) }))];
   }
   return [primary];
 }
@@ -187,7 +201,24 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
   }
   return {
     encounterId: 'wolves', coop: false, allyAway: false, heroNames: { player: 'You', ally: 'Your partner' }, threat: NO_THREAT,
-    fieldTurns: 0, opponents: initialOpponents(), enemyTurn: null, activeId: 'player', turnNumber: 1, status: 'active', pending: null, feedback: [], message: 'Choose a spell and a target.', playerDefense: null, allyDefense: null,
+    fieldTurns: 0, opponents: initialOpponents(), enemyTurn: null, activeId: 'player', turnNumber: 1, status: 'active',
+    discoveredSpells: [...STARTER_SPELLS], hintedSpellId: 'fire-lance', lastDiscovered: null,
+    pending: null, feedback: [], message: 'Choose a spell and weave its ritual.', playerDefense: null, allyDefense: null,
+    discoverSpell(spellId) {
+      const state = get();
+      if (state.discoveredSpells.includes(spellId)) return false;
+      const discoveredSpells = [...state.discoveredSpells, spellId];
+      const hintedSpellId = state.hintedSpellId === spellId ? nextUndiscovered(discoveredSpells, spellId) : state.hintedSpellId;
+      set({ discoveredSpells, hintedSpellId, lastDiscovered: spellId, message: `New spell discovered: ${SPELLS[spellId].name}!` });
+      return true;
+    },
+    discoverAllSpells() { set({ discoveredSpells: [...allSpellIds], hintedSpellId: null }); },
+    cycleHint(element) {
+      const state = get();
+      const next = nextUndiscovered(state.discoveredSpells, state.hintedSpellId, element);
+      set({ hintedSpellId: next, ...(next ? { message: `Grimoire hint (${SPELLS[next].element.toUpperCase()}): ${SPELLS[next].hint}` } : {}) });
+      return next;
+    },
     triggerDefense(mode, label, durationMs, heroId = localHeroStore.getState().hero) {
       const state = get();
       if (state.status !== 'active') return;
@@ -214,10 +245,14 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
       const id = ++nextCastId;
       const boost = Number.isFinite(options?.powerBoost) && options!.powerBoost! > 0 ? options!.powerBoost! : 1;
       const by = battle.coop ? `${who(caster)}: ` : '';
+      const newlyDiscovered = !battle.discoveredSpells.includes(spell.id);
+      const discoveredSpells = newlyDiscovered ? [...battle.discoveredSpells, spell.id] : battle.discoveredSpells;
+      const hintedSpellId = newlyDiscovered && battle.hintedSpellId === spell.id ? nextUndiscovered(discoveredSpells, spell.id, spell.element) : battle.hintedSpellId;
       // Lock the action before notifying external subscribers, preventing duplicate casts.
-      set({ pending: { id, spell, casterId: caster, targetId, dodgeMode: source === 'diagnostic' ? dodgeMode : 'natural', previousStance: player.stance, resolved: false,
+      set({ discoveredSpells, hintedSpellId, ...(newlyDiscovered ? { lastDiscovered: spell.id } : {}),
+        pending: { id, spell, casterId: caster, targetId, dodgeMode: source === 'diagnostic' ? dodgeMode : 'natural', previousStance: player.stance, resolved: false,
         power: (overcharged ? SPELLS.overcharge.overcharge!.multiplier : 1) * boost, autoEndTurn: options?.autoEndTurn ?? source === 'glove' }, feedback: [],
-        message: by + (spell.target === 'self' ? `${spell.name}…` : `${spell.name} → ${nameOf(targetId)}${overcharged ? ' (overcharged)' : ''}`) });
+        message: `${newlyDiscovered ? `✦ Discovered ${spell.name}! ` : ''}${by}${spell.target === 'self' ? `${spell.name}…` : `${spell.name} → ${nameOf(targetId)}${overcharged ? ' (overcharged)' : ''}`}` });
       player.setMagicPower(player.magicPower - spell.cost + (overcharged && spell.element === 'storm' ? 1 : 0));
       if (overcharged) player.removeStatus('overcharged');
       player.requestAttack(source, input);
@@ -230,15 +265,16 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
       const spell = pending.spell;
       if (spell.target === 'self') {
         const player = heroStore(pending.casterId).getState();
-        if (spell.shield) player.addStatus({ id: 'shielded', remaining: spell.shield.turns, amount: spell.shield.amount });
+        const shieldAmount = spell.shield ? scaleDamage(Math.max(1, Math.round(spell.shield.amount * pending.power))) : 0;
+        if (spell.shield) player.addStatus({ id: 'shielded', remaining: spell.shield.turns, amount: shieldAmount });
         if (spell.overcharge) player.addStatus({ id: 'overcharged', remaining: spell.overcharge.turns });
         set({ pending: { ...pending, resolved: true }, feedback: [],
-          message: spell.shield ? `Ice Shield raised: absorbs ${spell.shield.amount} damage.` : 'Overcharged: your next damaging spell hits 50% harder.' });
+          message: spell.shield ? `Ice Shield raised: absorbs ${shieldAmount} damage.` : 'Overcharged: your next damaging spell hits 50% harder.' });
         return;
       }
       const living = enemyOrder.filter(enemyId => opponents[enemyId] && !opponents[enemyId].defeated);
       const next = { ...opponents }, feedback: HitFeedback[] = [], parts: string[] = [];
-      let dealt = 0;
+      let dealt = 0, refundedMp = 0;
       spellHits(spell, pending.targetId, living, pending.power).forEach(({ targetId, base }, index) => {
         const target = next[targetId];
         if (index === 0 && canBeDodged(spell) && dodges(targetId, pending.dodgeMode, roll)) {
@@ -246,16 +282,35 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
           parts.push(`${nameOf(targetId)} dodged`);
           return;
         }
-        const damage = scaleDamage(spellDamage(spell, base, targetId, target)), hp = Math.max(0, target.hp - damage), defeated = hp === 0;
+        const isFrozen = hasStatus(target.statuses, 'frozen');
+        const isChilled = hasStatus(target.statuses, 'chilled');
+        const isBurning = hasStatus(target.statuses, 'burning');
+        const isRousedTarget = hasStatus(target.statuses, 'roused');
+        const shatter = spell.element === 'fire' && base > 0 && (isChilled || isFrozen);
+        const conductive = spell.element === 'storm' && base > 0 && (isBurning || isChilled);
+        const stripsRoused = isRousedTarget && (spell.id === 'static-shock' || spell.id === 'frost-prison');
+        const rousedBonus = stripsRoused && spell.id === 'static-shock' ? 5 : 0;
+        let statuses = target.statuses;
+        if (stripsRoused) statuses = statuses.filter(status => status.id !== 'roused');
+        if (shatter) statuses = statuses.filter(status => status.id !== 'chilled' && status.id !== 'frozen');
+        const boostedBase = (shatter ? Math.floor(base * 1.5) : base) + (conductive ? 4 : 0) + rousedBonus;
+        const damage = scaleDamage(spellDamage(spell, boostedBase, targetId, { ...target, statuses })), hp = Math.max(0, target.hp - damage), defeated = hp === 0;
         dealt += target.hp - hp;
-        let statuses = target.statuses, energy = target.energy;
+        let energy = target.energy;
         if (!defeated && spell.applies) statuses = withStatus(statuses, { id: spell.applies.id, remaining: targetId === 'knight' && spell.applies.id === 'frozen' ? 1 : spell.applies.turns, amount: spell.applies.amount === undefined ? undefined : scaleDamage(spell.applies.amount), source: 'player', appliedAction: PLAYER_ACTION });
         if (!defeated && spell.drain) energy = 0;
+        if (conductive && refundedMp === 0) refundedMp = 1;
         next[targetId] = { ...target, hp, energy, defeated, statuses: defeated ? [] : statuses };
-        const label = !defeated && spell.applies ? STATUS_EFFECTS[spell.applies.id].label : undefined;
+        const statusLabel = !defeated && spell.applies ? STATUS_EFFECTS[spell.applies.id].label : undefined;
+        const counterTag = shatter ? 'Shatter!' : conductive && stripsRoused ? 'Conductive · Roused Broken!' : conductive ? 'Conductive!' : stripsRoused ? 'Roused Broken!' : undefined;
+        const label = [counterTag, statusLabel].filter(Boolean).join(' · ') || undefined;
         feedback.push({ id: ++nextFeedbackId, castId: id, targetId, kind: damage ? 'hurt' : 'effect', damage, label });
-        parts.push(defeated ? `${nameOf(targetId)} defeated` : damage ? `${nameOf(targetId)} took ${damage}` : `${nameOf(targetId)} is ${label?.toLowerCase()}`);
+        parts.push(defeated ? `${nameOf(targetId)} defeated` : damage ? `${nameOf(targetId)} took ${damage}${counterTag ? ` (${counterTag})` : ''}` : `${nameOf(targetId)} is ${statusLabel?.toLowerCase()}`);
       });
+      if (refundedMp > 0) {
+        const caster = heroStore(pending.casterId).getState();
+        caster.setMagicPower(caster.magicPower + refundedMp);
+      }
       set({ opponents: next, pending: { ...pending, resolved: true }, feedback, threat: { ...threat, [pending.casterId]: threat[pending.casterId] + dealt },
         message: `${spell.name}: ${parts.join(', ')}.` });
     },
@@ -278,7 +333,9 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
       if (get().activeId === hero) return;
       player.setStanceValue(player.stanceValue + 45);
       player.setMagicPower(player.magicPower + 3);
-      set({ message: state.coop ? `${who(hero)} rests, recovering stance and Magic Power.` : 'You rest, recovering stance and Magic Power.' });
+      const nextHint = nextUndiscovered(state.discoveredSpells, state.hintedSpellId);
+      const rested = state.coop ? `${who(hero)} rests, recovering stance and Magic Power.` : 'You rest, recovering stance and Magic Power.';
+      set({ hintedSpellId: nextHint, message: nextHint ? `${rested} Hint: ${SPELLS[nextHint].hint}` : rested });
     },
     endTurn() {
       const state = get();
@@ -336,7 +393,8 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
       useDefense.getState().clear();
       get().cancelCast();
       set({ encounterId, coop, allyAway: false, threat: NO_THREAT, fieldTurns: 0, opponents: initialOpponents(encounterId, coop), enemyTurn: null, activeId: 'player', turnNumber: 1, status: 'active',
-        pending: null, feedback: [], playerDefense: null, allyDefense: null, message: 'Choose a spell and a target.' });
+        discoveredSpells: [...STARTER_SPELLS], hintedSpellId: 'fire-lance', lastDiscovered: null,
+        pending: null, feedback: [], playerDefense: null, allyDefense: null, message: 'Choose a spell and weave its ritual.' });
     },
   };
 });
