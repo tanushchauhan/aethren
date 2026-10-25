@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
-import { CALIBRATION_DURATION_MS, ELEMENT_META, POSE_SEND_HZ, POSE_TRACK_HZ } from '@once-upon/shared';
+import { CALIBRATION_DURATION_MS, ELEMENT_META, POSE_SEND_HZ, POSE_TRACK_HZ } from '@aethren/shared';
 import { AudioTestPage } from './audio-lab/AudioTestPage';
 import {
   DEBUG_AUDIO_PATH,

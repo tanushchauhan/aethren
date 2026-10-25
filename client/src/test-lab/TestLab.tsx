@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, ArrowRight, BookOpen, Check, ChevronRight, Play, Shield, Wifi, Zap } from 'lucide-react';
-import type { NarratorLine } from '@once-upon/shared';
+import type { NarratorLine } from '@aethren/shared';
 import { useSeat, type Seat } from './useSeat';
 import './lab.css';
 

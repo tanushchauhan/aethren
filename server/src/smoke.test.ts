@@ -5,7 +5,7 @@ import type {
   ClockPong,
   RoomJoinAck,
   ServerToClientEvents,
-} from '@once-upon/shared';
+} from '@aethren/shared';
 import { startServer, type StartedServer } from './index';
 
 type ClientSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

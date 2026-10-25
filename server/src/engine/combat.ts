@@ -11,7 +11,7 @@ import {
   ROUND_TIMINGS_MS,
   TIER_MULTIPLIERS,
   WARD_HP_RATIO,
-} from '@once-upon/shared';
+} from '@aethren/shared';
 import type {
   AttackType,
   BossPlan,
@@ -22,7 +22,7 @@ import type {
   P0ElementType,
   PoseActionType,
   QuestDifficulty,
-} from '@once-upon/shared';
+} from '@aethren/shared';
 
 export type Enemy = EncounterSchema | BossSchema;
 

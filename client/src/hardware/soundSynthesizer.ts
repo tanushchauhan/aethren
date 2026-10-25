@@ -3,7 +3,7 @@
  * Plays in simulator mode, and alongside the physical parts when they are connected.
  */
 
-import type { BuzzPattern, GloveCommand, HardwareCommand } from '@once-upon/shared';
+import type { BuzzPattern, GloveCommand, HardwareCommand } from '@aethren/shared';
 import { normalizeGloveCommand } from './serialProtocol';
 
 interface Voice {

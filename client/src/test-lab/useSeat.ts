@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import type { ClientToServerEvents, ServerToClientEvents, GameState, RoomJoinAck, P0ElementType, TelegraphPayload, HardwareCommand, NarratorLine } from '@once-upon/shared';
+import type { ClientToServerEvents, ServerToClientEvents, GameState, RoomJoinAck, P0ElementType, TelegraphPayload, HardwareCommand, NarratorLine } from '@aethren/shared';
 
 export type Log = (event: string, payload: unknown, seat?: string) => void;
 export function useSeat(label: string, log: Log, narrate: (line: NarratorLine) => void) {

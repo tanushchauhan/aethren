@@ -17,7 +17,7 @@ import {
   GLOVE_LCD_COLS,
   NOISE_TOO_LOUD_THRESHOLD,
   P0_ELEMENTS,
-} from '@once-upon/shared';
+} from '@aethren/shared';
 import type {
   BuzzPattern,
   GloveCommand,
@@ -25,7 +25,7 @@ import type {
   HardwareCommand,
   HardwareEvent,
   P0ElementType,
-} from '@once-upon/shared';
+} from '@aethren/shared';
 
 const SWIPE_VALUES = ['none', 'left', 'right', 'thrust'] as const satisfies readonly GloveSensorFrame['swipe'][];
 const COLOR_VALUES = ['none', 'ember', 'frost', 'bloom', 'boss'] as const satisfies readonly GloveSensorFrame['color'][];

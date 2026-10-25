@@ -15,7 +15,7 @@ import {
   GLOVE_POLL_HZ,
   SERIAL_BAUD,
   SERVO_ANGLE,
-} from '@once-upon/shared';
+} from '@aethren/shared';
 import type {
   BuzzPattern,
   GloveCommand,
@@ -23,7 +23,7 @@ import type {
   HardwareCommand,
   HardwareEvent,
   P0ElementType,
-} from '@once-upon/shared';
+} from '@aethren/shared';
 import {
   DEFAULT_GLOVE_FRAME,
   GloveEdgeTracker,

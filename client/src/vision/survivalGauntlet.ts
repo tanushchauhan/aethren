@@ -1,4 +1,4 @@
-import { TEAM_HEARTS_P0 } from '@once-upon/shared';
+import { TEAM_HEARTS_P0 } from '@aethren/shared';
 import type { BodyPartTarget } from './poseClassifiers';
 
 /**

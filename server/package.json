@@ -1,5 +1,5 @@
 {
-  "name": "@once-upon/server",
+  "name": "@aethren/server",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@once-upon/shared": "workspace:*",
+    "@aethren/shared": "workspace:*",
     "express": "^5.1.0",
     "socket.io": "^4.8.1"
   },

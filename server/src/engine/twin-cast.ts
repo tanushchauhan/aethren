@@ -5,8 +5,8 @@
  * Casts may arrive out of timestamp order (network delay), so the window is checked as an
  * absolute difference. Each cast can belong to at most one pair.
  */
-import { TWIN_CAST_WINDOW_MS } from '@once-upon/shared';
-import type { P0ElementType, TwinCastProgress } from '@once-upon/shared';
+import { TWIN_CAST_WINDOW_MS } from '@aethren/shared';
+import type { P0ElementType, TwinCastProgress } from '@aethren/shared';
 
 export interface TwinCastEntry {
   playerId: string;

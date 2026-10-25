@@ -13,7 +13,7 @@ importers:
       '@mediapipe/tasks-vision':
         specifier: ^0.10.22
         version: 0.10.35
-      '@once-upon/shared':
+      '@aethren/shared':
         specifier: workspace:*
         version: link:../packages/shared
       kokoro-js:
@@ -80,7 +80,7 @@ importers:
 
   server:
     dependencies:
-      '@once-upon/shared':
+      '@aethren/shared':
         specifier: workspace:*
         version: link:../packages/shared
       express:

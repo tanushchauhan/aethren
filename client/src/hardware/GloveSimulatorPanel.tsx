@@ -6,8 +6,8 @@ import {
   NOISE_TOO_LOUD_THRESHOLD,
   P0_ELEMENTS,
   SERVO_ANGLE,
-} from '@once-upon/shared';
-import type { GloveSensorFrame, P0ElementType } from '@once-upon/shared';
+} from '@aethren/shared';
+import type { GloveSensorFrame, P0ElementType } from '@aethren/shared';
 import { elementForDialSlot, previewGloveLcd, type GloveLcdPreview } from './serialProtocol';
 import { useGloveHardware, type GloveHardwareController } from './useGloveHardware';
 

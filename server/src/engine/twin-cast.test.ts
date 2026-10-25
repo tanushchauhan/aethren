@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TWIN_CAST_WINDOW_MS } from '@once-upon/shared';
+import { TWIN_CAST_WINDOW_MS } from '@aethren/shared';
 import { TwinCastTracker } from './twin-cast';
 
 describe('TwinCastTracker', () => {

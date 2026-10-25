@@ -10,7 +10,7 @@ import './glove-select.css';
  * Set to false (and delete the bypass) once gloves are reliable enough to require.
  */
 export const ALLOW_GLOVE_BYPASS = true;
-const BYPASS_KEY = 'once-upon:noglove';
+const BYPASS_KEY = 'aethren:noglove';
 
 /** `/?noglove` in development, or the temporary bypass button for this browser tab, skips the requirement. */
 function glovesWaived(): boolean {

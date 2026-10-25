@@ -1,7 +1,7 @@
 import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
 import type { NormalizedLandmark as MpLandmark } from '@mediapipe/tasks-vision';
-import { POSE_LANDMARK } from '@once-upon/shared';
-import type { NormalizedLandmark } from '@once-upon/shared';
+import { POSE_LANDMARK } from '@aethren/shared';
+import type { NormalizedLandmark } from '@aethren/shared';
 import { SyntheticPuppet, type SyntheticPosePreset, type SyntheticSampleOptions } from './syntheticPoseGenerator';
 
 /** WASM assets that match the installed `@mediapipe/tasks-vision` package. */

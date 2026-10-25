@@ -5,8 +5,8 @@ import {
   POSE_LANDMARK,
   POSE_LANDMARK_COUNT,
   ZONE_WIDTH_MULTIPLIER,
-} from '@once-upon/shared';
-import type { CalibrationBaseline, NormalizedLandmark } from '@once-upon/shared';
+} from '@aethren/shared';
+import type { CalibrationBaseline, NormalizedLandmark } from '@aethren/shared';
 import { describe, expect, it } from 'vitest';
 import {
   APPROACH_RING_START_SCALE,

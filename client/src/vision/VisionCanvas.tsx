@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
-import type { CalibrationBaseline, NormalizedLandmark, PoseActionType, PoseFrame } from '@once-upon/shared';
+import type { CalibrationBaseline, NormalizedLandmark, PoseActionType, PoseFrame } from '@aethren/shared';
 import {
   BODY_PART_TAG,
   actionBadgeLabel,

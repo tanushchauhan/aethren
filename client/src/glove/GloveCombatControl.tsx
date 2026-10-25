@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { create } from 'zustand';
 import { useReducedMotion } from 'motion/react';
-import type { BuzzPattern } from '@once-upon/shared';
+import type { BuzzPattern } from '@aethren/shared';
 import { heroStore, isHero, useLocalHero, usePlayerState } from '../combat/playerState';
 import { useCoop } from '../net/coopLink';
 import { useSpellBattle } from '../combat/spellBattle';

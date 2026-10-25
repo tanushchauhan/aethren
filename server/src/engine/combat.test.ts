@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { COMBAT } from '@once-upon/shared';
-import type { BossSchema, EncounterSchema } from '@once-upon/shared';
+import { COMBAT } from '@aethren/shared';
+import type { BossSchema, EncounterSchema } from '@aethren/shared';
 import {
   clampPower,
   enemyAttacks,

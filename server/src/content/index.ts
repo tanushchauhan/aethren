@@ -1,4 +1,4 @@
-import type { WorldSchema } from '@once-upon/shared';
+import type { WorldSchema } from '@aethren/shared';
 import world from './demo-world.json' with { type: 'json' };
 
 /** The bundled combat world: one encounter and a boss. A fresh copy per room, since rooms mutate it. */

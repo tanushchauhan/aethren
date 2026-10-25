@@ -2,8 +2,8 @@
  * Room codes and seats: who sits where, reserved seats, reconnecting by name, bot seats.
  */
 import { randomUUID } from 'node:crypto';
-import { ROOM_CODE_LENGTH } from '@once-upon/shared';
-import type { JoinableRole, PlayerRole, PlayerState } from '@once-upon/shared';
+import { ROOM_CODE_LENGTH } from '@aethren/shared';
+import type { JoinableRole, PlayerRole, PlayerState } from '@aethren/shared';
 import type { TimerHandle } from './clock';
 
 /** No I, L or O: letters that are easy to confuse with each other or with digits. */

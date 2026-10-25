@@ -6,8 +6,8 @@ import {
   FIST_CHARGE_MULTIPLIER,
   NOISE_TOO_LOUD_THRESHOLD,
   P0_ELEMENTS,
-} from '@once-upon/shared';
-import type { GloveSensorFrame } from '@once-upon/shared';
+} from '@aethren/shared';
+import type { GloveSensorFrame } from '@aethren/shared';
 import { GloveSimulatorPanel } from '../GloveSimulatorPanel';
 import { HardwareTestPage } from '../HardwareTestPage';
 import {

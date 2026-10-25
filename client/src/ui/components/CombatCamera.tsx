@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { CalibrationBaseline, NormalizedLandmark } from '@once-upon/shared';
+import type { CalibrationBaseline, NormalizedLandmark } from '@aethren/shared';
 import { PoseLandmarkerService } from '../../vision/poseLandmarkerService';
 import { classifyDodgeAndPose, computeCalibrationBaseline, resolveTorso } from '../../vision/poseClassifiers';
 import { DEFENSE_LABELS, useDefense } from '../../combat/defense';
