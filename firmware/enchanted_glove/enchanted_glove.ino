@@ -1,38 +1,43 @@
 /*
- * Once Upon a Memory: Enchanted Glove
+ * Enchanted Glove: Wi-Fi sensor bring-up firmware (no game logic).
  * Board:  Arduino Uno R4 WiFi (arduino:renesas_uno:unor4wifi)
  * Shield: Grove Base Shield V2, VCC switch at 5V.
  *
- * Grove wiring (7 parts):
- *   D3   Touch sensor     palm / thumb: parry an incoming projectile (chirps)
- *   D4   Button 1         hold for push-to-talk (chirps, LCD shows SPEAKING)
- *   D8   Button 2         click locks the element, hold charges the spell (fist)
- *   D5   Buzzer           dial tick, press chirps, cast / fizzle / hit melodies
- *   A0   Rotary angle     spell wheel: 0 EMBER, 1 FROST, 2 BLOOM
- *   I2C  3-axis accel     LIS3DHTR, ADXL345, or MMA7660 (auto-detected)
- *   I2C  16x2 LCD         text at 0x3E, RGB backlight at 0x62 (v4) or 0x30 (v5)
+ * Builds (same code, two variants; see firmware/flash.sh):
+ *   GLOVE_ID     1, 2, ...  shown on the LCD and in every packet so the hub can tell gloves apart
+ *   LCD_VARIANT  4          Grove LCD RGB v4: text readable, only the green backlight works.
+ *                           Backlight stays green; the text carries the status.
+ *   LCD_VARIANT  2          Grove LCD RGB v2: backlight colors work, text is not readable.
+ *                           ORANGE = joining Wi-Fi or waiting for the hub
+ *                           GREEN  = Wi-Fi up and the hub is receiving
+ *                           RED    = Wi-Fi failed or lost, or the accelerometer is missing
  *
- * Links: USB-C Serial at 115200 baud (always on), plus optional Wi-Fi UDP.
- * Outbound, one JSON line per frame (GloveSensorFrame in @once-upon/shared,
- * plus the raw pin states for debugging):
- *   {"dial":0,"btn":0,"btn2":0,"fist":false,"swipe":"none","accel":1.00,"parry":false,
- *    "armed":true,"noise":0,"color":"none","d3":0,"d4":0,"d8":0,"rawDial":512}
- * Inbound, one JSON object per line (Serial) or per packet (UDP):
- *   {"cmd":"buzz","p":"tick"|"cast"|"fizzle"|"hit"}
- *   {"cmd":"lcd","l1":"WARD SHATTERED!","l2":"TWIN CAST 2.0x","r":255,"g":215,"b":0}
- *       optional "ms": how long the message stays (default 4000, 0 = until replaced)
- *   {"cmd":"wifi","ssid":"...","pass":"..."}   without "ssid": report status, show IP
- *   {"cmd":"arm","open":true|false}
- *   {"cmd":"servo","open":true|false}          no servo is wired: shown on the LCD
- *   {"cmd":"hello"}                            UDP: subscribe this sender to frames
- *   {"cmd":"i2c"}                              scan Wire + Wire1, reply with address lists
+ * Grove wiring:
+ *   D3, D7  Touch sensor (either socket)
+ *   D4      Button 1
+ *   D8      Button 2
+ *   D5      Buzzer
+ *   A0      Rotary angle sensor
+ *   I2C     3-axis accelerometer (LIS3DHTR, ADXL345 or MMA7660, auto-detected)
+ *   I2C     16x2 RGB LCD (text 0x3E, backlight 0x62)
  *
- * LCD: Seeed Grove - LCD RGB Backlight (rgb_lcd). Accelerometer is raw Wire registers.
- * loop() never calls delay(); notes, the LCD, and Wi-Fi all advance from millis().
+ * Wi-Fi: joins WIFI_SSID from wifi_secrets.h (copy wifi_secrets.example.h). Frames go out as
+ * UDP to the hub on HUB_PORT. Until a hub says hello they are broadcast to the subnet; after a
+ * hello they go straight to the hub. Commands arrive on CMD_PORT (UDP) or USB serial.
  *
- * Accelerometer mount: flat on the back of the hand, Grove cable toward the wrist.
- * If a swipe comes out mirrored, flip LATERAL_SIGN; if left/right reads as
- * thrust, swap LATERAL_AXIS and THRUST_AXIS.
+ * Outbound (one JSON object per packet, every number is an integer):
+ *   frame  {"t":"f","id":1,"seq":42,"ms":12345,"ax":12,"ay":-20,"az":998,
+ *           "d3":0,"d7":0,"d4":0,"d8":0,"dial":512,"rssi":-48}      ax/ay/az in milli-g
+ *   info   {"t":"i","id":1,"v":4,"fw":"wifi-diag-1","ip":"172.20.10.5","ssid":"iPhone","rssi":-48,
+ *           "acc":"MMA7660","hub":1,"up":123,"fps":33,"i2c":[62,76,98]}      once a second
+ * Inbound (one JSON object per packet or per serial line):
+ *   {"cmd":"hello"}                         hub announces itself; frames switch to unicast
+ *   {"cmd":"beep"}                          short beep
+ *   {"cmd":"ident"}                         beep and show "I AM GLOVE n" for 4 s
+ *   {"cmd":"lcd","l1":"..","l2":"..","r":255,"g":0,"b":0,"ms":4000}   custom message
+ *   {"cmd":"i2c"}                           rescan the I2C buses (result appears in the next info)
+ *
+ * loop() never calls delay(): everything advances from millis().
  */
 
 #include <Arduino.h>
@@ -45,347 +50,168 @@
 #include <stdlib.h>
 #include <string.h>
 
-// --- Wi-Fi config -----------------------------------------------------------
+#ifndef GLOVE_ID
+#define GLOVE_ID 1
+#endif
+#ifndef LCD_VARIANT
+#define LCD_VARIANT 4
+#endif
 
-const char WIFI_SSID[] = "";     // Set via Serial {"cmd":"wifi","ssid":"iPhone","pass":"zzzzzzzz"} when using Wi-Fi; empty at boot so WiFi.begin() never blocks loop()!
-const char WIFI_PASS[] = "";     // Hotspot password
-const uint16_t UDP_PORT = 4210;  // Listens for commands on UDP 4210 and streams sensor JSON back to the sender
+#if __has_include("wifi_secrets.h")
+#include "wifi_secrets.h"
+#else
+#error "Copy wifi_secrets.example.h to wifi_secrets.h in this folder and fill in WIFI_SSID and WIFI_PASS."
+#endif
 
-// --- Pins (Grove Base Shield V2) --------------------------------------------
+// --- Config -----------------------------------------------------------------
 
-// Touch sensor works in either D7 or D3 (both are OR'd together as touch/parry!)
-const uint8_t touchPin = 7;
-const uint8_t touchAltPin = 3;
+const char FIRMWARE_TAG[] = "wifi-diag-1";
+const uint16_t CMD_PORT = 4210;  // the glove listens here
+const uint16_t HUB_PORT = 4211;  // the hub listens here
+const uint32_t SERIAL_BAUD = 115200;
+
+const uint8_t touchPin = 3;
+const uint8_t touchAltPin = 7;
 const uint8_t button1Pin = 4;
 const uint8_t button2Pin = 8;
 const uint8_t buzzerPin = 5;
 const uint8_t dialPin = A0;
 
-// --- Protocol (matches @once-upon/shared) -----------------------------------
-
-const uint32_t SERIAL_BAUD = 115200;
-const uint32_t FRAME_MS = 20;  // GLOVE_POLL_HZ = 50
-const float ACCEL_POWER_MIN = 1.0f;
-const float ACCEL_POWER_MAX = 1.5f;
-const char *const ELEMENT_NAMES[3] = {"EMBER", "FROST", "BLOOM"};
-const uint8_t ELEMENT_RGB[3][3] = {{255, 70, 0}, {30, 180, 255}, {40, 255, 110}};
-
-// --- Tuning -----------------------------------------------------------------
-
-const float DIAL_ALPHA = 0.22f;
-const float DIAL_EDGE_01 = 341.0f;
-const float DIAL_EDGE_12 = 682.0f;
-const float DIAL_HYST = 36.0f;
-
-const uint16_t DEBOUNCE_MS = 25;
-const uint16_t PARRY_MIN_MS = 80;     // a tap still reads as parry for at least this long
-const uint16_t CHARGE_HOLD_MS = 250;  // D8 held this long becomes "fist" (matches BUTTON_CLICK_MAX_MS)
-
-const uint8_t GESTURE_WINDOW = 10;  // 200 ms at 50 Hz
-const uint32_t GESTURE_HOLD_MS = 180;
-const uint32_t ACCEL_SETTLE_MS = 300;
-const float GESTURE_ON_G = 0.50f;
-const float GESTURE_OFF_G = 0.25f;
-const float GRAV_ALPHA = 0.03f;
-const float DYN_G_FLOOR = 0.18f;  // dynamic g (gravity removed) mapped onto 1.00..1.50
-const float DYN_G_CEIL = 1.40f;
-const uint8_t LATERAL_AXIS = 0;  // 0 = X, 1 = Y, 2 = Z
-const int8_t LATERAL_SIGN = 1;
-const uint8_t THRUST_AXIS = 1;
-const int8_t THRUST_SIGN = 1;
-
-const uint8_t I2C_SCAN_MAX = 32;
-const uint32_t LCD_REFRESH_MS = 100;  // ~10 Hz keeps the shared I2C bus free for the accelerometer
-const uint32_t LCD_MSG_MS = 4000;
-const uint32_t SWIPE_FLASH_MS = 600;
-const uint32_t NOTICE_MS = 8000;  // Wi-Fi IP and storybook notices on line 2
-
-// Every UDP packet is several AT round trips to the ESP32-S3 over a 115200 baud
-// UART, so a full frame costs ~15-20 ms. Frames go out on every semantic change
-// (button, parry, swipe, dial) and at least every UDP_HEARTBEAT_MS otherwise.
-const uint32_t UDP_HEARTBEAT_MS = 50;
-const uint32_t UDP_MIN_GAP_MS = 20;
-const uint32_t UDP_POLL_MS = 20;
-const uint32_t UDP_BEACON_MS = 1000;  // broadcast a frame until a host says hello
-const uint32_t UDP_PEER_TIMEOUT_MS = 6000;
+const uint32_t FRAME_MS = 25;            // 40 Hz target; a UDP packet costs ~15 ms on the R4 WiFi
+const uint32_t INFO_MS = 1000;
+const uint32_t HUB_TIMEOUT_MS = 6000;    // no hello for this long: back to broadcast
 const uint32_t WIFI_JOIN_TIMEOUT_MS = 20000;
+const uint32_t WIFI_RETRY_MS = 4000;
+const uint32_t LCD_REFRESH_MS = 200;
+const uint32_t LCD_PAGE_MS = 3000;
+const uint8_t LCD_PAGES = 4;
+const uint32_t SERIAL_FRAME_EVERY = 8;   // print every Nth frame on USB
 
-const uint8_t I2C_FAILS_BEFORE_DROP = 8;
-const uint32_t I2C_RETRY_MS = 1000;
-const float LIS3DH_G_PER_LSB = 0.00025f;  // ±8 g, high resolution
+const float LIS3DH_G_PER_LSB = 0.00025f;  // +-8 g, high resolution
 const float ADXL345_G_PER_LSB = 0.0039f;  // full resolution
 const float MMA7660_G_PER_COUNT = 0.046875f;
-
-// --- Buzzer songs -----------------------------------------------------------
-
-struct Note {
-  uint16_t hz;  // 0 = rest
-  uint16_t ms;
-};
-struct Song {
-  const Note *notes;
-  uint8_t count;
-  uint8_t prio;  // a song never cuts off one with a higher priority
-};
-
-const Note NOTES_TICK[] = {{1760, 30}};
-const Note NOTES_TOUCH[] = {{1500, 70}};
-const Note NOTES_TALK[] = {{1175, 45}};
-const Note NOTES_LOCK[] = {{1568, 40}, {2093, 70}};
-const Note NOTES_FIZZLE[] = {{466, 100}, {349, 100}, {262, 200}};
-const Note NOTES_CAST[] = {{523, 80}, {659, 80}, {784, 80}, {1047, 160}};
-const Note NOTES_HIT[] = {{932, 60}, {0, 40}, {932, 60}, {0, 40}, {1245, 120}};
-
-#define SONG(notes, prio) {notes, (uint8_t)(sizeof(notes) / sizeof(notes[0])), prio}
-enum SongId : uint8_t { SONG_TICK, SONG_TOUCH, SONG_TALK, SONG_LOCK, SONG_FIZZLE, SONG_CAST, SONG_HIT };
-const Song SONGS[] = {SONG(NOTES_TICK, 1),   SONG(NOTES_TOUCH, 2), SONG(NOTES_TALK, 2), SONG(NOTES_LOCK, 2),
-                      SONG(NOTES_FIZZLE, 3), SONG(NOTES_CAST, 4),  SONG(NOTES_HIT, 5)};
+const uint8_t I2C_FAILS_BEFORE_DROP = 8;
+const uint32_t I2C_RETRY_MS = 1000;
+const uint8_t I2C_SCAN_MAX = 16;
 
 // --- State ------------------------------------------------------------------
 
+enum NetPhase : uint8_t { NET_NO_MODULE, NET_JOINING, NET_UP, NET_FAILED, NET_LOST };
 enum AccelKind : uint8_t { ACCEL_NONE, ACCEL_LIS3DH, ACCEL_ADXL345, ACCEL_MMA7660 };
-enum GesturePhase : uint8_t { GESTURE_IDLE, GESTURE_HOLD, GESTURE_QUIET };
-enum WifiPhase : uint8_t { WIFI_OFF, WIFI_JOINING, WIFI_UP };
 
-struct Debounce {
-  bool stable;
-  bool lastRaw;
-  uint32_t changedMs;
-};
+rgb_lcd lcd;
+WiFiUDP udp;
 
-bool armed = true;
-Debounce touchDb = {false, false, 0};
-Debounce talkDb = {false, false, 0};
-Debounce lockDb = {false, false, 0};
-uint8_t rawD3 = 0, rawD4 = 0, rawD8 = 0;
-uint8_t rawD2 = 0, rawD6 = 0, rawD7 = 0;
-int rawA0 = 0, rawA1 = 0, rawA2 = 0, rawA3 = 0;
-float rawAx = 0.0f, rawAy = 0.0f, rawAz = 0.0f;
-bool parryHeld = false;
-uint32_t parryUntil = 0;
-bool talkHeld = false;
-bool lockHeld = false;
-uint32_t lockDownMs = 0;
-int lockedSlot = -1;
-
-bool dialReady = false;
-float dialSmooth = 0.0f;
-int dialSlot = 0;
-int rawDial = 0;
-
-const Song *playing = nullptr;
-uint8_t noteIndex = 0;
-uint32_t noteStartMs = 0;
+NetPhase net = NET_JOINING;
+uint32_t netPhaseMs = 0;
+uint32_t nextWifiPollMs = 0;
+uint32_t nextWifiRetryMs = 0;
+int wifiStatusCode = 0;
+bool udpOpen = false;
+IPAddress localIp;
+IPAddress broadcastIp;
+IPAddress hubIp;
+uint32_t hubSeenMs = 0;
+bool hubKnown = false;
+int32_t rssi = 0;
 
 AccelKind accelKind = ACCEL_NONE;
 uint8_t accelAddr = 0;
 uint8_t accelFails = 0;
-uint8_t i2cFailStreak = 0;
 uint32_t nextAccelProbeMs = 0;
-bool gravReady = false;
-float gravX = 0.0f, gravY = 0.0f, gravZ = 0.0f;
-uint32_t accelReadyAt = 0;
-float dynPeak = 0.0f;
-float accelPower = ACCEL_POWER_MIN;
-float latWindow[GESTURE_WINDOW];
-float thrWindow[GESTURE_WINDOW];
-uint8_t gestureCount = 0, gestureHead = 0;
-GesturePhase gesturePhase = GESTURE_QUIET;
-const char *latchedSwipe = "none";
-uint32_t gestureHoldUntil = 0;
-uint32_t swipeFlashUntil = 0;
+uint8_t i2cFailStreak = 0;
+int16_t axMg = 0, ayMg = 0, azMg = 0;
+bool accelEverSeen = false;
 
-rgb_lcd lcd;
+int16_t dialRaw = 0;
+uint8_t pinTouch = 0, pinTouchAlt = 0, pinBtn1 = 0, pinBtn2 = 0;
+bool lastBtn1 = false;
+
+uint8_t i2cList[I2C_SCAN_MAX];
+uint8_t i2cCount = 0;
+bool rescanI2c = true;
+
+uint32_t seq = 0;
+uint32_t lastFrameMs = 0;
+uint32_t lastInfoMs = 0;
+uint32_t framesThisSecond = 0;
+uint32_t fps = 0;
+uint32_t serialFrameCount = 0;
+
 bool lcdReady = false;
 uint32_t lastLcdMs = 0;
+uint32_t pageStartMs = 0;
+uint8_t lcdPage = 0;
 char lcdShown[2][17];
 int16_t rgbShown[3] = {-1, -1, -1};
-bool customActive = false;
-bool customSticky = false;
-uint32_t customUntil = 0;
+
 char customL1[17] = "";
 char customL2[17] = "";
 int16_t customRgb[3] = {-1, -1, -1};
-char notice[17] = "";
-uint32_t noticeUntil = 0;
+uint32_t customUntil = 0;
+bool customActive = false;
+bool customSticky = false;
+char identText[17] = "";
+uint32_t identUntil = 0;
 
-WifiPhase wifiPhase = WIFI_OFF;
-char wifiSsid[33] = "";
-char wifiPass[64] = "";
-uint32_t wifiPhaseMs = 0;
-uint32_t nextWifiPollMs = 0;
-WiFiUDP udp;
-bool udpOpen = false;
-IPAddress broadcastIp;
-IPAddress peerIp;
-uint16_t peerPort = 0;
-uint32_t peerSeenMs = 0;
-uint32_t lastUdpSendMs = 0;
-uint32_t lastUdpSig = 0xFFFFFFFF;
-uint32_t nextUdpPollMs = 0;
-uint32_t nextBeaconMs = 0;
-
-char serialLine[192];
+char cmdBuf[256];
+char serialLine[256];
 uint8_t serialLen = 0;
-bool serialOverflow = false;
-char udpBuf[256];
-char frameBuf[224];
-uint32_t lastFrameMs = 0;
 
 // --- Small helpers ----------------------------------------------------------
 
-float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
-int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 bool before(uint32_t now, uint32_t deadline) { return (int32_t)(deadline - now) > 0; }
+int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 int16_t s16le(const uint8_t *p) { return (int16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8)); }
-float axisOf(float x, float y, float z, uint8_t axis) { return axis == 1 ? y : (axis == 2 ? z : x); }
 
-// Returns true on the debounced rising edge.
-bool debounceRise(Debounce *in, bool raw, uint32_t now) {
-  if (raw != in->lastRaw) {
-    in->lastRaw = raw;
-    in->changedMs = now;
-  }
-  if ((uint32_t)(now - in->changedMs) < DEBOUNCE_MS || in->stable == raw) return false;
-  in->stable = raw;
-  return raw;
-}
-
-// Copy up to 16 printable ASCII characters and pad with spaces for the LCD.
-void fitLine(char *out, const char *in) {
-  uint8_t n = 0;
-  while (in && in[n] && n < 16) {
-    char c = in[n];
-    out[n++] = (c >= 32 && c <= 126) ? c : '?';
-  }
-  while (n < 16) out[n++] = ' ';
-  out[16] = '\0';
-}
-
-void showNotice(const char *text, uint32_t now) {
-  fitLine(notice, text);
-  noticeUntil = now + NOTICE_MS;
-}
-
-// --- Buzzer -----------------------------------------------------------------
-
-void stopSong() {
-  if (playing) noTone(buzzerPin);
-  playing = nullptr;
-}
-
-void startNote(uint32_t now) {
-  if (!playing || noteIndex >= playing->count) {
-    stopSong();
-    return;
-  }
-  noteStartMs = now;
-  uint16_t hz = playing->notes[noteIndex].hz;
-  if (hz == 0) noTone(buzzerPin);
-  else tone(buzzerPin, hz);
-}
-
-void playSong(SongId id) {
-  if (!armed) return;
-  const Song *song = &SONGS[id];
-  if (playing && song->prio < playing->prio) return;
-  playing = song;
-  noteIndex = 0;
-  startNote(millis());
-}
-
-void serviceBuzzer(uint32_t now) {
-  if (!playing || (uint32_t)(now - noteStartMs) < playing->notes[noteIndex].ms) return;
-  noteIndex++;
-  startNote(now);
-}
-
-// --- Buttons, touch, dial ---------------------------------------------------
-
-void setArmed(bool on) {
-  armed = on;
-  if (on) return;
-  stopSong();
-  parryHeld = talkHeld = lockHeld = false;
-  parryUntil = 0;
-  lockedSlot = -1;
-}
-
-void updateButtons(uint32_t now) {
-  rawD2 = digitalRead(2) == HIGH;
-  rawD3 = digitalRead(touchAltPin) == HIGH;
-  rawD4 = digitalRead(button1Pin) == HIGH;
-  rawD6 = digitalRead(6) == HIGH;
-  rawD7 = digitalRead(touchPin) == HIGH;
-  rawD8 = digitalRead(button2Pin) == HIGH;
-  rawA0 = analogRead(A0);
-  rawA1 = analogRead(A1);
-  rawA2 = analogRead(A2);
-  rawA3 = analogRead(A3);
-  bool rawTouch = rawD7 || rawD3;
-  bool touchRise = debounceRise(&touchDb, rawTouch, now);
-  bool talkRise = debounceRise(&talkDb, rawD4, now);
-  bool lockRise = debounceRise(&lockDb, rawD8, now);
-  if (!armed) return;  // a press that began while disarmed only counts after release
-
-  // Direct level check so touch/buttons respond immediately even on quick taps
-  parryHeld = rawTouch || touchDb.stable;
-  talkHeld = rawD4 || talkDb.stable;
-  lockHeld = rawD8 || lockDb.stable;
-
-  if (touchRise || (rawTouch && !before(now, parryUntil))) {
-    parryUntil = now + PARRY_MIN_MS;
-  }
-  if (lockRise) {
-    lockDownMs = now;
-    lockedSlot = dialSlot;
+const char *accelName() {
+  switch (accelKind) {
+    case ACCEL_LIS3DH: return "LIS3DH";
+    case ACCEL_ADXL345: return "ADXL345";
+    case ACCEL_MMA7660: return "MMA7660";
+    default: return "NONE";
   }
 }
 
-void serviceDirectBuzz() {
-  if (!armed || playing) return;
-  if (rawD7 || rawD3 || rawD4 || rawD8) {
-    tone(buzzerPin, 1500);
-  } else {
-    noTone(buzzerPin);
+// --- Tiny JSON field extraction ----------------------------------------------
+
+bool findValue(const char *json, const char *key, const char **out) {
+  char needle[24];
+  snprintf(needle, sizeof(needle), "\"%s\"", key);
+  const char *p = strstr(json, needle);
+  if (!p) return false;
+  p += strlen(needle);
+  while (*p == ' ' || *p == ':') p++;
+  *out = p;
+  return true;
+}
+
+bool extractString(const char *json, const char *key, char *out, size_t cap) {
+  const char *v = nullptr;
+  if (!findValue(json, key, &v) || *v != '"') return false;
+  size_t n = 0;
+  for (v++; *v && *v != '"'; v++) {
+    if (*v == '\\' && v[1]) v++;
+    if (n + 1 < cap) out[n++] = *v;
   }
+  out[n] = '\0';
+  return *v == '"';
 }
 
-bool parryActive(uint32_t now) { return armed && (parryHeld || before(now, parryUntil)); }
-bool fistActive(uint32_t now) { return armed && lockHeld && (uint32_t)(now - lockDownMs) >= CHARGE_HOLD_MS; }
-
-int nextDialSlot(int slot, float angle) {
-  if (slot <= 0) return angle > DIAL_EDGE_01 + DIAL_HYST ? 1 : 0;
-  if (slot >= 2) return angle < DIAL_EDGE_12 - DIAL_HYST ? 1 : 2;
-  if (angle < DIAL_EDGE_01 - DIAL_HYST) return 0;
-  if (angle > DIAL_EDGE_12 + DIAL_HYST) return 2;
-  return 1;
+bool extractLong(const char *json, const char *key, long *out) {
+  const char *v = nullptr;
+  if (!findValue(json, key, &v)) return false;
+  char *end = nullptr;
+  *out = strtol(v, &end, 10);
+  return end != v;
 }
 
-void sampleDial() {
-  rawDial = clampi(analogRead(dialPin), 0, 1023);
-  if (!dialReady) {
-    dialSmooth = (float)rawDial;
-    dialSlot = rawDial < DIAL_EDGE_01 ? 0 : (rawDial < DIAL_EDGE_12 ? 1 : 2);
-    dialReady = true;
-    return;
-  }
-  dialSmooth += DIAL_ALPHA * ((float)rawDial - dialSmooth);
-  int next = nextDialSlot(dialSlot, dialSmooth);
-  if (next == dialSlot) return;
-  dialSlot = next;
-  playSong(SONG_TICK);
-}
-
-// --- I2C helpers ------------------------------------------------------------
+// --- I2C --------------------------------------------------------------------
 
 void resetI2c() {
   Wire.end();
   Wire.begin();
   Wire.setClock(100000);
-  Wire1.end();
-  Wire1.begin();
-  Wire1.setClock(100000);
 }
 
 void noteI2cFail() {
@@ -394,38 +220,16 @@ void noteI2cFail() {
   resetI2c();
 }
 
-bool i2cAckBus(TwoWire &bus, uint8_t addr) {
-  bus.beginTransmission(addr);
-  return bus.endTransmission() == 0;
+bool i2cAck(uint8_t addr) {
+  Wire.beginTransmission(addr);
+  return Wire.endTransmission() == 0;
 }
 
-bool i2cAck(uint8_t addr) { return i2cAckBus(Wire, addr); }
-
-uint8_t scanI2cBus(TwoWire &bus, uint8_t *out, uint8_t maxOut) {
-  uint8_t n = 0;
-  for (uint8_t addr = 0x08; addr < 0x78 && n < maxOut; addr++) {
-    if (i2cAckBus(bus, addr)) out[n++] = addr;
+void scanI2c() {
+  i2cCount = 0;
+  for (uint8_t addr = 0x08; addr < 0x78 && i2cCount < I2C_SCAN_MAX; addr++) {
+    if (i2cAck(addr)) i2cList[i2cCount++] = addr;
   }
-  return n;
-}
-
-bool pendingBootI2cScan = true;
-
-void reportI2cScan() {
-  uint8_t w[I2C_SCAN_MAX], w1[I2C_SCAN_MAX];
-  uint8_t nw = scanI2cBus(Wire, w, I2C_SCAN_MAX);
-  uint8_t nw1 = scanI2cBus(Wire1, w1, I2C_SCAN_MAX);
-  Serial.print(F("{\"event\":\"i2c\",\"wire\":["));
-  for (uint8_t i = 0; i < nw; i++) {
-    if (i) Serial.print(',');
-    Serial.print(w[i]);
-  }
-  Serial.print(F("],\"wire1\":["));
-  for (uint8_t i = 0; i < nw1; i++) {
-    if (i) Serial.print(',');
-    Serial.print(w1[i]);
-  }
-  Serial.println(F("]}"));
 }
 
 bool writeReg(uint8_t addr, uint8_t reg, uint8_t val) {
@@ -453,17 +257,13 @@ void useAccel(AccelKind kind, uint8_t addr) {
   accelKind = kind;
   accelAddr = addr;
   accelFails = 0;
-  gravReady = false;
-  gestureCount = 0;
-  gestureHead = 0;
-  accelReadyAt = millis();
+  accelEverSeen = true;
 }
 
 bool probeLis3dh(uint8_t addr) {
   uint8_t who = 0;
   if (!readRegs(addr, 0x0F, &who, 1) || who != 0x33) return false;
-  // CTRL_REG4: BDU | ±8 g | high resolution. CTRL_REG1: 400 Hz, XYZ on.
-  if (!writeReg(addr, 0x23, 0xA8) || !writeReg(addr, 0x20, 0x77)) return false;
+  if (!writeReg(addr, 0x23, 0xA8) || !writeReg(addr, 0x20, 0x77)) return false;  // BDU +-8 g HR, 400 Hz XYZ
   useAccel(ACCEL_LIS3DH, addr);
   return true;
 }
@@ -471,7 +271,6 @@ bool probeLis3dh(uint8_t addr) {
 bool probeAdxl345(uint8_t addr) {
   uint8_t id = 0;
   if (!readRegs(addr, 0x00, &id, 1) || id != 0xE5) return false;
-  // Standby, full-res ±16 g, 400 Hz, measure.
   if (!writeReg(addr, 0x2D, 0x00) || !writeReg(addr, 0x31, 0x0B) || !writeReg(addr, 0x2C, 0x0C) ||
       !writeReg(addr, 0x2D, 0x08)) {
     return false;
@@ -483,7 +282,6 @@ bool probeAdxl345(uint8_t addr) {
 bool probeMma7660(uint8_t addr) {
   uint8_t mode = 0;
   if (!i2cAck(addr)) return false;
-  // Config registers only accept writes in standby; then go active at 120 Hz.
   if (!writeReg(addr, 0x07, 0x00) || !writeReg(addr, 0x08, 0x00) || !writeReg(addr, 0x07, 0x01)) return false;
   if (!readRegs(addr, 0x07, &mode, 1) || (mode & 0x01) == 0) return false;
   useAccel(ACCEL_MMA7660, addr);
@@ -501,7 +299,6 @@ int8_t mmaDecode(uint8_t v, bool *alert) {
 int readAccelG(float *x, float *y, float *z) {
   uint8_t b[6];
   if (accelKind == ACCEL_LIS3DH || accelKind == ACCEL_ADXL345) {
-    // 0x80 on the LIS3DH sub-address turns on register auto-increment.
     bool lis = accelKind == ACCEL_LIS3DH;
     if (!readRegs(accelAddr, lis ? (0x28 | 0x80) : 0x32, b, 6)) return -1;
     float k = lis ? LIS3DH_G_PER_LSB : ADXL345_G_PER_LSB;
@@ -518,149 +315,306 @@ int readAccelG(float *x, float *y, float *z) {
   return alert ? 0 : 1;
 }
 
-void updateGesture(float lateral, float thrust, uint32_t now) {
-  latWindow[gestureHead] = lateral;
-  thrWindow[gestureHead] = thrust;
-  gestureHead = (gestureHead + 1) % GESTURE_WINDOW;
-  if (gestureCount < GESTURE_WINDOW) gestureCount++;
-
-  float latPeak = 0.0f, thrPeak = 0.0f;
-  for (uint8_t i = 0; i < gestureCount; i++) {
-    if (fabsf(latWindow[i]) >= fabsf(latPeak)) latPeak = latWindow[i];
-    if (fabsf(thrWindow[i]) >= fabsf(thrPeak)) thrPeak = thrWindow[i];
-  }
-  bool quiet = fabsf(latPeak) < GESTURE_OFF_G && fabsf(thrPeak) < GESTURE_OFF_G;
-
-  if (gesturePhase == GESTURE_HOLD) {
-    if (armed && before(now, gestureHoldUntil)) return;
-    gesturePhase = GESTURE_QUIET;
-  }
-  if (gesturePhase == GESTURE_QUIET) {
-    // Wait for the hand to settle (and the glove to be armed) before the next swipe.
-    if (quiet && armed) gesturePhase = GESTURE_IDLE;
-    return;
-  }
-  if (!armed) {
-    gesturePhase = GESTURE_QUIET;
-    return;
-  }
-  if (gestureCount < GESTURE_WINDOW || (uint32_t)(now - accelReadyAt) < ACCEL_SETTLE_MS) return;
-  float latMag = fabsf(latPeak), thrMag = fabsf(thrPeak);
-  if (latMag < GESTURE_ON_G && thrMag < GESTURE_ON_G) return;
-
-  latchedSwipe = thrMag >= latMag ? "thrust" : (latPeak >= 0.0f ? "right" : "left");
-  gesturePhase = GESTURE_HOLD;
-  gestureHoldUntil = now + GESTURE_HOLD_MS;
-  swipeFlashUntil = now + SWIPE_FLASH_MS;
-}
-
-void updateMotion(float ax, float ay, float az, uint32_t now) {
-  if (!gravReady) {
-    gravX = ax;
-    gravY = ay;
-    gravZ = az;
-    gravReady = true;
-    dynPeak = 0.0f;
-    gesturePhase = GESTURE_QUIET;
-    accelReadyAt = now;
-    return;
-  }
-  gravX += GRAV_ALPHA * (ax - gravX);
-  gravY += GRAV_ALPHA * (ay - gravY);
-  gravZ += GRAV_ALPHA * (az - gravZ);
-  float lx = ax - gravX, ly = ay - gravY, lz = az - gravZ;
-  float dyn = sqrtf(lx * lx + ly * ly + lz * lz);
-  updateGesture(LATERAL_SIGN * axisOf(lx, ly, lz, LATERAL_AXIS), THRUST_SIGN * axisOf(lx, ly, lz, THRUST_AXIS), now);
-
-  if ((uint32_t)(now - accelReadyAt) < ACCEL_SETTLE_MS) dynPeak = 0.0f;
-  else if (dyn > dynPeak) dynPeak = dyn;
-  else if (gesturePhase != GESTURE_HOLD) dynPeak = dynPeak < 0.01f ? 0.0f : dynPeak * 0.85f;
-  float t = clampf((dynPeak - DYN_G_FLOOR) / (DYN_G_CEIL - DYN_G_FLOOR), 0.0f, 1.0f);
-  accelPower = ACCEL_POWER_MIN + (ACCEL_POWER_MAX - ACCEL_POWER_MIN) * t;
-}
-
 void sampleAccel(uint32_t now) {
   if (accelKind == ACCEL_NONE) {
-    accelPower = ACCEL_POWER_MIN;
+    axMg = ayMg = azMg = 0;
     if (before(now, nextAccelProbeMs)) return;
     nextAccelProbeMs = now + I2C_RETRY_MS;
     if (probeLis3dh(0x19) || probeLis3dh(0x18) || probeAdxl345(0x53) || probeAdxl345(0x1D) || probeMma7660(0x4C)) return;
     noteI2cFail();
     return;
   }
-  float ax, ay, az;
-  int result = readAccelG(&ax, &ay, &az);
+  float x, y, z;
+  int result = readAccelG(&x, &y, &z);
   if (result == 0) return;
   if (result < 0) {
     noteI2cFail();
     if (++accelFails >= I2C_FAILS_BEFORE_DROP) {
       accelKind = ACCEL_NONE;
-      gesturePhase = GESTURE_QUIET;
       nextAccelProbeMs = now + 300;
     }
     return;
   }
   accelFails = 0;
   i2cFailStreak = 0;
-  rawAx = ax;
-  rawAy = ay;
-  rawAz = az;
-  updateMotion(ax, ay, az, now);
+  axMg = (int16_t)lroundf(x * 1000.0f);
+  ayMg = (int16_t)lroundf(y * 1000.0f);
+  azMg = (int16_t)lroundf(z * 1000.0f);
 }
 
-const char *publishedSwipe() {
-  if (!armed || accelKind == ACCEL_NONE || gesturePhase != GESTURE_HOLD) return "none";
-  return latchedSwipe;
+// --- Inputs -----------------------------------------------------------------
+
+void readInputs() {
+  pinTouch = digitalRead(touchPin) == HIGH;
+  pinTouchAlt = digitalRead(touchAltPin) == HIGH;
+  pinBtn1 = digitalRead(button1Pin) == HIGH;
+  pinBtn2 = digitalRead(button2Pin) == HIGH;
+  dialRaw = (int16_t)clampi(analogRead(dialPin), 0, 1023);
 }
 
-const char *swipeLabel() {
-  if (latchedSwipe[0] == 't') return "THRUST";
-  return latchedSwipe[0] == 'l' ? "LEFT" : "RIGHT";
+// --- Wi-Fi ------------------------------------------------------------------
+
+void beginWifi(uint32_t now) {
+  if (udpOpen) udp.stop();
+  udpOpen = false;
+  hubKnown = false;
+  if (WiFi.status() == WL_NO_MODULE) {
+    net = NET_NO_MODULE;
+    return;
+  }
+  WiFi.disconnect();
+  WiFi.setTimeout(0);  // begin() returns right after the join request; serviceWifi() polls
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  net = NET_JOINING;
+  netPhaseMs = now;
+  nextWifiPollMs = now + 500;
 }
 
-// --- 16x2 Grove RGB LCD (Seeed rgb_lcd: one char per I2C write) --------------
+void serviceWifi(uint32_t now) {
+  if (net == NET_NO_MODULE || before(now, nextWifiPollMs)) return;
+  nextWifiPollMs = now + (net == NET_UP ? 1500 : 500);
 
-void lcdPrintRow(uint8_t row, const char *text) {
-  lcd.setCursor(0, row);
-  lcd.print(text);
-}
+  if (net == NET_FAILED || net == NET_LOST) {
+    if (!before(now, nextWifiRetryMs)) beginWifi(now);
+    return;
+  }
 
-void composeLcd(uint32_t now, char *l1, char *l2, uint8_t *rgb) {
-  if (customActive && !customSticky && !before(now, customUntil)) customActive = false;
-  char text[17];
-  const char *name = ELEMENT_NAMES[dialSlot];
+  wifiStatusCode = (int)WiFi.status();
+  bool linked = wifiStatusCode == WL_CONNECTED;
 
-  if (customActive && customL1[0]) snprintf(text, sizeof(text), "%s", customL1);
-  else if (armed && lockedSlot == dialSlot) snprintf(text, sizeof(text), "LOCKED: %s *", name);
-  else snprintf(text, sizeof(text), "WHEEL: %s", name);
-  fitLine(l1, text);
+  if (net == NET_JOINING) {
+    IPAddress ip = WiFi.localIP();
+    if (linked && ip != IPAddress(0, 0, 0, 0)) {
+      localIp = ip;
+      IPAddress mask = WiFi.subnetMask();
+      broadcastIp = IPAddress(ip[0] | (uint8_t)~mask[0], ip[1] | (uint8_t)~mask[1], ip[2] | (uint8_t)~mask[2],
+                              ip[3] | (uint8_t)~mask[3]);
+      udpOpen = udp.begin(CMD_PORT) == 1;
+      rssi = WiFi.RSSI();
+      net = NET_UP;
+      netPhaseMs = now;
+      lastInfoMs = 0;
+    } else if ((uint32_t)(now - netPhaseMs) > WIFI_JOIN_TIMEOUT_MS) {
+      net = NET_FAILED;
+      nextWifiRetryMs = now + WIFI_RETRY_MS;
+    }
+    return;
+  }
 
-  if (!armed) snprintf(text, sizeof(text), "DISARMED");
-  else if (parryActive(now)) snprintf(text, sizeof(text), "!! PARRY !!");
-  else if (talkHeld) snprintf(text, sizeof(text), ">> SPEAKING <<");
-  else if (customActive && customL2[0]) snprintf(text, sizeof(text), "%s", customL2);
-  else if (before(now, swipeFlashUntil)) snprintf(text, sizeof(text), "SWIPE: %s!", swipeLabel());
-  else if (notice[0] && before(now, noticeUntil)) snprintf(text, sizeof(text), "%s", notice);
-  else if (fistActive(now)) snprintf(text, sizeof(text), "CHARGED 1.25x");
-  else snprintf(text, sizeof(text), "D4:TALK  D8:LOCK");
-  fitLine(l2, text);
-
-  for (uint8_t i = 0; i < 3; i++) {
-    if (customActive && customRgb[0] >= 0) rgb[i] = (uint8_t)customRgb[i];
-    else if (!armed) rgb[i] = 40;
-    else rgb[i] = ELEMENT_RGB[dialSlot][i];
+  if (net == NET_UP) {
+    if (!linked) {
+      net = NET_LOST;
+      nextWifiRetryMs = now + WIFI_RETRY_MS;
+      hubKnown = false;
+    } else {
+      rssi = WiFi.RSSI();
+    }
   }
 }
 
-void pushLcdFrame(uint32_t now) {
+bool hubFresh(uint32_t now) { return hubKnown && (uint32_t)(now - hubSeenMs) <= HUB_TIMEOUT_MS; }
+
+// --- Commands ---------------------------------------------------------------
+
+void setCustomLcd(const char *line, uint32_t now) {
+  bool h1 = extractString(line, "l1", customL1, sizeof(customL1));
+  bool h2 = extractString(line, "l2", customL2, sizeof(customL2));
+  if (!h1) customL1[0] = '\0';
+  if (!h2) customL2[0] = '\0';
+  long r, g, b, ms;
+  bool hasRgb = extractLong(line, "r", &r) && extractLong(line, "g", &g) && extractLong(line, "b", &b);
+  customRgb[0] = hasRgb ? clampi((int)r, 0, 255) : -1;
+  customRgb[1] = hasRgb ? clampi((int)g, 0, 255) : -1;
+  customRgb[2] = hasRgb ? clampi((int)b, 0, 255) : -1;
+  if (!extractLong(line, "ms", &ms)) ms = 4000;
+  customSticky = ms <= 0;
+  customUntil = now + (uint32_t)(ms > 0 ? ms : 0);
+  customActive = customL1[0] || customL2[0] || hasRgb;
+  lastLcdMs = 0;
+}
+
+void beep(uint16_t hz, uint16_t ms) { tone(buzzerPin, hz, ms); }
+
+void handleLine(const char *line, uint32_t now) {
+  char cmd[10];
+  if (!extractString(line, "cmd", cmd, sizeof(cmd))) return;
+  if (strcmp(cmd, "beep") == 0) {
+    beep(880, 120);
+  } else if (strcmp(cmd, "ident") == 0) {
+    snprintf(identText, sizeof(identText), "I AM GLOVE %d", GLOVE_ID);
+    identUntil = now + 4000;
+    beep(1320, 150);
+    lastLcdMs = 0;
+  } else if (strcmp(cmd, "lcd") == 0) {
+    setCustomLcd(line, now);
+  } else if (strcmp(cmd, "i2c") == 0) {
+    rescanI2c = true;
+  }
+  // "hello" needs no action here: receiving the packet is the announcement (see pollUdp).
+}
+
+void pollUdp(uint32_t now) {
+  static uint32_t nextPollMs = 0;
+  if (!udpOpen || before(now, nextPollMs)) return;
+  nextPollMs = now + 40;
+  int size = udp.parsePacket();
+  if (size <= 0) return;
+  hubIp = udp.remoteIP();
+  hubSeenMs = now;
+  hubKnown = true;
+  int n = udp.read((uint8_t *)cmdBuf, sizeof(cmdBuf) - 1);
+  if (n <= 0) return;
+  cmdBuf[n] = '\0';
+  for (char *line = strtok(cmdBuf, "\r\n"); line; line = strtok(nullptr, "\r\n")) handleLine(line, now);
+}
+
+void pollSerial(uint32_t now) {
+  while (Serial.available() > 0) {
+    char c = (char)Serial.read();
+    if (c == '\n' || c == '\r') {
+      if (serialLen > 0) {
+        serialLine[serialLen] = '\0';
+        handleLine(serialLine, now);
+      }
+      serialLen = 0;
+    } else if (serialLen + 1 < sizeof(serialLine)) {
+      serialLine[serialLen++] = c;
+    }
+  }
+}
+
+// --- Outbound packets -------------------------------------------------------
+
+void sendPacket(const char *buf, size_t len, uint32_t now) {
+  if (net != NET_UP || !udpOpen) return;
+  IPAddress dest = hubFresh(now) ? hubIp : broadcastIp;
+  if (udp.beginPacket(dest, HUB_PORT) == 1) {
+    udp.write((const uint8_t *)buf, len);
+    udp.endPacket();
+  }
+}
+
+void sendFrame(uint32_t now) {
+  char buf[200];
+  int n = snprintf(buf, sizeof(buf),
+                   "{\"t\":\"f\",\"id\":%d,\"seq\":%lu,\"ms\":%lu,\"ax\":%d,\"ay\":%d,\"az\":%d,"
+                   "\"d3\":%u,\"d7\":%u,\"d4\":%u,\"d8\":%u,\"dial\":%d,\"rssi\":%ld}",
+                   GLOVE_ID, (unsigned long)seq, (unsigned long)now, axMg, ayMg, azMg, pinTouch, pinTouchAlt, pinBtn1,
+                   pinBtn2, dialRaw, (long)rssi);
+  if (n <= 0) return;
+  sendPacket(buf, (size_t)n, now);
+  if (Serial && ++serialFrameCount % SERIAL_FRAME_EVERY == 0) Serial.println(buf);
+  framesThisSecond++;
+  seq++;
+}
+
+void sendInfo(uint32_t now) {
+  char buf[300];
+  char ip[16] = "0.0.0.0";
+  if (net == NET_UP) snprintf(ip, sizeof(ip), "%u.%u.%u.%u", localIp[0], localIp[1], localIp[2], localIp[3]);
+  int n = snprintf(buf, sizeof(buf),
+                   "{\"t\":\"i\",\"id\":%d,\"v\":%d,\"fw\":\"%s\",\"ip\":\"%s\",\"ssid\":\"%s\",\"rssi\":%ld,"
+                   "\"acc\":\"%s\",\"hub\":%d,\"up\":%lu,\"fps\":%lu,\"wifi\":%d,\"i2c\":[",
+                   GLOVE_ID, LCD_VARIANT, FIRMWARE_TAG, ip, WIFI_SSID, (long)rssi, accelName(), hubFresh(now) ? 1 : 0,
+                   (unsigned long)(now / 1000), (unsigned long)fps, wifiStatusCode);
+  for (uint8_t i = 0; i < i2cCount && n > 0 && n < (int)sizeof(buf) - 8; i++) {
+    n += snprintf(buf + n, sizeof(buf) - n, "%s%u", i ? "," : "", i2cList[i]);
+  }
+  if (n > 0 && n < (int)sizeof(buf) - 3) n += snprintf(buf + n, sizeof(buf) - n, "]}");
+  if (n <= 0) return;
+  sendPacket(buf, (size_t)n, now);
+  if (Serial) Serial.println(buf);
+}
+
+// --- LCD --------------------------------------------------------------------
+
+void pad16(char *dst, const char *src) {
+  size_t i = 0;
+  for (; i < 16 && src[i]; i++) {
+    char c = src[i];
+    dst[i] = (c >= 32 && c <= 126) ? c : '?';
+  }
+  for (; i < 16; i++) dst[i] = ' ';
+  dst[16] = '\0';
+}
+
+// What the backlight means. v4 only has a working green channel, so it stays green.
+void statusColor(uint32_t now, uint8_t *rgb) {
+#if LCD_VARIANT == 2
+  bool bad = net == NET_FAILED || net == NET_LOST || net == NET_NO_MODULE ||
+             (accelKind == ACCEL_NONE && now > 4000);
+  if (bad) {
+    rgb[0] = 255; rgb[1] = 0; rgb[2] = 0;       // red: error or not connected
+  } else if (net == NET_UP && hubFresh(now)) {
+    rgb[0] = 0; rgb[1] = 255; rgb[2] = 0;       // green: all good
+  } else {
+    rgb[0] = 255; rgb[1] = 90; rgb[2] = 0;      // orange: connecting or waiting for the hub
+  }
+#else
+  (void)now;
+  rgb[0] = 0; rgb[1] = 255; rgb[2] = 0;
+#endif
+}
+
+void composeLcd(uint32_t now, char *l1, char *l2, uint8_t *rgb) {
+  statusColor(now, rgb);
+  char a[40], b[40];
+  a[0] = b[0] = '\0';
+
+  if (before(now, identUntil)) {
+    snprintf(a, sizeof(a), "%s", identText);
+    snprintf(b, sizeof(b), "V%d %s", LCD_VARIANT, FIRMWARE_TAG);
+  } else if (customActive && (customSticky || before(now, customUntil))) {
+    snprintf(a, sizeof(a), "%s", customL1);
+    snprintf(b, sizeof(b), "%s", customL2);
+    if (customRgb[0] >= 0) {
+      rgb[0] = (uint8_t)customRgb[0];
+      rgb[1] = (uint8_t)customRgb[1];
+      rgb[2] = (uint8_t)customRgb[2];
+    }
+  } else if (net == NET_NO_MODULE) {
+    snprintf(a, sizeof(a), "G%d NO WIFI CHIP", GLOVE_ID);
+    snprintf(b, sizeof(b), "check board");
+  } else if (net == NET_JOINING) {
+    snprintf(a, sizeof(a), "G%d WIFI JOINING", GLOVE_ID);
+    snprintf(b, sizeof(b), "%s %lus", WIFI_SSID, (unsigned long)((now - netPhaseMs) / 1000));
+  } else if (net == NET_FAILED || net == NET_LOST) {
+    snprintf(a, sizeof(a), "G%d WIFI %s", GLOVE_ID, net == NET_FAILED ? "FAILED" : "LOST");
+    int wait = (int)((int32_t)(nextWifiRetryMs - now) / 1000);
+    snprintf(b, sizeof(b), "st=%d retry %ds", wifiStatusCode, wait < 0 ? 0 : wait);
+  } else {
+    switch (lcdPage) {
+      case 0:
+        snprintf(a, sizeof(a), "%u.%u.%u.%u", localIp[0], localIp[1], localIp[2], localIp[3]);
+        snprintf(b, sizeof(b), "G%d V%d %s", GLOVE_ID, LCD_VARIANT, hubFresh(now) ? "HUB OK" : "NO HUB");
+        break;
+      case 1:
+        snprintf(a, sizeof(a), "%s", WIFI_SSID);
+        snprintf(b, sizeof(b), "RSSI %ld dBm", (long)rssi);
+        break;
+      case 2:
+        snprintf(a, sizeof(a), "ACC %s", accelName());
+        snprintf(b, sizeof(b), "X%+03d Y%+03d Z%+03d", axMg / 10, ayMg / 10, azMg / 10);
+        break;
+      default:
+        snprintf(a, sizeof(a), "T%u%u B%u%u", pinTouch, pinTouchAlt, pinBtn1, pinBtn2);
+        snprintf(b, sizeof(b), "DIAL %d %luHz", dialRaw, (unsigned long)fps);
+        break;
+    }
+  }
+  pad16(l1, a);
+  pad16(l2, b);
+}
+
+void pushLcd(uint32_t now) {
   char lines[2][17];
   uint8_t rgb[3];
   composeLcd(now, lines[0], lines[1], rgb);
   for (uint8_t row = 0; row < 2; row++) {
-    if (strcmp(lines[row], lcdShown[row]) != 0) {
-      lcdPrintRow(row, lines[row]);
-      memcpy(lcdShown[row], lines[row], 17);
-    }
+    if (strcmp(lines[row], lcdShown[row]) == 0) continue;
+    lcd.setCursor(0, row);
+    lcd.print(lines[row]);
+    memcpy(lcdShown[row], lines[row], 17);
   }
   if (rgb[0] != rgbShown[0] || rgb[1] != rgbShown[1] || rgb[2] != rgbShown[2]) {
     lcd.setRGB(rgb[0], rgb[1], rgb[2]);
@@ -672,304 +626,85 @@ void pushLcdFrame(uint32_t now) {
 
 void serviceLcd(uint32_t now) {
   if (!lcdReady) return;
+  if (!before(now, pageStartMs + LCD_PAGE_MS)) {
+    pageStartMs = now;
+    lcdPage = (lcdPage + 1) % LCD_PAGES;
+  }
+  // Button 1 steps to the next page right away.
+  bool b1 = pinBtn1 != 0;
+  if (b1 && !lastBtn1) {
+    pageStartMs = now;
+    lcdPage = (lcdPage + 1) % LCD_PAGES;
+    lastLcdMs = 0;
+  }
+  lastBtn1 = b1;
   if ((uint32_t)(now - lastLcdMs) < LCD_REFRESH_MS) return;
   lastLcdMs = now;
-  pushLcdFrame(now);
+  pushLcd(now);
 }
 
-// --- Inbound JSON (no ArduinoJson) ------------------------------------------
-
-bool findValue(const char *json, const char *key, const char **value) {
-  size_t keyLen = strlen(key);
-  for (const char *p = json; *p; p++) {
-    if (*p != '"' || strncmp(p + 1, key, keyLen) != 0 || p[1 + keyLen] != '"') continue;
-    const char *q = p + keyLen + 2;
-    while (*q == ' ' || *q == '\t') q++;
-    if (*q != ':') continue;
-    q++;
-    while (*q == ' ' || *q == '\t') q++;
-    *value = q;
-    return true;
-  }
-  return false;
-}
-
-// Over-long values are truncated to fit. Escapes keep the escaped character.
-bool extractString(const char *json, const char *key, char *out, size_t cap) {
-  const char *v = nullptr;
-  if (!findValue(json, key, &v) || *v != '"') return false;
-  size_t n = 0;
-  for (v++; *v && *v != '"'; v++) {
-    if (*v == '\\' && v[1]) v++;
-    if (n + 1 < cap) out[n++] = *v;
-  }
-  out[n] = '\0';
-  return *v == '"';
-}
-
-bool extractBool(const char *json, const char *key, bool *out) {
-  const char *v = nullptr;
-  if (!findValue(json, key, &v)) return false;
-  if (strncmp(v, "true", 4) == 0) *out = true;
-  else if (strncmp(v, "false", 5) == 0) *out = false;
-  else return false;
-  return true;
-}
-
-bool extractLong(const char *json, const char *key, long *out) {
-  const char *v = nullptr;
-  if (!findValue(json, key, &v)) return false;
-  char *end = nullptr;
-  *out = strtol(v, &end, 10);
-  return end != v;
-}
-
-void reportWifi(const char *status) {
-  if (!Serial) return;
-  char line[112];
-  IPAddress ip = wifiPhase == WIFI_UP ? WiFi.localIP() : IPAddress(0, 0, 0, 0);
-  snprintf(line, sizeof(line), "{\"event\":\"wifi\",\"status\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%u.%u.%u.%u\",\"port\":%u}\n",
-           status, wifiSsid, ip[0], ip[1], ip[2], ip[3], UDP_PORT);
-  Serial.print(line);
-}
-
-void startWifi(const char *ssid, const char *pass, uint32_t now) {
-  if (udpOpen) udp.stop();
-  udpOpen = false;
-  peerPort = 0;
-  snprintf(wifiSsid, sizeof(wifiSsid), "%s", ssid);
-  snprintf(wifiPass, sizeof(wifiPass), "%s", pass);
-  if (WiFi.status() == WL_NO_MODULE) {
-    wifiPhase = WIFI_OFF;
-    showNotice("WIFI: NO MODULE", now);
-    reportWifi("no-module");
-    return;
-  }
-  // With a zero timeout begin() returns right after the join request; serviceWifi() polls.
-  WiFi.setTimeout(0);
-  if (wifiPass[0]) WiFi.begin(wifiSsid, wifiPass);
-  else WiFi.begin(wifiSsid);
-  wifiPhase = WIFI_JOINING;
-  wifiPhaseMs = now;
-  nextWifiPollMs = now + 500;
-  showNotice("WIFI: JOINING..", now);
-  reportWifi("joining");
-}
-
-void handleLcdCommand(const char *line, uint32_t now) {
-  bool h1 = extractString(line, "l1", customL1, sizeof(customL1));
-  bool h2 = extractString(line, "l2", customL2, sizeof(customL2));
-  if (!h1) customL1[0] = '\0';
-  if (!h2) customL2[0] = '\0';
-  long r, g, b, ms;
-  bool hasRgb = extractLong(line, "r", &r) && extractLong(line, "g", &g) && extractLong(line, "b", &b);
-  customRgb[0] = hasRgb ? clampi((int)r, 0, 255) : -1;
-  customRgb[1] = hasRgb ? clampi((int)g, 0, 255) : -1;
-  customRgb[2] = hasRgb ? clampi((int)b, 0, 255) : -1;
-  if (!extractLong(line, "ms", &ms)) ms = (long)LCD_MSG_MS;
-  customSticky = ms <= 0;
-  customUntil = now + (uint32_t)(ms > 0 ? ms : 0);
-  // {"cmd":"lcd"} with no text or color clears the message.
-  customActive = customL1[0] || customL2[0] || hasRgb;
-  lastLcdMs = 0;  // redraw on the next pass
-}
-
-void handleLine(const char *line) {
-  uint32_t now = millis();
-  char cmd[12];
-  if (!extractString(line, "cmd", cmd, sizeof(cmd))) return;
-  bool open = false;
-  if (strcmp(cmd, "buzz") == 0) {
-    char p[10];
-    if (!extractString(line, "p", p, sizeof(p))) return;
-    if (strcmp(p, "tick") == 0) playSong(SONG_TICK);
-    else if (strcmp(p, "cast") == 0) playSong(SONG_CAST);
-    else if (strcmp(p, "fizzle") == 0) playSong(SONG_FIZZLE);
-    else if (strcmp(p, "hit") == 0) playSong(SONG_HIT);
-  } else if (strcmp(cmd, "lcd") == 0) {
-    handleLcdCommand(line, now);
-  } else if (strcmp(cmd, "wifi") == 0) {
-    char ssid[33], pass[64];
-    if (extractString(line, "ssid", ssid, sizeof(ssid)) && ssid[0]) {
-      if (!extractString(line, "pass", pass, sizeof(pass))) pass[0] = '\0';
-      startWifi(ssid, pass, now);
-      return;
-    }
-    char text[17];
-    IPAddress ip = WiFi.localIP();
-    if (wifiPhase == WIFI_UP) snprintf(text, sizeof(text), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
-    showNotice(wifiPhase == WIFI_UP ? text : (wifiPhase == WIFI_JOINING ? "WIFI: JOINING.." : "WIFI: OFF"), now);
-    reportWifi(wifiPhase == WIFI_UP ? "connected" : (wifiPhase == WIFI_JOINING ? "joining" : "off"));
-  } else if (strcmp(cmd, "arm") == 0) {
-    if (extractBool(line, "open", &open)) setArmed(open);
-  } else if (strcmp(cmd, "servo") == 0) {
-    if (extractBool(line, "open", &open)) showNotice(open ? "STORYBOOK OPENS" : "STORYBOOK SHUT", now);
-  } else if (strcmp(cmd, "i2c") == 0) {
-    reportI2cScan();
-  }
-  // "hello" needs no work: any UDP packet subscribes its sender.
-}
-
-void pollSerial() {
-  while (Serial.available() > 0) {
-    char c = (char)Serial.read();
-    if (c == '\n' || c == '\r') {
-      if (!serialOverflow && serialLen > 0) {
-        serialLine[serialLen] = '\0';
-        handleLine(serialLine);
-      }
-      serialLen = 0;
-      serialOverflow = false;
-    } else if (!serialOverflow) {
-      if (serialLen + 1 >= sizeof(serialLine)) serialOverflow = true;
-      else serialLine[serialLen++] = c;
-    }
-  }
-}
-
-// --- Wi-Fi UDP --------------------------------------------------------------
-
-void serviceWifi(uint32_t now) {
-  if (wifiPhase == WIFI_OFF || before(now, nextWifiPollMs)) return;
-  nextWifiPollMs = now + (wifiPhase == WIFI_UP ? 2000 : 500);
-  bool linked = WiFi.status() == WL_CONNECTED;
-
-  if (wifiPhase == WIFI_JOINING) {
-    IPAddress ip = WiFi.localIP();
-    if (linked && ip != IPAddress(0, 0, 0, 0)) {
-      IPAddress mask = WiFi.subnetMask();
-      broadcastIp = IPAddress(ip[0] | (uint8_t)~mask[0], ip[1] | (uint8_t)~mask[1], ip[2] | (uint8_t)~mask[2],
-                              ip[3] | (uint8_t)~mask[3]);
-      udpOpen = udp.begin(UDP_PORT) == 1;
-      wifiPhase = WIFI_UP;
-      nextBeaconMs = now;
-      char text[17];
-      snprintf(text, sizeof(text), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
-      showNotice(text, now);
-      reportWifi(udpOpen ? "connected" : "udp-failed");
-    } else if ((uint32_t)(now - wifiPhaseMs) > WIFI_JOIN_TIMEOUT_MS) {
-      wifiPhase = WIFI_OFF;
-      showNotice("WIFI: FAILED", now);
-      reportWifi("failed");
-    }
-    return;
-  }
-  if (!linked) {
-    reportWifi("lost");
-    startWifi(wifiSsid, wifiPass, now);
-  }
-}
-
-void pollUdp(uint32_t now) {
-  if (!udpOpen) return;
-  if (peerPort && (uint32_t)(now - peerSeenMs) > UDP_PEER_TIMEOUT_MS) peerPort = 0;
-  if (before(now, nextUdpPollMs)) return;
-  nextUdpPollMs = now + UDP_POLL_MS;
-  if (udp.parsePacket() <= 0) return;
-  peerIp = udp.remoteIP();
-  peerPort = udp.remotePort();
-  peerSeenMs = now;
-  int n = udp.read((uint8_t *)udpBuf, sizeof(udpBuf) - 1);
-  if (n <= 0) return;
-  udpBuf[n] = '\0';
-  // One packet may carry several newline-separated commands.
-  for (char *line = strtok(udpBuf, "\r\n"); line; line = strtok(nullptr, "\r\n")) handleLine(line);
-}
-
-void sendUdpFrame(uint32_t now, const char *frame, int len, uint32_t sig) {
-  if (!udpOpen || len <= 0) return;
-  uint32_t since = now - lastUdpSendMs;
-  if (peerPort) {
-    if (!(sig != lastUdpSig && since >= UDP_MIN_GAP_MS) && since < UDP_HEARTBEAT_MS) return;
-    udp.beginPacket(peerIp, peerPort);
-  } else {
-    if (before(now, nextBeaconMs)) return;
-    nextBeaconMs = now + UDP_BEACON_MS;
-    udp.beginPacket(broadcastIp, UDP_PORT);
-  }
-  udp.write((const uint8_t *)frame, (size_t)len);
-  udp.endPacket();
-  lastUdpSendMs = now;
-  lastUdpSig = sig;
-}
-
-// --- Outbound frame ---------------------------------------------------------
-
-void publishFrame(uint32_t now) {
-  int btn = armed && talkHeld ? 1 : 0;
-  int btn2 = armed && lockHeld ? 1 : 0;
-  bool fist = fistActive(now);
-  bool parry = parryActive(now);
-  const char *swipe = publishedSwipe();
-  int power = (int)(clampf(accelPower, ACCEL_POWER_MIN, ACCEL_POWER_MAX) * 100.0f + 0.5f);
-
-  int len = snprintf(frameBuf, sizeof(frameBuf),
-                     "{\"dial\":%d,\"btn\":%d,\"btn2\":%d,\"fist\":%s,\"swipe\":\"%s\",\"accel\":%d.%02d,"
-                     "\"parry\":%s,\"armed\":%s,\"noise\":0,\"color\":\"none\","
-                     "\"d2\":%u,\"d3\":%u,\"d4\":%u,\"d6\":%u,\"d7\":%u,\"d8\":%u,"
-                     "\"rawDial\":%d,\"a1\":%d,\"a2\":%d,\"a3\":%d}\n",
-                     dialSlot, btn, btn2, fist ? "true" : "false", swipe, power / 100, power % 100,
-                     parry ? "true" : "false", armed ? "true" : "false",
-                     rawD2, rawD3, rawD4, rawD6, rawD7, rawD8,
-                     rawDial, rawA1, rawA2, rawA3);
-  if (len <= 0 || len >= (int)sizeof(frameBuf)) return;
-  if (Serial) Serial.write((const uint8_t *)frameBuf, (size_t)len);
-
-  // Everything the game reacts to, so a change goes out over UDP right away.
-  uint32_t sig = (uint32_t)dialSlot | btn << 2 | btn2 << 3 | fist << 4 | parry << 5 | armed << 6 |
-                 (uint32_t)(swipe[0]) << 8 | (uint32_t)(power / 5) << 16;
-  sendUdpFrame(now, frameBuf, len, sig);
-}
-
-// --- Arduino entry ----------------------------------------------------------
+// --- Arduino entry points ---------------------------------------------------
 
 void setup() {
-  pinMode(2, INPUT);
+  pinMode(touchPin, INPUT);
   pinMode(touchAltPin, INPUT);
   pinMode(button1Pin, INPUT);
-  pinMode(6, INPUT);
-  pinMode(touchPin, INPUT);
   pinMode(button2Pin, INPUT);
   pinMode(buzzerPin, OUTPUT);
   digitalWrite(buzzerPin, LOW);
-  analogReadResolution(10);  // the R4 defaults to 14-bit; the protocol is 0..1023
+  analogReadResolution(10);
 
   Wire.begin();
   Wire.setClock(100000);
-  Wire1.begin();
-  Wire1.setClock(100000);
-  Serial.begin(SERIAL_BAUD);  // no wait: frames are only written while a host is attached
+  Serial.begin(SERIAL_BAUD);  // no wait: output is dropped when no host is attached
 
   lcd.begin(16, 2, LCD_5x8DOTS, Wire);
   lcdReady = true;
   memset(lcdShown, 0, sizeof(lcdShown));
-  rgbShown[0] = rgbShown[1] = rgbShown[2] = -1;
-  pushLcdFrame(millis());
+  uint8_t rgb[3];
+  statusColor(millis(), rgb);
+  lcd.setRGB(rgb[0], rgb[1], rgb[2]);
+  char l1[17], l2[17];
+  pad16(l1, "");
+  snprintf(cmdBuf, sizeof(cmdBuf), "G%d V%d BOOT", GLOVE_ID, LCD_VARIANT);
+  pad16(l1, cmdBuf);
+  pad16(l2, FIRMWARE_TAG);
+  lcd.setCursor(0, 0);
+  lcd.print(l1);
+  lcd.setCursor(0, 1);
+  lcd.print(l2);
 
-  if (WIFI_SSID[0]) startWifi(WIFI_SSID, WIFI_PASS, millis());
+  scanI2c();
+  rescanI2c = false;
+  beginWifi(millis());
   lastFrameMs = millis();
+  pageStartMs = millis();
 }
 
 void loop() {
   uint32_t now = millis();
-  if (pendingBootI2cScan && Serial) {
-    pendingBootI2cScan = false;
-    reportI2cScan();
-  }
-  updateButtons(now);
-  pollSerial();
+  serviceWifi(now);
   pollUdp(now);
-  serviceBuzzer(now);
-  serviceDirectBuzz();
+  pollSerial(now);
+
+  if (rescanI2c) {
+    rescanI2c = false;
+    scanI2c();
+  }
 
   if ((uint32_t)(now - lastFrameMs) >= FRAME_MS) {
-    lastFrameMs += FRAME_MS;
-    if ((uint32_t)(now - lastFrameMs) >= FRAME_MS) lastFrameMs = now;  // fell behind: resync
-    sampleDial();
+    lastFrameMs = now;
+    readInputs();
     sampleAccel(now);
-    publishFrame(now);
+    sendFrame(now);
+  }
+
+  if ((uint32_t)(now - lastInfoMs) >= INFO_MS) {
+    lastInfoMs = now;
+    fps = framesThisSecond;
+    framesThisSecond = 0;
+    sendInfo(now);
   }
 
   serviceLcd(now);
-  serviceWifi(now);
 }

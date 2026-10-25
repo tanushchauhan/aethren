@@ -3,11 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Enchanted glove firmware tools. Not part of the pnpm workspace; the sketch has no npm deps and the bridge uses only Node built-ins.",
+  "description": "Enchanted glove firmware tools. Not part of the pnpm workspace; the sketch has no npm deps and the hub uses only Node built-ins.",
   "scripts": {
-    "bridge": "node --experimental-strip-types serial-bridge.ts",
-    "simulate": "node --experimental-strip-types serial-bridge.ts --simulate",
-    "self-test": "node --experimental-strip-types serial-bridge.ts --self-test",
+    "hub": "node --experimental-strip-types glove-hub.ts",
+    "hub:simulate": "node --experimental-strip-types glove-hub.ts --simulate",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

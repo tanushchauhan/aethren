@@ -1,354 +1,356 @@
-import { useEffect, useState } from 'react';
-import type { BuzzPattern } from '@once-upon/shared';
-import { GLOVE_LCD_COLS } from '@once-upon/shared';
-import { elementForDialSlot, type GloveLcdMessage } from './serialProtocol';
-import { SERIAL_BRIDGE_URL, useGloveHardware } from './useGloveHardware';
+import { useEffect, useRef, useState } from 'react';
 import { DEBUG_HARDWARE_PATH } from '../debugRoutes';
+import {
+  GLOVE_HUB_URL,
+  SAMPLE_WINDOW_MS,
+  useGloveHub,
+  type GloveHub,
+  type GloveSample,
+  type GloveSummary,
+} from './useGloveHub';
 
 /** The legacy `/hardware-test` URL redirects here. */
 export const HARDWARE_TEST_PATH = DEBUG_HARDWARE_PATH;
 
-const BUZZ: readonly BuzzPattern[] = ['tick', 'cast', 'fizzle', 'hit'];
-const DIAL_LABEL = ['Ember', 'Frost', 'Bloom'] as const;
-const LCD_COLORS = {
-  Orange: [255, 80, 0] as const,
-  Blue: [30, 180, 255] as const,
-  Green: [40, 255, 110] as const,
-};
+const AXES = [
+  { key: 'ax', label: 'X', color: '#f87171' },
+  { key: 'ay', label: 'Y', color: '#4ade80' },
+  { key: 'az', label: 'Z', color: '#60a5fa' },
+] as const;
 
-export function HardwareTestPage() {
-  const hardware = useGloveHardware();
-  const { frame, mode, status, error, sampleHz, frameCount } = hardware;
-  const connected = status === 'connected';
-  const [l1, setL1] = useState('HELLO');
-  const [l2, setL2] = useState('GLOVE');
-  const [lcdRgb, setLcdRgb] = useState<readonly [number, number, number]>(LCD_COLORS.Orange);
+const WINDOW_OPTIONS = [4, 8, 12] as const;
 
-  // Counters + last-triggered timestamps so even a 10ms tap is impossible to miss!
-  const [counts, setCounts] = useState({ d2: 0, d3: 0, d4: 0, d6: 0, d7: 0, d8: 0, swipe: 0 });
-  const [lastHit, setLastHit] = useState<string>('None yet — touch D3 or press D4 / D8');
-
-  const d2On = (frame.d2 ?? 0) !== 0;
-  const d3On = (frame.d7 ?? 0) !== 0 || (frame.d3 ?? 0) !== 0 || frame.parry;
-  const d4On = (frame.d4 ?? 0) !== 0 || frame.btn !== 0;
-  const d6On = (frame.d6 ?? 0) !== 0;
-  const d7On = (frame.d7 ?? 0) !== 0;
-  const d8On = (frame.d8 ?? 0) !== 0 || (frame.btn2 ?? 0) !== 0 || frame.fist;
-
-  useEffect(() => {
-    if (d2On) {
-      setCounts((c) => ({ ...c, d2: c.d2 + 1 }));
-      setLastHit(`D2 HIGH at ${new Date().toLocaleTimeString()}`);
-    }
-  }, [d2On]);
+function AccelChart({
+  gloveId,
+  samples,
+  paused,
+  range,
+  windowS,
+}: {
+  gloveId: number;
+  samples: React.MutableRefObject<Map<number, GloveSample[]>>;
+  paused: boolean;
+  range: number;
+  windowS: number;
+}) {
+  const canvas = useRef<HTMLCanvasElement | null>(null);
+  const frozen = useRef<GloveSample[] | null>(null);
+  const latest = useRef({ gloveId, paused, range, windowS });
+  latest.current = { gloveId, paused, range, windowS };
 
   useEffect(() => {
-    if (d3On) {
-      setCounts((c) => ({ ...c, d3: c.d3 + 1 }));
-      setLastHit(`D3 TOUCH / PARRY HIGH at ${new Date().toLocaleTimeString()}`);
+    let raf = 0;
+    const render = () => {
+      const el = canvas.current;
+      if (el) {
+        const ratio = window.devicePixelRatio || 1;
+        const width = el.clientWidth;
+        const height = el.clientHeight;
+        if (el.width !== Math.round(width * ratio) || el.height !== Math.round(height * ratio)) {
+          el.width = Math.round(width * ratio);
+          el.height = Math.round(height * ratio);
+        }
+        const ctx = el.getContext('2d');
+        if (ctx) {
+          ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+          const cur = latest.current;
+          const live = samples.current.get(cur.gloveId) ?? [];
+          if (cur.paused && !frozen.current) frozen.current = [...live];
+          if (!cur.paused) frozen.current = null;
+          drawAccel(ctx, width, height, cur.paused ? (frozen.current ?? live) : live, cur.range, cur.windowS * 1000, cur.paused);
+        }
+      }
+      raf = requestAnimationFrame(render);
+    };
+    raf = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(raf);
+  }, [samples]);
+
+  return <canvas ref={canvas} className="h-48 w-full rounded bg-stone-950" />;
+}
+
+function drawAccel(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  data: GloveSample[],
+  range: number,
+  windowMs: number,
+  paused: boolean,
+) {
+  ctx.clearRect(0, 0, width, height);
+  const mid = height / 2;
+  const scale = (height / 2 - 6) / range;
+  ctx.font = '10px ui-monospace, monospace';
+  ctx.lineWidth = 1;
+  for (let g = -Math.floor(range / 500); g <= Math.floor(range / 500); g++) {
+    const y = mid - g * 500 * scale;
+    ctx.strokeStyle = g === 0 ? '#57534e' : '#292524';
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+    ctx.fillStyle = '#78716c';
+    ctx.fillText(`${(g * 0.5).toFixed(1)}g`, 4, y - 2);
+  }
+  if (data.length < 2) {
+    ctx.fillStyle = '#78716c';
+    ctx.fillText('waiting for accelerometer frames…', width / 2 - 80, mid - 8);
+    return;
+  }
+  const end = paused ? data[data.length - 1]!.t : performance.now();
+  const x = (t: number) => width - ((end - t) / windowMs) * width;
+  const trace = (color: string, pick: (s: GloveSample) => number, dash: number[] = []) => {
+    ctx.strokeStyle = color;
+    ctx.setLineDash(dash);
+    ctx.lineWidth = dash.length ? 1 : 1.5;
+    ctx.beginPath();
+    let started = false;
+    for (const s of data) {
+      if (end - s.t > windowMs) continue;
+      const px = x(s.t);
+      const py = mid - Math.max(-range, Math.min(range, pick(s))) * scale;
+      if (!started) {
+        ctx.moveTo(px, py);
+        started = true;
+      } else {
+        ctx.lineTo(px, py);
+      }
     }
-  }, [d3On]);
-
-  useEffect(() => {
-    if (d4On) {
-      setCounts((c) => ({ ...c, d4: c.d4 + 1 }));
-      setLastHit(`D4 BUTTON 1 HIGH at ${new Date().toLocaleTimeString()}`);
-    }
-  }, [d4On]);
-
-  useEffect(() => {
-    if (d6On) {
-      setCounts((c) => ({ ...c, d6: c.d6 + 1 }));
-      setLastHit(`D6 HIGH at ${new Date().toLocaleTimeString()}`);
-    }
-  }, [d6On]);
-
-  useEffect(() => {
-    if (d7On) {
-      setCounts((c) => ({ ...c, d7: c.d7 + 1 }));
-      setLastHit(`D7 HIGH at ${new Date().toLocaleTimeString()}`);
-    }
-  }, [d7On]);
-
-  useEffect(() => {
-    if (d8On) {
-      setCounts((c) => ({ ...c, d8: c.d8 + 1 }));
-      setLastHit(`D8 BUTTON 2 HIGH at ${new Date().toLocaleTimeString()}`);
-    }
-  }, [d8On]);
-
-  useEffect(() => {
-    if (frame.swipe !== 'none') {
-      setCounts((c) => ({ ...c, swipe: c.swipe + 1 }));
-      setLastHit(`ACCEL SWIPE: ${frame.swipe.toUpperCase()} (${frame.accel.toFixed(2)}x) at ${new Date().toLocaleTimeString()}`);
-    }
-  }, [frame.swipe, frame.accel]);
-
-  const statusLabel =
-    mode === 'web-serial' && connected
-      ? `🟢 Connected: USB Serial (${sampleHz} Hz · ${frameCount} frames)`
-      : mode === 'ws-bridge' && connected
-        ? `🟢 Connected: Bridge (${sampleHz} Hz · ${frameCount} frames)`
-        : '🟡 Not connected to Arduino (Simulator mode)';
-
-  const disconnect = () => {
-    if (mode === 'web-serial') void hardware.disconnectSerial();
-    else if (mode === 'ws-bridge') hardware.disconnectBridge();
+    ctx.stroke();
+    ctx.setLineDash([]);
   };
+  for (const axis of AXES) trace(axis.color, (s) => s[axis.key]);
+  trace('#fbbf24', (s) => Math.sqrt(s.ax * s.ax + s.ay * s.ay + s.az * s.az), [4, 3]);
+}
 
-  const sendLcd = () => {
-    const msg: GloveLcdMessage = { l1: l1.slice(0, GLOVE_LCD_COLS), l2: l2.slice(0, GLOVE_LCD_COLS), rgb: [...lcdRgb] };
-    hardware.sendLcd(msg);
-  };
-
-  const dialName = elementForDialSlot(frame.dial);
-  const rawDial = frame.rawDial ?? 0;
-
+function Chip({ label, on, count }: { label: string; on: boolean; count: number }) {
   return (
-    <main className="flex min-h-screen flex-col bg-[#0f0d0b] px-4 py-5 text-[#f6ecd8]">
-      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4">
-        {/* 1 — Connect bar */}
-        <section className="rounded-2xl border border-[#5a4a32]/50 bg-[#1a1510] p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                disabled={!hardware.webSerialSupported || connected}
-                onClick={() => void hardware.connectSerial()}
-                className="rounded-xl bg-emerald-600 px-5 py-3 text-base font-bold text-white hover:bg-emerald-500 disabled:opacity-40"
-              >
-                🔌 Connect USB Arduino
-              </button>
-              <button
-                type="button"
-                disabled={connected}
-                onClick={() => hardware.connectBridge(SERIAL_BRIDGE_URL)}
-                className="rounded-xl bg-amber-700 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-40"
-              >
-                📡 Connect Bridge ({SERIAL_BRIDGE_URL})
-              </button>
-              {connected ? (
-                <button
-                  type="button"
-                  onClick={disconnect}
-                  className="rounded-xl border border-rose-400/60 bg-rose-950/50 px-4 py-3 text-sm font-semibold text-rose-100 hover:bg-rose-900/60"
-                >
-                  Disconnect (Click before flashing!)
-                </button>
-              ) : null}
-            </div>
-            <span
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold sm:text-sm ${
-                connected ? 'bg-emerald-900/80 text-emerald-200' : 'bg-[#2a2218] text-amber-200'
-              }`}
-            >
-              {statusLabel}
-            </span>
+    <div
+      className={`flex flex-col items-center rounded border px-3 py-1.5 text-xs ${
+        on ? 'border-amber-400 bg-amber-400/20 text-amber-200' : 'border-stone-700 bg-stone-900 text-stone-400'
+      }`}
+    >
+      <span className="font-semibold">{label}</span>
+      <span>{on ? 'HIGH' : 'low'}</span>
+      <span className="text-[10px] text-stone-500">{count} hits</span>
+    </div>
+  );
+}
+
+function GloveCard({ glove, hub }: { glove: GloveSummary; hub: GloveHub }) {
+  const [paused, setPaused] = useState(false);
+  const [range, setRange] = useState(2000);
+  const [windowS, setWindowS] = useState<number>(8);
+  const list = hub.samples.current.get(glove.id);
+  const last = list?.[list.length - 1];
+  const counts = hub.edges.current.get(glove.id) ?? { d3: 0, d7: 0, d4: 0, d8: 0 };
+  const mag = last ? Math.sqrt(last.ax ** 2 + last.ay ** 2 + last.az ** 2) : 0;
+  let peak = 0;
+  if (list) {
+    const now = performance.now();
+    for (const s of list) {
+      if (now - s.t > 2000) continue;
+      const dev = Math.abs(Math.sqrt(s.ax ** 2 + s.ay ** 2 + s.az ** 2) - 1000);
+      if (dev > peak) peak = dev;
+    }
+  }
+  const lcdNote =
+    glove.variant === 4 ? 'LCD v4 · green backlight, text' : glove.variant === 2 ? 'LCD v2 · color backlight' : 'LCD ?';
+  return (
+    <section className="rounded-lg border border-stone-700 bg-stone-900/80 p-4" data-testid={`glove-${glove.id}`}>
+      <header className="flex flex-wrap items-center gap-3">
+        <h2 className="text-lg font-semibold text-stone-100">Glove {glove.id}</h2>
+        <span
+          className={`rounded px-2 py-0.5 text-xs font-medium ${
+            glove.online ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'
+          }`}
+        >
+          {glove.online ? 'online' : `offline ${(glove.ageMs / 1000).toFixed(0)}s`}
+        </span>
+        <span className="rounded bg-stone-800 px-2 py-0.5 text-xs text-stone-300">{lcdNote}</span>
+        {glove.conflict ? (
+          <span className="rounded bg-red-500/30 px-2 py-0.5 text-xs text-red-200">
+            two boards share this id, flash them with different ids
+          </span>
+        ) : null}
+        <div className="ml-auto flex gap-2">
+          <button
+            type="button"
+            className="rounded border border-stone-600 px-2 py-1 text-xs text-stone-200 hover:bg-stone-800"
+            onClick={() => hub.send(glove.id, { cmd: 'ident' })}
+          >
+            Identify (beep + LCD)
+          </button>
+          <button
+            type="button"
+            className="rounded border border-stone-600 px-2 py-1 text-xs text-stone-200 hover:bg-stone-800"
+            onClick={() => hub.send(glove.id, { cmd: 'beep' })}
+          >
+            Beep
+          </button>
+        </div>
+      </header>
+
+      <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-stone-400 sm:grid-cols-4">
+        <div>
+          <dt className="text-stone-500">Address</dt>
+          <dd className="text-stone-200">{glove.ip}</dd>
+        </div>
+        <div>
+          <dt className="text-stone-500">Wi-Fi</dt>
+          <dd className="text-stone-200">
+            {glove.ssid || '?'} · {glove.rssi} dBm
+          </dd>
+        </div>
+        <div>
+          <dt className="text-stone-500">Rate</dt>
+          <dd className="text-stone-200">
+            {glove.rxRate} Hz in · {glove.gloveFps} Hz sent · {glove.dropped} dropped
+          </dd>
+        </div>
+        <div>
+          <dt className="text-stone-500">Accelerometer</dt>
+          <dd className={glove.acc === 'NONE' || !glove.acc ? 'text-red-300' : 'text-stone-200'}>
+            {glove.acc || '?'} · I2C {glove.i2c.map((a) => `0x${a.toString(16)}`).join(' ') || 'none'}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-stone-500">Firmware</dt>
+          <dd className="text-stone-200">
+            {glove.fw || '?'} · up {glove.uptimeS}s
+          </dd>
+        </div>
+        <div>
+          <dt className="text-stone-500">Hub link</dt>
+          <dd className={glove.hubSeen ? 'text-emerald-300' : 'text-amber-300'}>
+            {glove.hubSeen ? 'glove sees the hub' : 'glove is still broadcasting'}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        <Chip label="D3 touch" on={!!last?.d3} count={counts.d3} />
+        <Chip label="D7 touch" on={!!last?.d7} count={counts.d7} />
+        <Chip label="D4 button" on={!!last?.d4} count={counts.d4} />
+        <Chip label="D8 button" on={!!last?.d8} count={counts.d8} />
+        <div className="min-w-48 flex-1">
+          <div className="flex justify-between text-xs text-stone-400">
+            <span>A0 dial</span>
+            <span className="text-stone-200">{last?.dial ?? 0} / 1023</span>
           </div>
-          {error ? <p className="mt-2 text-sm font-medium text-red-400">{error}</p> : null}
-          <div className="mt-3 flex items-center justify-between rounded-xl bg-black/40 px-3 py-2 font-mono text-xs text-amber-200">
-            <span>LAST EVENT: {lastHit}</span>
+          <div className="mt-1 h-3 overflow-hidden rounded bg-stone-800">
+            <div className="h-full bg-amber-400" style={{ width: `${((last?.dial ?? 0) / 1023) * 100}%` }} />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="mb-1 flex flex-wrap items-center gap-3 text-xs">
+          {AXES.map((axis) => (
+            <span key={axis.key} style={{ color: axis.color }}>
+              {axis.label} {last ? (last[axis.key] / 1000).toFixed(3) : '0.000'} g
+            </span>
+          ))}
+          <span className="text-amber-300">|a| {(mag / 1000).toFixed(3)} g (dashed)</span>
+          <span className="text-stone-400">motion peak 2s: {(peak / 1000).toFixed(2)} g</span>
+          <span className="ml-auto flex items-center gap-2 text-stone-300">
+            <label>
+              Range{' '}
+              <select
+                className="rounded border border-stone-700 bg-stone-900 px-1"
+                value={range}
+                onChange={(e) => setRange(Number(e.target.value))}
+              >
+                <option value={1500}>±1.5 g</option>
+                <option value={2000}>±2 g</option>
+                <option value={4000}>±4 g</option>
+                <option value={8000}>±8 g</option>
+              </select>
+            </label>
+            <label>
+              Window{' '}
+              <select
+                className="rounded border border-stone-700 bg-stone-900 px-1"
+                value={windowS}
+                onChange={(e) => setWindowS(Number(e.target.value))}
+              >
+                {WINDOW_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s} s
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               type="button"
-              onClick={() => {
-                setCounts({ d2: 0, d3: 0, d4: 0, d6: 0, d7: 0, d8: 0, swipe: 0 });
-                setLastHit('Reset');
-              }}
-              className="rounded border border-white/20 px-2 py-0.5 text-[11px] text-amber-100 hover:bg-white/10"
+              className="rounded border border-stone-600 px-2 py-0.5 hover:bg-stone-800"
+              onClick={() => setPaused((p) => !p)}
             >
-              Reset Counts
+              {paused ? 'Resume' : 'Pause'}
             </button>
-          </div>
-        </section>
-
-        {/* 2 — Main 5 Expected Inputs */}
-        <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <InputBox
-            label="D7 · Touch Sensor"
-            active={d3On}
-            value={d3On ? '⚡ HIGH (TOUCHED!)' : 'LOW (0)'}
-            sub={`raw d7=${frame.d7 ?? 0} · parry=${String(frame.parry)} · hits: ${counts.d3}`}
-            onSimDown={() => hardware.setParry(true)}
-            onSimUp={() => hardware.setParry(false)}
-          />
-          <InputBox
-            label="D4 · Button 1 (Talk)"
-            active={d4On}
-            value={d4On ? '🎙️ HIGH (PRESSED!)' : 'LOW (0)'}
-            sub={`raw d4=${frame.d4 ?? 0} · btn=${frame.btn} · hits: ${counts.d4}`}
-            onSimDown={() => hardware.setButton(true)}
-            onSimUp={() => hardware.setButton(false)}
-          />
-          <InputBox
-            label="D8 · Button 2 (Lock)"
-            active={d8On}
-            value={d8On ? '🔒 HIGH (PRESSED!)' : 'LOW (0)'}
-            sub={`raw d8=${frame.d8 ?? 0} · fist=${String(frame.fist)} · hits: ${counts.d8}`}
-            onSimDown={() => hardware.setButton2(true)}
-            onSimUp={() => hardware.setButton2(false)}
-          />
-          <InputBox
-            label="A0 · Rotary Dial"
-            active={true}
-            value={`Slot ${frame.dial}: ${DIAL_LABEL[frame.dial] ?? dialName ?? '?'}`}
-            sub={`raw A0 = ${rawDial} / 1023`}
-          />
-          <InputBox
-            label="I2C · Accelerometer"
-            active={frame.swipe !== 'none'}
-            value={frame.swipe === 'none' ? 'Idle' : `💥 ${frame.swipe.toUpperCase()}!`}
-            sub={`power: ${frame.accel.toFixed(2)}x · swipes: ${counts.swipe}`}
-          />
-        </section>
-
-        {/* 3 — ALL Grove Digital & Analog Ports Scanner (in case Touch is plugged into D2/D6/D7 or A1/A2/A3!) */}
-        <section className="rounded-2xl border border-[#5a4a32]/50 bg-[#1a1510] p-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-[#e6c35c]/90">
-              All Grove Shield Ports Live Scanner (Check if Touch Sensor is on another port!)
-            </h2>
-            <span className="font-mono text-xs text-[#a89878]">
-              {frame.d2 === undefined ? '⚠️ Flash latest firmware to see D2/D6/D7/A1-A3' : 'Live 50 Hz pin scan active'}
-            </span>
-          </div>
-          <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-9">
-            <MiniPin label="D2" high={d2On} raw={frame.d2} count={counts.d2} />
-            <MiniPin label="D3 (Touch)" high={d3On} raw={frame.d3} count={counts.d3} />
-            <MiniPin label="D4 (Btn1)" high={d4On} raw={frame.d4} count={counts.d4} />
-            <MiniPin label="D6" high={d6On} raw={frame.d6} count={counts.d6} />
-            <MiniPin label="D7" high={d7On} raw={frame.d7} count={counts.d7} />
-            <MiniPin label="D8 (Btn2)" high={d8On} raw={frame.d8} count={counts.d8} />
-            <MiniAnalog label="A0 (Dial)" val={frame.rawDial} />
-            <MiniAnalog label="A1" val={frame.a1} />
-            <MiniAnalog label="A2" val={frame.a2} />
-          </div>
-        </section>
-
-        {/* 4 — Outputs (Buzzer & LCD) */}
-        <section className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-[#5a4a32]/50 bg-[#1a1510] p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[#e6c35c]/90">Buzzer (D5)</h2>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {BUZZ.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => hardware.playBuzz(p)}
-                  className="rounded-lg border border-[#8a6a3b]/50 px-4 py-2 capitalize hover:border-[#e6c35c]"
-                >
-                  🔊 {p}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-2xl border border-[#5a4a32]/50 bg-[#1a1510] p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[#e6c35c]/90">LCD (I2C)</h2>
-            <div className="mt-2 flex flex-col gap-2">
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  value={l1}
-                  maxLength={GLOVE_LCD_COLS}
-                  onChange={(e) => setL1(e.target.value)}
-                  placeholder="Line 1"
-                  className="rounded-lg border border-[#8a6a3b]/50 bg-[#100c09] px-3 py-2 font-mono text-sm outline-none focus:border-[#e6c35c]"
-                />
-                <input
-                  value={l2}
-                  maxLength={GLOVE_LCD_COLS}
-                  onChange={(e) => setL2(e.target.value)}
-                  placeholder="Line 2"
-                  className="rounded-lg border border-[#8a6a3b]/50 bg-[#100c09] px-3 py-2 font-mono text-sm outline-none focus:border-[#e6c35c]"
-                />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {(Object.keys(LCD_COLORS) as (keyof typeof LCD_COLORS)[]).map((name) => (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => setLcdRgb([...LCD_COLORS[name]])}
-                    className={`rounded-lg border px-3 py-1.5 text-sm ${
-                      lcdRgb[0] === LCD_COLORS[name][0] && lcdRgb[1] === LCD_COLORS[name][1]
-                        ? 'border-[#e6c35c] bg-[#2a2218]'
-                        : 'border-[#8a6a3b]/50'
-                    }`}
-                  >
-                    {name}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={sendLcd}
-                  className="rounded-lg bg-[#3a2c16] px-4 py-1.5 text-sm font-medium hover:bg-[#4a3820]"
-                >
-                  Send to LCD
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 5 — Raw JSON */}
-        <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/50 px-3 py-2 font-mono text-xs text-emerald-300">
-          {JSON.stringify(frame)}
-        </pre>
+            <button
+              type="button"
+              className="rounded border border-stone-600 px-2 py-0.5 hover:bg-stone-800"
+              onClick={() => hub.clear(glove.id)}
+            >
+              Reset
+            </button>
+          </span>
+        </div>
+        <AccelChart
+          gloveId={glove.id}
+          samples={hub.samples}
+          paused={paused}
+          range={range}
+          windowS={Math.min(windowS, SAMPLE_WINDOW_MS / 1000)}
+        />
       </div>
+    </section>
+  );
+}
+
+export function HardwareTestPage() {
+  const hub = useGloveHub();
+  const statusText =
+    hub.status === 'open' ? 'Hub connected' : hub.status === 'connecting' ? 'Connecting to hub…' : 'Hub not running';
+  return (
+    <main className="flex min-h-screen flex-col gap-4 bg-stone-950 p-6 text-stone-200" data-testid="glove-monitor">
+      <header className="flex flex-wrap items-center gap-3">
+        <h1 className="text-xl font-semibold text-stone-100">Glove monitor</h1>
+        <span
+          className={`rounded px-2 py-0.5 text-xs ${
+            hub.status === 'open' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'
+          }`}
+        >
+          {statusText}
+        </span>
+        <span className="text-xs text-stone-500">{GLOVE_HUB_URL}</span>
+        <button
+          type="button"
+          className="ml-auto rounded border border-stone-600 px-2 py-1 text-xs hover:bg-stone-800"
+          onClick={() => hub.clear()}
+        >
+          Reset all charts
+        </button>
+      </header>
+
+      {hub.status !== 'open' ? (
+        <div role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+          Start the hub in a terminal: <code className="rounded bg-stone-900 px-1">pnpm --dir firmware hub</code> (or{' '}
+          <code className="rounded bg-stone-900 px-1">pnpm --dir firmware hub:simulate</code> to try this page without
+          gloves). Your laptop must be on the same hotspot as the gloves.
+        </div>
+      ) : hub.gloves.length === 0 ? (
+        <div className="rounded border border-stone-700 bg-stone-900 p-3 text-sm text-stone-300">
+          Hub is up but no glove has reported yet. Power a glove: its LCD shows the Wi-Fi status, and it appears here a
+          second after it joins the hotspot.
+        </div>
+      ) : null}
+
+      {hub.gloves.map((glove) => (
+        <GloveCard key={glove.id} glove={glove} hub={hub} />
+      ))}
     </main>
-  );
-}
-
-function InputBox({
-  label,
-  value,
-  sub,
-  active,
-  onSimDown,
-  onSimUp,
-}: {
-  label: string;
-  value: string;
-  sub: string;
-  active: boolean;
-  onSimDown?: () => void;
-  onSimUp?: () => void;
-}) {
-  return (
-    <div
-      onMouseDown={onSimDown}
-      onMouseUp={onSimUp}
-      onMouseLeave={onSimUp}
-      className={`rounded-xl border p-3 transition-colors select-none ${
-        active
-          ? 'border-emerald-400 bg-emerald-600/40 text-emerald-50 shadow-[0_0_24px_rgba(52,211,153,0.45)]'
-          : 'border-[#5a4a32]/50 bg-[#1a1510] text-[#d9c4a4]'
-      }`}
-    >
-      <p className="text-[11px] font-bold uppercase tracking-wider opacity-85">{label}</p>
-      <p className="mt-1 font-mono text-sm font-bold leading-snug sm:text-base">{value}</p>
-      <p className="mt-1 font-mono text-[11px] opacity-75">{sub}</p>
-    </div>
-  );
-}
-
-function MiniPin({ label, high, raw, count }: { label: string; high: boolean; raw: number | undefined; count: number }) {
-  return (
-    <div
-      className={`rounded-lg border px-2.5 py-2 text-center font-mono text-xs ${
-        high ? 'border-emerald-400 bg-emerald-500/40 font-bold text-white' : 'border-white/10 bg-black/30 text-[#a89878]'
-      }`}
-    >
-      <div>{label}</div>
-      <div className="mt-0.5 text-sm">{raw === undefined ? '?' : raw ? 'HIGH (1)' : 'LOW (0)'}</div>
-      <div className="text-[10px] opacity-70">hits: {count}</div>
-    </div>
-  );
-}
-
-function MiniAnalog({ label, val }: { label: string; val: number | undefined }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-black/30 px-2.5 py-2 text-center font-mono text-xs text-[#d9c4a4]">
-      <div>{label}</div>
-      <div className="mt-0.5 text-sm font-bold text-amber-200">{val ?? '?'}</div>
-      <div className="text-[10px] opacity-70">0..1023</div>
-    </div>
   );
 }
