@@ -7,21 +7,30 @@ import {
   POSE_TRACK_HZ,
 } from '@once-upon/shared';
 import type { CalibrationBaseline, NormalizedLandmark, PoseFrame } from '@once-upon/shared';
-import { VisionCanvas, type VisionCanvasModel } from './VisionCanvas';
+import { VisionCanvas, primeVisionAudio, type CombatOverlay, type VisionCanvasModel } from './VisionCanvas';
 import {
   ArmRaiseHoldDetector,
+  BODY_PART_LABEL,
+  BODY_PART_TARGETS,
+  STROBE_END_HZ,
+  STROBE_START_HZ,
   WristVelocityTracker,
   actionBadgeLabel,
   buildPoseFrame,
   checkInZone,
   classifyDodgeAndPose,
   computeCalibrationBaseline,
+  checkPartClearance,
+  judgePartTarget,
   judgeTelegraphDefense,
+  judgeZoneBlast,
+  lockPartTarget,
   resolveActiveAction,
   resolveTorso,
-  type DefenseJudgment,
+  type BodyPartTarget,
   type DodgeClassification,
   type P0AttackType,
+  type PartTarget,
   type WristGesture,
 } from './poseClassifiers';
 import { PoseLandmarkerService, type PoseServiceStatus, type VisionSourceMode } from './poseLandmarkerService';
@@ -48,6 +57,15 @@ const AUTO_CALIBRATE_AFTER_MS = 800;
 const DEMO_GAP_MS = 1800;
 
 const RESULT_FLASH_MS = 1600;
+
+/** After a blast, the silhouette keeps calling the player back for up to this long. */
+const BLAST_CALLBACK_MS = 4000;
+
+/** Rings and bursts only need the burst window when the player is already home. */
+const IMPACT_OVERLAY_MS = 900;
+
+/** Synthetic frames fill the 16:9 canvas. Webcam frames use the video's own shape. */
+const DEFAULT_FRAME_ASPECT = 16 / 9;
 
 /** Instant calibration averages this many recent frames to smooth out jitter. */
 const RECENT_FRAME_COUNT = 6;
@@ -86,6 +104,50 @@ const ATTACK_META: Record<P0AttackType, { label: string; cue: string; how: strin
     how: 'Step out of the box, or tick the glove parry below.',
   },
 };
+
+/** Every attack the tester can throw. Classic telegraphs are the original P0 banner attacks. */
+type IncomingAttack =
+  | { kind: 'classic'; attack: P0AttackType }
+  | { kind: 'part_ring'; part: BodyPartTarget }
+  | { kind: 'zone_blast' };
+
+interface AttackResult {
+  kind: IncomingAttack['kind'];
+  label: string;
+  dodged: boolean;
+  detail: string;
+}
+
+const RING_HOW: Record<BodyPartTarget, string> = {
+  head: 'Tilt your head or duck to clear just your head.',
+  left_shoulder: 'Lean or pull your left side away.',
+  right_shoulder: 'Lean or pull your right side away.',
+  chest: 'Step or lean so your shoulder line leaves the circle.',
+};
+
+const COMBO_WAVE: readonly IncomingAttack[] = [
+  { kind: 'part_ring', part: 'head' },
+  { kind: 'part_ring', part: 'left_shoulder' },
+  { kind: 'part_ring', part: 'right_shoulder' },
+  { kind: 'zone_blast' },
+];
+
+const CLASSIC_WAVE: readonly IncomingAttack[] = P0_ATTACKS.map((attack) => ({ kind: 'classic', attack }));
+
+function attackLabel(incoming: IncomingAttack): string {
+  if (incoming.kind === 'classic') return ATTACK_META[incoming.attack].label;
+  if (incoming.kind === 'part_ring') return `Target ring: ${BODY_PART_LABEL[incoming.part]}`;
+  return 'Silhouette blast';
+}
+
+function attackCue(incoming: IncomingAttack, clear: boolean): string {
+  if (incoming.kind === 'classic') return clear ? 'CLEAR! HOLD IT!' : ATTACK_META[incoming.attack].cue;
+  if (incoming.kind === 'part_ring') {
+    const part = BODY_PART_LABEL[incoming.part].toUpperCase();
+    return clear ? `CLEAR! KEEP YOUR ${part} OUT!` : `MOVE YOUR ${part} OUT OF THE CIRCLE!`;
+  }
+  return clear ? 'CLEAR! STAY OUT OF THE OUTLINE!' : 'STEP OR DUCK FULLY OUT OF YOUR SILHOUETTE!';
+}
 
 type ChecklistKey = 'stand' | 'step' | 'return' | 'duck' | 'wheel' | 'cast';
 
@@ -126,18 +188,27 @@ type CalibrationPhase = 'idle' | 'get_ready' | 'sampling';
 type TrackingState = 'none' | 'upper' | 'full';
 
 interface PendingAttack {
-  attack: P0AttackType;
+  incoming: IncomingAttack;
   /** The countdown banner starts here. Demo attacks after the first wait out a short gap. */
   startAt: number;
   judgeAt: number;
+  /** A ring freezes on its body part the moment the warning starts, then stays put. */
+  target: PartTarget | null;
+}
+
+interface ImpactRecord {
+  incoming: IncomingAttack;
+  target: PartTarget | null;
+  dodged: boolean;
+  at: number;
 }
 
 interface HudState {
   calibrationPhase: CalibrationPhase;
   /** Time left in the current calibration phase. */
   phaseRemainingMs: number;
-  countdown: { attack: P0AttackType; remainingMs: number; waitingMs: number } | null;
-  flash: DefenseJudgment | null;
+  countdown: { incoming: IncomingAttack; remainingMs: number; waitingMs: number; clear: boolean; locking: boolean } | null;
+  flash: AttackResult | null;
   tracking: TrackingState;
 }
 
@@ -208,9 +279,11 @@ export function VisionTestPage() {
   const prevInZoneRef = useRef<boolean | null>(null);
   const parryRef = useRef(false);
   const pendingRef = useRef<PendingAttack | null>(null);
-  const demoQueueRef = useRef<P0AttackType[]>([]);
+  const demoQueueRef = useRef<IncomingAttack[]>([]);
   const demoActiveRef = useRef(false);
-  const flashRef = useRef<{ judgment: DefenseJudgment; at: number } | null>(null);
+  const flashRef = useRef<{ judgment: AttackResult; at: number } | null>(null);
+  const impactRef = useRef<ImpactRecord | null>(null);
+  const landmarksRef = useRef<NormalizedLandmark[] | null>(null);
 
   const [requestedMode, setRequestedMode] = useState<VisionSourceMode>('synthetic');
   const [status, setStatus] = useState<PoseServiceStatus>({
@@ -224,11 +297,13 @@ export function VisionTestPage() {
   const [preset, setPreset] = useState<SyntheticPosePreset>('standing_in_zone');
   const [wheelSlot, setWheelSlot] = useState(0);
   const [wheelNotice, setWheelNotice] = useState<{ id: number; label: string } | null>(null);
-  const [defense, setDefense] = useState<DefenseJudgment | null>(null);
+  const [defense, setDefense] = useState<AttackResult | null>(null);
   const [parry, setParry] = useState(false);
   const [instantJudge, setInstantJudge] = useState(false);
   const [demoActive, setDemoActive] = useState(false);
-  const [demoResults, setDemoResults] = useState<DefenseJudgment[] | null>(null);
+  const [demoResults, setDemoResults] = useState<AttackResult[] | null>(null);
+  const [demoTotal, setDemoTotal] = useState(0);
+  const [guideOpen, setGuideOpen] = useState(true);
   const [checklist, setChecklist] = useState<Checklist>(EMPTY_CHECKLIST);
   const [calibrationNote, setCalibrationNote] = useState<string | null>(null);
   const [teammate, setTeammate] = useState<TeammatePreview>('off');
@@ -312,6 +387,7 @@ export function VisionTestPage() {
         const gesture = landmarks ? trackerRef.current.update(landmarks, now) : IDLE_GESTURE;
         const arm = armRef.current.update(pose.isRightArmRaised, now);
         poseRef.current = pose;
+        landmarksRef.current = landmarks;
 
         if (arm.locked) {
           const nextSlot = (wheelRef.current + 1) % P0_ELEMENTS.length;
@@ -353,10 +429,18 @@ export function VisionTestPage() {
         }
 
         const pending = pendingRef.current;
+        if (pending && pending.incoming.kind === 'part_ring' && !pending.target && now >= pending.startAt) {
+          // No ring without a body to aim at. The countdown waits until the part is found.
+          pending.target = landmarks ? lockPartTarget(landmarks, pending.incoming.part, frameAspect()) : null;
+          pending.startAt = now;
+          pending.judgeAt = now + ATTACK_COUNTDOWN_MS;
+        }
         if (pending && now >= pending.judgeAt) {
           pendingRef.current = null;
-          resolveAttack(pending.attack, now);
+          resolveAttack(pending, now);
         }
+        const live = pendingRef.current;
+        const liveClear = live && now >= live.startAt ? judgeAttack(live).dodged : false;
 
         if (now - lastStream >= streamStep) {
           lastStream = now;
@@ -413,9 +497,9 @@ export function VisionTestPage() {
           armCounting: arm.counting,
           confidence: pose.confidence,
           actionNote: actionNoteFor(gesture, arm.heldMs, arm.counting),
+          combat: combatOverlay(live, liveClear, zone.inZone, now),
         });
 
-        const live = pendingRef.current;
         const flash = flashRef.current;
         setHud({
           calibrationPhase: phase,
@@ -427,9 +511,11 @@ export function VisionTestPage() {
                 : 0,
           countdown: live
             ? {
-                attack: live.attack,
+                incoming: live.incoming,
                 remainingMs: Math.max(0, live.judgeAt - now),
                 waitingMs: Math.max(0, live.startAt - now),
+                clear: liveClear,
+                locking: live.incoming.kind === 'part_ring' && !live.target,
               }
             : null,
           flash: flash && now - flash.at < RESULT_FLASH_MS ? flash.judgment : null,
@@ -459,18 +545,85 @@ export function VisionTestPage() {
     return true;
   }
 
+  function frameAspect(): number {
+    const video = videoRef.current;
+    if (modeRef.current === 'webcam' && video && video.videoWidth > 0 && video.videoHeight > 0) {
+      return video.videoWidth / video.videoHeight;
+    }
+    return DEFAULT_FRAME_ASPECT;
+  }
+
+  /** The same call drives the live CLEAR indicator and the final verdict at 0.0s. */
+  function judgeAttack(pending: PendingAttack): AttackResult {
+    const { incoming } = pending;
+    const label = attackLabel(incoming);
+    if (incoming.kind === 'classic') {
+      const judgment = judgeTelegraphDefense(
+        incoming.attack,
+        poseRef.current,
+        incoming.attack === 'projectile' && parryRef.current,
+      );
+      return { kind: 'classic', label, dodged: judgment.dodged, detail: judgment.detail };
+    }
+    if (incoming.kind === 'zone_blast') {
+      const judgment = judgeZoneBlast(poseRef.current);
+      return { kind: 'zone_blast', label, dodged: judgment.dodged, detail: judgment.detail };
+    }
+    if (!pending.target) {
+      return { kind: 'part_ring', label, dodged: false, detail: 'No body in view to aim at yet.' };
+    }
+    const clearance = checkPartClearance(landmarksRef.current, pending.target);
+    const judgment = judgePartTarget(pending.target, clearance, parryRef.current);
+    return { kind: 'part_ring', label, dodged: judgment.dodged, detail: judgment.detail };
+  }
+
+  /** Live ring or strobe while an attack runs, then the burst and the blast call-back pulse. */
+  function combatOverlay(
+    live: PendingAttack | null,
+    clear: boolean,
+    inZone: boolean,
+    now: number,
+  ): CombatOverlay | null {
+    if (live && live.incoming.kind !== 'classic' && now >= live.startAt) {
+      if (live.incoming.kind === 'part_ring' && !live.target) return null;
+      return {
+        kind: live.incoming.kind,
+        startAt: live.startAt,
+        judgeAt: live.judgeAt,
+        target: live.target,
+        clear,
+        impact: null,
+      };
+    }
+    const impact = impactRef.current;
+    if (!impact || impact.incoming.kind === 'classic') return null;
+    const age = now - impact.at;
+    const keep =
+      age < IMPACT_OVERLAY_MS || (impact.incoming.kind === 'zone_blast' && age < BLAST_CALLBACK_MS && !inZone);
+    if (!keep) return null;
+    return {
+      kind: impact.incoming.kind,
+      startAt: impact.at - ATTACK_COUNTDOWN_MS,
+      judgeAt: impact.at,
+      target: impact.target,
+      clear: impact.dodged,
+      impact: { at: impact.at, dodged: impact.dodged },
+    };
+  }
+
   /** Judges the held pose, flashes the result, and queues the next demo attack. */
-  function resolveAttack(attack: P0AttackType, now: number): void {
-    const judgment = judgeTelegraphDefense(attack, poseRef.current, attack === 'projectile' && parryRef.current);
+  function resolveAttack(pending: PendingAttack, now: number): void {
+    const judgment = judgeAttack(pending);
     setDefense(judgment);
     flashRef.current = { judgment, at: now };
+    impactRef.current = { incoming: pending.incoming, target: pending.target, dodged: judgment.dodged, at: now };
     if (!demoActiveRef.current) return;
 
     setDemoResults((previous) => [...(previous ?? []), judgment]);
     const next = demoQueueRef.current.shift();
     if (next) {
       const startAt = now + DEMO_GAP_MS;
-      pendingRef.current = { attack: next, startAt, judgeAt: startAt + ATTACK_COUNTDOWN_MS };
+      pendingRef.current = { incoming: next, startAt, judgeAt: startAt + ATTACK_COUNTDOWN_MS, target: null };
     } else {
       demoActiveRef.current = false;
       setDemoActive(false);
@@ -510,24 +663,29 @@ export function VisionTestPage() {
     setTeammate(next);
   }
 
-  function launchAttack(attack: P0AttackType): void {
+  /** Rings always count down: an instant ring would lock on and judge the same frame. */
+  function launchAttack(incoming: IncomingAttack): void {
+    primeVisionAudio();
     const now = performance.now();
-    if (instantJudge) {
-      resolveAttack(attack, now);
+    const pending: PendingAttack = { incoming, startAt: now, judgeAt: now + ATTACK_COUNTDOWN_MS, target: null };
+    if (instantJudge && incoming.kind !== 'part_ring') {
+      resolveAttack(pending, now);
       return;
     }
-    pendingRef.current = { attack, startAt: now, judgeAt: now + ATTACK_COUNTDOWN_MS };
+    pendingRef.current = pending;
   }
 
-  function startDemo(): void {
+  function startWave(wave: readonly IncomingAttack[]): void {
+    primeVisionAudio();
     const now = performance.now();
-    const [first, ...rest] = P0_ATTACKS;
+    const [first, ...rest] = wave;
     if (!first) return;
     demoQueueRef.current = rest;
     demoActiveRef.current = true;
     setDemoActive(true);
     setDemoResults([]);
-    pendingRef.current = { attack: first, startAt: now, judgeAt: now + ATTACK_COUNTDOWN_MS };
+    setDemoTotal(wave.length);
+    pendingRef.current = { incoming: first, startAt: now, judgeAt: now + ATTACK_COUNTDOWN_MS, target: null };
   }
 
   function cancelAttacks(): void {
@@ -570,6 +728,18 @@ export function VisionTestPage() {
 
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(20rem,1fr)]">
           <div className="flex flex-col gap-3 lg:sticky lg:top-4">
+            {guideOpen ? (
+              <AttackGuide compact onDismiss={() => setGuideOpen(false)} />
+            ) : (
+              <button
+                type="button"
+                className={`${chipClass(false)} self-start text-xs`}
+                onClick={() => setGuideOpen(true)}
+                data-testid="attack-guide-toggle"
+              >
+                Show attack guide (2 attack types)
+              </button>
+            )}
             <div className="relative">
               <VisionCanvas model={model} videoRef={videoRef} />
               <CanvasBanner hud={hud} />
@@ -732,52 +902,88 @@ export function VisionTestPage() {
             <StepCard
               step={3}
               title="Incoming enemy attack tester"
-              done={demoResults !== null && !demoActive && demoResults.length === P0_ATTACKS.length}
+              done={demoResults !== null && !demoActive && demoTotal > 0 && demoResults.length === demoTotal}
               summary={
                 demoResults && demoResults.length > 0
                   ? `${demoDodged} / ${demoResults.length} dodged`
                   : `${ATTACK_COUNTDOWN_MS / 1000}s warning`
               }
             >
-              <p className="text-sm text-amber-100/75">
-                Pick an attack. A {ATTACK_COUNTDOWN_MS / 1000} second warning appears on the video, and your pose is
-                judged when it hits 0.0s.
+              <AttackGuide />
+
+              <p className="mt-3 text-sm text-amber-100/75">
+                Pick an attack. It plays out on the video for {ATTACK_COUNTDOWN_MS / 1000} seconds and you are judged
+                the instant it lands.
               </p>
               <div className="mt-3 flex flex-col gap-2">
-                {P0_ATTACKS.map((attack) => (
-                  <button
-                    key={attack}
-                    type="button"
-                    className="flex flex-col items-start rounded-2xl border border-amber-100/20 bg-white/5 px-3 py-2 text-left disabled:opacity-40"
-                    onClick={() => launchAttack(attack)}
+                {BODY_PART_TARGETS.map((part) => (
+                  <AttackButton
+                    key={part}
+                    testId={`attack-ring-${part}`}
+                    title={`🎯 Osu! Ring → ${BODY_PART_LABEL[part]}`}
+                    hint={RING_HOW[part]}
                     disabled={attackBusy}
-                    data-testid={`attack-${attack}`}
-                  >
-                    <span className="text-sm font-medium">{ATTACK_META[attack].label}</span>
-                    <span className="text-xs text-amber-100/65">{ATTACK_META[attack].how}</span>
-                  </button>
+                    onClick={() => launchAttack({ kind: 'part_ring', part })}
+                  />
                 ))}
+                <AttackButton
+                  testId="attack-zone-blast"
+                  title="⚡ Flashing Silhouette Whole-Body Blast"
+                  hint={`Step or duck completely out of your outline as the strobe speeds up from ${STROBE_START_HZ} to ${STROBE_END_HZ} Hz.`}
+                  disabled={attackBusy}
+                  onClick={() => launchAttack({ kind: 'zone_blast' })}
+                />
               </div>
 
               <button
                 type="button"
-                className="mt-3 w-full rounded-full bg-amber-200 px-4 py-2 text-sm font-medium text-stone-950 disabled:opacity-50"
-                onClick={startDemo}
+                className="mt-3 w-full rounded-full bg-gradient-to-r from-rose-400 via-amber-300 to-emerald-300 px-4 py-2 text-sm font-semibold text-stone-950 disabled:opacity-50"
+                onClick={() => startWave(COMBO_WAVE)}
                 disabled={attackBusy}
-                data-testid="demo-round-button"
+                data-testid="combo-wave-button"
               >
-                {demoActive ? 'Demo round running…' : 'Auto-Play 3-Attack Demo Round'}
+                {demoActive ? 'Wave running…' : `🔥 Auto-Play Combo Wave (${COMBO_WAVE.length} Attacks in a Row)`}
               </button>
+              <p className="mt-1 text-xs text-amber-100/60">
+                Head ring, left arm ring, right arm ring, then the silhouette blast. Step back and play.
+              </p>
               {attackBusy ? (
                 <button type="button" className={`${chipClass(false)} mt-2 w-full`} onClick={cancelAttacks}>
                   Cancel attack
                 </button>
               ) : null}
 
+              <details className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                <summary className="cursor-pointer text-xs uppercase tracking-[0.18em] text-amber-200/70">
+                  Classic telegraphs
+                </summary>
+                <div className="mt-2 flex flex-col gap-2">
+                  {P0_ATTACKS.map((attack) => (
+                    <AttackButton
+                      key={attack}
+                      testId={`attack-${attack}`}
+                      title={ATTACK_META[attack].label}
+                      hint={ATTACK_META[attack].how}
+                      disabled={attackBusy}
+                      onClick={() => launchAttack({ kind: 'classic', attack })}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    className={`${chipClass(false)} w-full`}
+                    onClick={() => startWave(CLASSIC_WAVE)}
+                    disabled={attackBusy}
+                    data-testid="demo-round-button"
+                  >
+                    Auto-Play 3-Attack Demo Round
+                  </button>
+                </div>
+              </details>
+
               <div className="mt-3 flex flex-col gap-1 text-sm text-amber-100/80">
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked={parry} onChange={(event) => updateParry(event.target.checked)} />
-                  Glove thumb parry (projectile only)
+                  Glove thumb parry (target rings and projectile)
                 </label>
                 <label className="flex items-center gap-2">
                   <input
@@ -786,20 +992,20 @@ export function VisionTestPage() {
                     onChange={(event) => setInstantJudge(event.target.checked)}
                     data-testid="instant-judge-toggle"
                   />
-                  Judge now (instant, no countdown)
+                  Judge now (instant, no countdown; rings always count down)
                 </label>
               </div>
 
               <p className="mt-3 text-sm" data-testid="defense-result">
                 {defense
-                  ? `${defense.dodged ? 'DODGED' : 'HIT'} · ${ATTACK_META[defense.attackType].label}: ${defense.detail}`
-                  : 'No attack yet. Pick one above, or step back and auto-play the demo round.'}
+                  ? `${defense.dodged ? 'DODGED' : 'HIT'} · ${defense.label}: ${defense.detail}`
+                  : 'No attack yet. Pick one above, or step back and auto-play the combo wave.'}
               </p>
               {demoResults && demoResults.length > 0 ? (
                 <ul className="mt-2 flex flex-col gap-1 text-xs" data-testid="demo-results">
                   {demoResults.map((result, index) => (
-                    <li key={`${result.attackType}-${index}`} className={result.dodged ? 'text-emerald-200' : 'text-rose-200'}>
-                      {index + 1}. {ATTACK_META[result.attackType].label}: {result.dodged ? 'dodged' : 'hit'}
+                    <li key={`${result.label}-${index}`} className={result.dodged ? 'text-emerald-200' : 'text-rose-200'}>
+                      {index + 1}. {result.label}: {result.dodged ? 'dodged' : 'hit'}
                     </li>
                   ))}
                   {!demoActive ? (
@@ -846,18 +1052,25 @@ function CanvasBanner({ hud }: { hud: HudState }) {
   let tone: 'gold' | 'green' | 'red' = 'gold';
   let headline: string | null = null;
   let detail: string | null = null;
+  // Attack banners sit at the top so the ring and the silhouette stay visible.
+  let placement: 'center' | 'top' = 'center';
 
   if (hud.countdown) {
-    const meta = ATTACK_META[hud.countdown.attack];
+    placement = 'top';
+    const label = attackLabel(hud.countdown.incoming).toUpperCase();
     if (hud.countdown.waitingMs > 0) {
-      headline = `NEXT: ${meta.label.toUpperCase()}`;
+      headline = `NEXT: ${label}`;
       detail = `Get back in your zone. Warning starts in ${seconds(hud.countdown.waitingMs)}.`;
+    } else if (hud.countdown.locking) {
+      headline = `AIMING: ${label}`;
+      detail = 'Step into view so the ring can lock on.';
     } else {
-      tone = 'red';
-      headline = `${meta.label.toUpperCase()} INCOMING IN ${seconds(hud.countdown.remainingMs)}`;
-      detail = meta.cue;
+      tone = hud.countdown.clear ? 'green' : 'red';
+      headline = `${label} IN ${seconds(hud.countdown.remainingMs)}`;
+      detail = attackCue(hud.countdown.incoming, hud.countdown.clear);
     }
   } else if (hud.flash) {
+    placement = hud.flash.kind === 'classic' ? 'center' : 'top';
     tone = hud.flash.dodged ? 'green' : 'red';
     headline = hud.flash.dodged ? 'DODGED!' : 'HIT!';
     detail = hud.flash.detail;
@@ -876,14 +1089,139 @@ function CanvasBanner({ hud }: { hud: HudState }) {
       : tone === 'red'
         ? 'border-rose-300/60 bg-rose-950/75 text-rose-50'
         : 'border-amber-200/60 bg-stone-950/75 text-amber-50';
+  const top = placement === 'top';
 
   return (
-    <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6" data-testid="canvas-banner">
-      <div className={`max-w-[90%] rounded-3xl border px-6 py-4 text-center shadow-2xl backdrop-blur-sm ${toneClass}`}>
-        <p className="font-serif text-2xl font-semibold tracking-wide sm:text-4xl">{headline}</p>
-        {detail ? <p className="mt-1 text-sm font-medium tracking-[0.12em] sm:text-lg">{detail}</p> : null}
+    <div
+      className={`pointer-events-none absolute inset-0 flex justify-center p-6 ${top ? 'items-start pt-14' : 'items-center'}`}
+      data-testid="canvas-banner"
+    >
+      <div
+        className={`max-w-[90%] rounded-3xl border text-center shadow-2xl backdrop-blur-sm ${toneClass} ${
+          top ? 'px-4 py-2' : 'px-6 py-4'
+        }`}
+      >
+        <p className={`font-serif font-semibold tracking-wide ${top ? 'text-lg sm:text-2xl' : 'text-2xl sm:text-4xl'}`}>
+          {headline}
+        </p>
+        {detail ? (
+          <p className={`mt-1 font-medium tracking-[0.12em] ${top ? 'text-xs sm:text-sm' : 'text-sm sm:text-lg'}`}>
+            {detail}
+          </p>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function RingIcon() {
+  return (
+    <svg viewBox="0 0 48 48" className="h-12 w-12 shrink-0" aria-hidden>
+      <circle cx="24" cy="24" r="9" fill="rgba(255,45,85,0.3)" stroke="#ff2d55" strokeWidth="2.5">
+        <animate attributeName="stroke" values="#ff2d55;#ff2d55;#34f5a0;#34f5a0" dur="2.4s" repeatCount="indefinite" />
+        <animate
+          attributeName="fill"
+          values="rgba(255,45,85,0.3);rgba(255,45,85,0.3);rgba(52,245,160,0.25);rgba(52,245,160,0.25)"
+          dur="2.4s"
+          repeatCount="indefinite"
+        />
+      </circle>
+      <circle cx="24" cy="24" r="2.5" fill="#fff" />
+      <circle cx="24" cy="24" r="22" fill="none" stroke="#ffe2e2" strokeWidth="1.5">
+        <animate attributeName="r" values="22;9" dur="2.4s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.4;1" dur="2.4s" repeatCount="indefinite" />
+      </circle>
+    </svg>
+  );
+}
+
+function SilhouetteIcon() {
+  return (
+    <svg viewBox="0 0 48 48" className="h-12 w-12 shrink-0" aria-hidden>
+      <g fill="none" strokeWidth="2.5" strokeLinecap="round" stroke="#ff2d55">
+        <animate
+          attributeName="stroke"
+          values="#ff2d55;#34f5a0;#ff2d55;#34f5a0;#ff2d55;#34f5a0;#ff2d55;#34f5a0;#ff2d55;#ff2d55"
+          keyTimes="0;0.25;0.42;0.55;0.65;0.73;0.8;0.86;0.9;1"
+          calcMode="discrete"
+          dur="2.4s"
+          repeatCount="indefinite"
+        />
+        <rect x="8" y="4" width="32" height="40" rx="3" strokeDasharray="4 3" strokeWidth="1.5" />
+        <circle cx="24" cy="13" r="5" />
+        <path d="M15 22 L33 22 L30 38 L18 38 Z" />
+      </g>
+    </svg>
+  );
+}
+
+/** Explains both attack types before the first one lands. `compact` is the legend above the canvas. */
+function AttackGuide({ compact = false, onDismiss }: { compact?: boolean; onDismiss?: () => void }) {
+  return (
+    <section
+      className="rounded-2xl border border-amber-100/15 bg-black/30 p-3"
+      data-testid={compact ? 'attack-legend' : 'attack-guide'}
+    >
+      <header className="mb-2 flex items-center justify-between gap-3">
+        <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-200/80">
+          How Incoming Attacks Work (2 Attack Types)
+        </h3>
+        {onDismiss ? (
+          <button type="button" className="text-xs text-amber-100/60 hover:text-amber-50" onClick={onDismiss}>
+            Hide
+          </button>
+        ) : null}
+      </header>
+      <div className={`grid gap-2 ${compact ? 'sm:grid-cols-2' : ''}`}>
+        <div className="flex items-start gap-3 rounded-xl border border-rose-300/25 bg-rose-950/20 p-2">
+          <RingIcon />
+          <p className="text-xs text-amber-50/85">
+            <span className="block text-sm font-semibold text-rose-100">🎯 Type 1: Osu! Body-Part Target Ring</span>
+            {compact
+              ? 'Move only the targeted part out of the circle before the outer ring closes.'
+              : 'A glowing circle locks onto one part of your body (Head, Left Arm, Right Arm). Move ONLY that body part outside the inner circle before the shrinking outer ring touches it! Red means still inside, green means CLEAR.'}
+          </p>
+        </div>
+        <div className="flex items-start gap-3 rounded-xl border border-emerald-300/25 bg-emerald-950/20 p-2">
+          <SilhouetteIcon />
+          <p className="text-xs text-amber-50/85">
+            <span className="block text-sm font-semibold text-emerald-100">
+              ⚡ Type 2: Flashing Silhouette Blast (Whole-Body)
+            </span>
+            {compact
+              ? 'Your outline strobes red and green, faster and faster. Get your whole body out.'
+              : 'Your silhouette outline starts flashing Red & Green faster and faster. Step or duck your whole body completely out of the silhouette before the flash peaks! It pulses gold afterwards to call you back.'}
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AttackButton({
+  testId,
+  title,
+  hint,
+  disabled,
+  onClick,
+}: {
+  testId: string;
+  title: string;
+  hint: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex flex-col items-start rounded-2xl border border-amber-100/20 bg-white/5 px-3 py-2 text-left transition-colors hover:bg-white/10 disabled:opacity-40"
+      onClick={onClick}
+      disabled={disabled}
+      data-testid={testId}
+    >
+      <span className="text-sm font-medium">{title}</span>
+      <span className="text-xs text-amber-100/65">{hint}</span>
+    </button>
   );
 }
 

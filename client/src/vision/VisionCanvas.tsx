@@ -1,8 +1,32 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { CalibrationBaseline, NormalizedLandmark, PoseActionType, PoseFrame } from '@once-upon/shared';
-import { actionBadgeLabel, getZoneBounds } from './poseClassifiers';
+import {
+  BODY_PART_TAG,
+  actionBadgeLabel,
+  approachRingScale,
+  getZoneBounds,
+  strobeCycles,
+  strobeIsRed,
+  type PartTarget,
+} from './poseClassifiers';
 import { silhouetteFromMetrics } from './syntheticPoseGenerator';
 import type { VisionSourceMode } from './poseLandmarkerService';
+
+/**
+ * A ring or blast attack the canvas animates. Times share the `performance.now()` clock, so the
+ * ring shrinks and the strobe flips at the display rate instead of the pose tick rate.
+ */
+export interface CombatOverlay {
+  kind: 'part_ring' | 'zone_blast';
+  startAt: number;
+  judgeAt: number;
+  /** Frozen ring center for `part_ring`. Null for a blast. */
+  target: PartTarget | null;
+  /** True while the targeted part (or the whole torso) is out of danger right now. */
+  clear: boolean;
+  /** Set once the attack is judged, which plays the burst and the call-back pulse. */
+  impact: { at: number; dodged: boolean } | null;
+}
 
 export interface VisionCanvasModel {
   source: VisionSourceMode;
@@ -22,6 +46,8 @@ export interface VisionCanvasModel {
   armCounting: boolean;
   confidence: number;
   actionNote: string;
+  /** Optional so other labs can keep building the model without attacks. */
+  combat?: CombatOverlay | null;
 }
 
 interface FrameRect {
@@ -57,6 +83,12 @@ const JOINTS = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
 const GOLD = '#f5c16c';
 const GREEN = '#8dffc1';
 const BONE = '#e7fff4';
+const CRIMSON = '#ff2d55';
+const EMERALD = '#34f5a0';
+const EMBER = '#ff8a3d';
+
+/** How long the impact burst plays after an attack is judged. */
+const IMPACT_BURST_MS = 900;
 
 let audioContext: AudioContext | null = null;
 
@@ -91,6 +123,52 @@ function playSilhouetteChime(): void {
   } catch {
     // A headless browser or a blocked autoplay policy still gets the green snap.
   }
+}
+
+/** Call from a click handler so the strobe ticks and impact sounds are allowed to play. */
+export function primeVisionAudio(): void {
+  primeSilhouetteAudio();
+}
+
+function playTone(freq: number, endFreq: number, durationS: number, type: OscillatorType, peak: number): void {
+  try {
+    if (!audioContext || audioContext.state !== 'running') return;
+    const ctx = audioContext;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), now + durationS);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(peak, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + durationS);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + durationS + 0.02);
+  } catch {
+    // Sound is a bonus. The canvas still shows every cue.
+  }
+}
+
+/** Rising tension tick on each red flash. Pitch climbs with the countdown. */
+function playStrobeTick(progress: number): void {
+  const freq = 420 + 760 * progress;
+  playTone(freq, freq * 1.04, 0.05, 'square', 0.05);
+}
+
+function playImpact(dodged: boolean): void {
+  if (dodged) {
+    playTone(784, 1568, 0.22, 'triangle', 0.14);
+  } else {
+    playTone(180, 45, 0.45, 'sawtooth', 0.2);
+  }
+}
+
+function clampProgress(nowMs: number, overlay: CombatOverlay): number {
+  const span = Math.max(1, overlay.judgeAt - overlay.startAt);
+  return Math.min(1, Math.max(0, (nowMs - overlay.startAt) / span));
 }
 
 function contentRect(video: HTMLVideoElement | null, width: number, height: number, source: VisionSourceMode): FrameRect {
@@ -267,6 +345,20 @@ function fillBody(ctx: CanvasRenderingContext2D, placed: readonly (readonly [num
   }
 }
 
+function zoneRect(baseline: CalibrationBaseline, rect: FrameRect): FrameRect {
+  const bounds = getZoneBounds(baseline);
+  const a = mapPoint(bounds.minX, bounds.topY, rect, true);
+  const b = mapPoint(bounds.maxX, bounds.bottomY, rect, true);
+  return { x: Math.min(a[0], b[0]), y: Math.min(a[1], b[1]), w: Math.abs(b[0] - a[0]), h: Math.abs(b[1] - a[1]) };
+}
+
+/** Overrides the zone and silhouette colors while a blast is strobing or calling the player back. */
+interface ZoneTint {
+  color: string;
+  glow: string;
+  fillAlpha: number;
+}
+
 function drawZone(
   ctx: CanvasRenderingContext2D,
   baseline: CalibrationBaseline,
@@ -274,14 +366,23 @@ function drawZone(
   inZone: boolean,
   locked: boolean,
   nowMs: number,
+  tint: ZoneTint | null,
 ): void {
-  const bounds = getZoneBounds(baseline);
-  const a = mapPoint(bounds.minX, bounds.topY, rect, true);
-  const b = mapPoint(bounds.maxX, bounds.bottomY, rect, true);
-  const x = Math.min(a[0], b[0]);
-  const y = Math.min(a[1], b[1]);
-  const w = Math.abs(b[0] - a[0]);
-  const h = Math.abs(b[1] - a[1]);
+  const { x, y, w, h } = zoneRect(baseline, rect);
+  if (tint) {
+    ctx.save();
+    ctx.fillStyle = tint.color;
+    ctx.globalAlpha = tint.fillAlpha * 0.35;
+    ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = tint.color;
+    ctx.lineWidth = Math.max(3, rect.w * 0.007);
+    ctx.shadowColor = tint.glow;
+    ctx.shadowBlur = 28;
+    ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+    return;
+  }
   const pulse = inZone ? 1 : 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(nowMs / 180));
   ctx.save();
   ctx.strokeStyle = inZone ? `rgba(141, 255, 193, ${0.9})` : `rgba(245, 193, 108, ${0.35 + 0.65 * pulse})`;
@@ -291,6 +392,15 @@ function drawZone(
   ctx.shadowBlur = inZone ? 18 : 10 + 16 * pulse;
   ctx.strokeRect(x, y, w, h);
   ctx.restore();
+}
+
+/** `#rrggbb` to `rgba(...)`. */
+function withAlpha(hex: string, alpha: number): string {
+  const value = Number.parseInt(hex.slice(1), 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+  return `rgba(${r}, ${g}, ${b}, ${Math.min(1, Math.max(0, alpha))})`;
 }
 
 function drawReturnSnap(ctx: CanvasRenderingContext2D, rect: FrameRect, startedAt: number, nowMs: number): void {
@@ -307,6 +417,242 @@ function drawReturnSnap(ctx: CanvasRenderingContext2D, rect: FrameRect, startedA
   ctx.restore();
 }
 
+function canvasFont(rect: FrameRect, scale: number, weight = 700): string {
+  return `${weight} ${Math.max(12, rect.w * scale)}px ui-sans-serif, system-ui, sans-serif`;
+}
+
+function drawLabel(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  color: string,
+  font: string,
+): void {
+  ctx.save();
+  ctx.font = font;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 12;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+/** Expanding shockwave rings and spokes, green for a dodge and red for a hit. */
+function drawBurst(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  baseRadius: number,
+  dodged: boolean,
+  life: number,
+): void {
+  const color = dodged ? EMERALD : CRIMSON;
+  const fade = 1 - life;
+  ctx.save();
+  ctx.globalAlpha = fade;
+  ctx.strokeStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 24;
+  for (let ring = 0; ring < 3; ring += 1) {
+    const grow = Math.max(0, life - ring * 0.12);
+    ctx.lineWidth = Math.max(1, 6 * (1 - grow));
+    ctx.beginPath();
+    ctx.arc(cx, cy, baseRadius * (1 + grow * (2.2 + ring * 0.6)), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  const spokes = 14;
+  ctx.lineWidth = 3;
+  for (let i = 0; i < spokes; i += 1) {
+    const angle = (i / spokes) * Math.PI * 2 + (dodged ? 0 : 0.2);
+    const inner = baseRadius * (1 + life * 1.2);
+    const outer = baseRadius * (1.4 + life * 2.6);
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);
+    ctx.lineTo(cx + Math.cos(angle) * outer, cy + Math.sin(angle) * outer);
+    ctx.stroke();
+  }
+  if (!dodged && life < 0.35) {
+    ctx.globalAlpha = (0.35 - life) * 1.6;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(cx, cy, baseRadius * 1.1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** Osu!-style ring: a bullseye frozen on the body part and an approach ring closing in on it. */
+function drawPartRing(ctx: CanvasRenderingContext2D, rect: FrameRect, overlay: CombatOverlay, nowMs: number): void {
+  const target = overlay.target;
+  if (!target) return;
+  const [cx, cy] = mapPoint(target.x, target.y, rect, true);
+  const radius = Math.max(8, target.radius * rect.h);
+  const tag = BODY_PART_TAG[target.part];
+  const labelFont = canvasFont(rect, 0.022);
+
+  if (overlay.impact) {
+    const life = (nowMs - overlay.impact.at) / IMPACT_BURST_MS;
+    if (life < 0 || life > 1) return;
+    drawBurst(ctx, cx, cy, radius, overlay.impact.dodged, life);
+    const pop = 1 + 0.35 * Math.sin(Math.min(1, life * 3) * Math.PI);
+    drawLabel(
+      ctx,
+      overlay.impact.dodged ? 'DODGED!' : 'HIT!',
+      cx,
+      cy - radius * 1.6 - life * 20,
+      overlay.impact.dodged ? EMERALD : CRIMSON,
+      canvasFont(rect, 0.04 * pop, 900),
+    );
+    return;
+  }
+
+  const progress = clampProgress(nowMs, overlay);
+  const danger = !overlay.clear;
+  const throb = 0.5 + 0.5 * Math.sin(nowMs / (danger ? 70 : 160));
+  const core = danger ? (throb > 0.5 ? CRIMSON : EMBER) : EMERALD;
+
+  ctx.save();
+  const glow = ctx.createRadialGradient(cx, cy, radius * 0.1, cx, cy, radius);
+  glow.addColorStop(0, danger ? 'rgba(255, 60, 60, 0.45)' : 'rgba(52, 245, 160, 0.35)');
+  glow.addColorStop(1, danger ? 'rgba(255, 138, 61, 0.12)' : 'rgba(52, 245, 160, 0.06)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = core;
+  ctx.shadowColor = core;
+  ctx.shadowBlur = 18 + 10 * throb;
+  ctx.lineWidth = Math.max(3, radius * 0.08);
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.lineWidth = Math.max(1.5, radius * 0.03);
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius * 0.55, 0, Math.PI * 2);
+  ctx.stroke();
+  const tick = radius * 0.25;
+  ctx.beginPath();
+  ctx.moveTo(cx - radius - tick, cy);
+  ctx.lineTo(cx - radius * 0.7, cy);
+  ctx.moveTo(cx + radius * 0.7, cy);
+  ctx.lineTo(cx + radius + tick, cy);
+  ctx.moveTo(cx, cy - radius - tick);
+  ctx.lineTo(cx, cy - radius * 0.7);
+  ctx.moveTo(cx, cy + radius * 0.7);
+  ctx.lineTo(cx, cy + radius + tick);
+  ctx.stroke();
+
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(cx, cy, Math.max(3, radius * (0.1 + 0.04 * throb)), 0, Math.PI * 2);
+  ctx.fill();
+
+  const scale = approachRingScale(progress);
+  ctx.globalAlpha = 0.45 + 0.55 * progress;
+  ctx.strokeStyle = danger ? '#ffd1d1' : '#d4ffe9';
+  ctx.shadowColor = core;
+  ctx.shadowBlur = 16;
+  ctx.lineWidth = Math.max(2, radius * (0.05 + 0.07 * progress));
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius * scale, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  const remaining = Math.max(0, (overlay.judgeAt - nowMs) / 1000);
+  drawLabel(ctx, `🎯 ${tag}`, cx, cy - radius * 1.35, core, labelFont);
+  drawLabel(ctx, danger ? 'MOVE!' : 'CLEAR!', cx, cy + radius * 1.35, core, labelFont);
+  drawLabel(ctx, remaining.toFixed(1), cx, cy, '#ffffff', canvasFont(rect, 0.016));
+}
+
+/** Silhouette tint for a blast: accelerating red/green strobe, then a gold/green call-back pulse. */
+function blastTint(overlay: CombatOverlay, nowMs: number): ZoneTint | null {
+  if (overlay.kind !== 'zone_blast') return null;
+  if (overlay.impact) {
+    const age = nowMs - overlay.impact.at;
+    if (age < IMPACT_BURST_MS * 0.4) {
+      return overlay.impact.dodged
+        ? { color: GOLD, glow: GOLD, fillAlpha: 0.9 }
+        : { color: CRIMSON, glow: CRIMSON, fillAlpha: 1 };
+    }
+    const callBack = Math.sin(age / 160) > 0;
+    return callBack ? { color: GOLD, glow: GOLD, fillAlpha: 0.45 } : { color: EMERALD, glow: GREEN, fillAlpha: 0.45 };
+  }
+  const progress = clampProgress(nowMs, overlay);
+  const durationMs = overlay.judgeAt - overlay.startAt;
+  const red = strobeIsRed(progress, durationMs);
+  const strength = 0.45 + 0.55 * progress;
+  return red
+    ? { color: CRIMSON, glow: CRIMSON, fillAlpha: strength }
+    : { color: EMERALD, glow: EMERALD, fillAlpha: strength * 0.8 };
+}
+
+function drawBlastOverlay(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  rect: FrameRect,
+  baseline: CalibrationBaseline,
+  overlay: CombatOverlay,
+  nowMs: number,
+): void {
+  const zone = zoneRect(baseline, rect);
+  const cx = zone.x + zone.w / 2;
+  const cy = zone.y + zone.h / 2;
+  const font = canvasFont(rect, 0.03, 900);
+
+  if (overlay.impact) {
+    const age = nowMs - overlay.impact.at;
+    const life = age / IMPACT_BURST_MS;
+    if (life <= 1) {
+      drawBurst(ctx, cx, cy, Math.max(zone.w, zone.h) * 0.45, overlay.impact.dodged, life);
+      drawLabel(
+        ctx,
+        overlay.impact.dodged ? 'DODGED!' : 'HIT!',
+        cx,
+        zone.y - rect.h * 0.05,
+        overlay.impact.dodged ? EMERALD : CRIMSON,
+        canvasFont(rect, 0.045, 900),
+      );
+    } else {
+      drawLabel(ctx, 'BACK IN THE ZONE', cx, zone.y - rect.h * 0.05, GOLD, font);
+    }
+    return;
+  }
+
+  const progress = clampProgress(nowMs, overlay);
+  const red = strobeIsRed(progress, overlay.judgeAt - overlay.startAt);
+  const vignette = ctx.createRadialGradient(
+    width / 2,
+    height / 2,
+    Math.min(width, height) * 0.35,
+    width / 2,
+    height / 2,
+    Math.max(width, height) * 0.75,
+  );
+  vignette.addColorStop(0, 'rgba(255, 45, 85, 0)');
+  vignette.addColorStop(1, `rgba(255, 45, 85, ${(red ? 0.15 : 0.05) + 0.35 * progress * progress})`);
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, width, height);
+
+  const remaining = Math.max(0, (overlay.judgeAt - nowMs) / 1000);
+  drawLabel(
+    ctx,
+    overlay.clear ? `CLEAR! STAY OUT ${remaining.toFixed(1)}` : `⚡ GET OUT! ${remaining.toFixed(1)}`,
+    cx,
+    zone.y - rect.h * 0.05,
+    overlay.clear ? EMERALD : red ? CRIMSON : EMERALD,
+    font,
+  );
+}
+
 function paint(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -321,8 +667,11 @@ function paint(
   if (showVideo && video) drawVideo(ctx, video, rect);
   else drawForest(ctx, width, height, nowMs);
 
+  const combat = model.combat ?? null;
+  const tint = combat ? blastTint(combat, nowMs) : null;
+
   if (model.baseline) {
-    drawZone(ctx, model.baseline, rect, model.inZone, model.calibrated, nowMs);
+    drawZone(ctx, model.baseline, rect, model.inZone, model.calibrated, nowMs, tint);
     const outline = silhouetteFromMetrics({
       centerX: model.baseline.centerX,
       shoulderHalf: Math.max(0.02, model.baseline.shoulderWidth / 2),
@@ -333,14 +682,24 @@ function paint(
     });
     const pulse = model.inZone ? 1 : 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(nowMs / 180));
     const fillAlpha = 0.05 + model.overlapScore * (model.inZone ? 0.55 : 0.28);
-    drawSkeleton(ctx, outline, rect, true, {
-      stroke: model.inZone ? `rgba(141, 255, 193, ${0.75 + 0.25 * pulse})` : `rgba(245, 193, 108, ${0.35 + 0.5 * pulse})`,
-      fill: model.inZone ? `rgba(141, 255, 193, ${fillAlpha})` : `rgba(245, 193, 108, ${fillAlpha})`,
-      glow: model.inZone ? GREEN : GOLD,
-      lineWidth: Math.max(2.5, rect.w * 0.006),
-      fillBody: true,
-    }, null);
+    const silhouetteStyle: PaintStyle = tint
+      ? {
+          stroke: tint.color,
+          fill: withAlpha(tint.color, 0.12 + 0.4 * tint.fillAlpha),
+          glow: tint.glow,
+          lineWidth: Math.max(4, rect.w * 0.009),
+          fillBody: true,
+        }
+      : {
+          stroke: model.inZone ? `rgba(141, 255, 193, ${0.75 + 0.25 * pulse})` : `rgba(245, 193, 108, ${0.35 + 0.5 * pulse})`,
+          fill: model.inZone ? `rgba(141, 255, 193, ${fillAlpha})` : `rgba(245, 193, 108, ${fillAlpha})`,
+          glow: model.inZone ? GREEN : GOLD,
+          lineWidth: Math.max(2.5, rect.w * 0.006),
+          fillBody: true,
+        };
+    drawSkeleton(ctx, outline, rect, true, silhouetteStyle, null);
     drawReturnSnap(ctx, rect, snapStartedAt, nowMs);
+    if (combat?.kind === 'zone_blast') drawBlastOverlay(ctx, width, height, rect, model.baseline, combat, nowMs);
   }
 
   if (model.landmarks && model.landmarks.length > 0) {
@@ -352,6 +711,8 @@ function paint(
       fillBody: false,
     }, null);
   }
+
+  if (combat?.kind === 'part_ring') drawPartRing(ctx, rect, combat, nowMs);
 
   model.teammatePoses.forEach((pose, index) => {
     if (pose.landmarks.length === 0) return;
@@ -390,6 +751,8 @@ export function VisionCanvas({ model, videoRef }: VisionCanvasProps) {
   const snapStartedAt = useRef(0);
   const prevInZone = useRef<boolean | null>(null);
   const lastChimeAt = useRef(0);
+  const strobeHalf = useRef(-1);
+  const impactHeardAt = useRef<number | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -430,6 +793,22 @@ export function VisionCanvas({ model, videoRef }: VisionCanvasProps) {
         playSilhouetteChime();
       }
       if (tracked) prevInZone.current = current.inZone;
+
+      const combat = current.combat ?? null;
+      if (combat?.kind === 'zone_blast' && !combat.impact) {
+        const progress = clampProgress(nowMs, combat);
+        const half = Math.floor(strobeCycles(progress, combat.judgeAt - combat.startAt) * 2);
+        if (half !== strobeHalf.current) {
+          strobeHalf.current = half;
+          if (half % 2 === 0) playStrobeTick(progress);
+        }
+      } else {
+        strobeHalf.current = -1;
+      }
+      if (combat?.impact && impactHeardAt.current !== combat.impact.at) {
+        impactHeardAt.current = combat.impact.at;
+        playImpact(combat.impact.dodged);
+      }
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       paint(ctx, canvas.width, canvas.height, current, videoRef.current, nowMs, snapStartedAt.current);

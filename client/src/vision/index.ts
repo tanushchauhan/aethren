@@ -1,30 +1,52 @@
 export {
+  APPROACH_RING_START_SCALE,
   ARM_RAISE_CLEARANCE,
   ARM_RAISE_COOLDOWN_MS,
   GESTURE_COOLDOWN_MS,
   SWIPE_SPEED_THRESHOLD,
   THRUST_SPEED_THRESHOLD,
   ArmRaiseHoldDetector,
+  BODY_PART_LABEL,
+  BODY_PART_TAG,
+  BODY_PART_TARGETS,
+  PART_TARGET_MIN_RADIUS,
+  PART_TARGET_RADIUS,
+  STROBE_END_HZ,
+  STROBE_START_HZ,
   WristVelocityTracker,
   actionBadgeLabel,
+  approachRingScale,
+  bodyPartPoints,
+  checkPartClearance,
+  distanceInRadii,
   buildPoseFrame,
   checkInZone,
   classifyDodgeAndPose,
   computeCalibrationBaseline,
   expectedDefense,
   getZoneBounds,
+  judgePartTarget,
   judgeTelegraphDefense,
+  judgeZoneBlast,
+  lockPartTarget,
   normalizeGesturePower,
   resolveActiveAction,
   resolveTorso,
+  strobeCycles,
+  strobeFrequencyHz,
+  strobeIsRed,
   VIRTUAL_HIP_DROP,
   VIRTUAL_HIP_MAX_Y,
 } from './poseClassifiers';
 export type {
   ArmRaiseHoldState,
+  BodyPartTarget,
+  CombatJudgment,
   DefenseJudgment,
   DodgeClassification,
   P0AttackType,
+  PartClearance,
+  PartTarget,
   ResolvedTorso,
   WristGesture,
   WristSample,
@@ -63,7 +85,7 @@ export {
 } from './poseLandmarkerService';
 export type { PoseLandmarkerServiceOptions, PoseServiceStatus, VisionSourceMode } from './poseLandmarkerService';
 
-export { VisionCanvas } from './VisionCanvas';
-export type { VisionCanvasModel, VisionCanvasProps } from './VisionCanvas';
+export { VisionCanvas, primeVisionAudio } from './VisionCanvas';
+export type { CombatOverlay, VisionCanvasModel, VisionCanvasProps } from './VisionCanvas';
 
 export { VISION_TEST_PATH, VisionTestPage } from './VisionTestPage';

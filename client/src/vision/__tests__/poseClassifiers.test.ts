@@ -9,17 +9,29 @@ import {
 import type { CalibrationBaseline, NormalizedLandmark } from '@once-upon/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  APPROACH_RING_START_SCALE,
   ARM_RAISE_CLEARANCE,
   ArmRaiseHoldDetector,
+  PART_TARGET_RADIUS,
+  STROBE_END_HZ,
+  STROBE_START_HZ,
   SWIPE_SPEED_THRESHOLD,
   THRUST_SPEED_THRESHOLD,
   WristVelocityTracker,
+  approachRingScale,
   checkInZone,
+  checkPartClearance,
   classifyDodgeAndPose,
   computeCalibrationBaseline,
   getZoneBounds,
+  judgePartTarget,
   judgeTelegraphDefense,
+  judgeZoneBlast,
+  lockPartTarget,
   resolveTorso,
+  strobeCycles,
+  strobeFrequencyHz,
+  strobeIsRed,
   VIRTUAL_HIP_DROP,
   VIRTUAL_HIP_MAX_Y,
 } from '../poseClassifiers';
@@ -406,5 +418,157 @@ describe('synthetic puppet continuity', () => {
     const atEnd = puppet.sample(200, { breathe: false });
     const duck = sampleSyntheticPose('duck', 200, { breathe: false });
     expect(atEnd[shoulder]?.y).toBeCloseTo(duck[shoulder]?.y ?? 0, 4);
+  });
+});
+
+describe('Osu! body-part target rings', () => {
+  const aspect = 16 / 9;
+  const standing = sampleSyntheticPose('standing_in_zone', 0, { breathe: false });
+  const target = (part: Parameters<typeof lockPartTarget>[1]) => {
+    const locked = lockPartTarget(standing, part, aspect);
+    if (!locked) throw new Error(`no ${part} target`);
+    return locked;
+  };
+
+  /** Slide only the given landmarks, leaving the rest of the body where it was. */
+  function shift(landmarks: NormalizedLandmark[], indices: readonly number[], dx: number, dy: number): NormalizedLandmark[] {
+    return landmarks.map((landmark, index) =>
+      indices.includes(index) ? { ...landmark, x: landmark.x + dx, y: landmark.y + dy } : landmark,
+    );
+  }
+
+  it('locks on the part and sizes the circle from shoulder width in frame-height units', () => {
+    const head = target('head');
+    const nose = standing[POSE_LANDMARK.nose];
+    expect(head.x).toBeCloseTo(nose?.x ?? 0, 6);
+    expect(head.y).toBeCloseTo(nose?.y ?? 0, 6);
+    expect(head.radius).toBeCloseTo(SYNTHETIC_BODY.shoulderHalf * 2 * PART_TARGET_RADIUS.head * aspect, 6);
+
+    const left = target('left_shoulder');
+    expect(left.x).toBeCloseTo(standing[POSE_LANDMARK.leftShoulder]?.x ?? 0, 6);
+    const chest = target('chest');
+    expect(chest.x).toBeCloseTo(SYNTHETIC_BODY.centerX, 6);
+    expect(chest.y).toBeCloseTo(SYNTHETIC_BODY.shoulderY, 6);
+
+    const noShoulder = withLandmark(standing, POSE_LANDMARK.rightShoulder, { visibility: 0 });
+    expect(lockPartTarget(noShoulder, 'head', aspect)).toBeNull();
+  });
+
+  it('stays in danger while the part sits still, for every part', () => {
+    for (const part of ['head', 'left_shoulder', 'right_shoulder', 'chest'] as const) {
+      const clearance = checkPartClearance(standing, target(part));
+      expect(clearance.cleared).toBe(false);
+      expect(clearance.inside).toBeGreaterThan(0);
+      expect(clearance.closest).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('measures a round circle on a wide frame', () => {
+    const head = target('head');
+    const edgeX = head.radius / head.aspect;
+    const point = (dx: number): NormalizedLandmark => ({ x: head.x + dx, y: head.y, z: 0, visibility: 1 });
+    const only = (landmark: NormalizedLandmark) => withLandmark(standing, POSE_LANDMARK.nose, landmark);
+    expect(checkPartClearance(only(point(edgeX * 0.98)), head).cleared).toBe(false);
+    expect(checkPartClearance(only(point(edgeX * 1.02)), head).cleared).toBe(true);
+    expect(checkPartClearance(only({ ...point(0), y: head.y + head.radius * 1.02 }), head).cleared).toBe(true);
+  });
+
+  it('clears only the part that moved', () => {
+    const headIndices = [POSE_LANDMARK.nose];
+    const leftArm = [POSE_LANDMARK.leftShoulder, POSE_LANDMARK.leftElbow, POSE_LANDMARK.leftWrist];
+    const headTilt = shift(standing, headIndices, 0.06, 0.02);
+    expect(checkPartClearance(headTilt, target('head')).cleared).toBe(true);
+    expect(checkPartClearance(headTilt, target('left_shoulder')).cleared).toBe(false);
+
+    const leanLeft = shift(standing, leftArm, 0.07, 0);
+    expect(checkPartClearance(leanLeft, target('left_shoulder')).cleared).toBe(true);
+    expect(checkPartClearance(leanLeft, target('right_shoulder')).cleared).toBe(false);
+    expect(checkPartClearance(leanLeft, target('head')).cleared).toBe(false);
+  });
+
+  it('reads whole-body dodges as clearing every ring', () => {
+    const duck = sampleSyntheticPose('duck', 0, { breathe: false });
+    const stepLeft = sampleSyntheticPose('side_step_left', 0, { breathe: false });
+    expect(checkPartClearance(duck, target('head')).cleared).toBe(true);
+    expect(checkPartClearance(duck, target('chest')).cleared).toBe(true);
+    expect(checkPartClearance(stepLeft, target('left_shoulder')).cleared).toBe(true);
+    expect(checkPartClearance(stepLeft, target('right_shoulder')).cleared).toBe(true);
+  });
+
+  it('counts a part that left the frame as cleared', () => {
+    expect(checkPartClearance(null, target('head'))).toMatchObject({ cleared: true, tracked: 0 });
+  });
+
+  it('judges HIT inside the circle, DODGED outside or with a parry', () => {
+    const head = target('head');
+    expect(judgePartTarget(head, checkPartClearance(standing, head)).dodged).toBe(false);
+    expect(judgePartTarget(head, checkPartClearance(standing, head), true).dodged).toBe(true);
+    const duck = sampleSyntheticPose('duck', 0, { breathe: false });
+    expect(judgePartTarget(head, checkPartClearance(duck, head))).toMatchObject({ dodged: true, part: 'head' });
+  });
+
+  it('shrinks the approach ring from the start scale to the inner circle', () => {
+    expect(approachRingScale(0)).toBe(APPROACH_RING_START_SCALE);
+    expect(approachRingScale(0.5)).toBeCloseTo((APPROACH_RING_START_SCALE + 1) / 2, 6);
+    expect(approachRingScale(1)).toBe(1);
+    expect(approachRingScale(-1)).toBe(APPROACH_RING_START_SCALE);
+    expect(approachRingScale(2)).toBe(1);
+  });
+});
+
+describe('whole-body silhouette blast', () => {
+  const durationMs = 3000;
+
+  it('ramps the strobe from the start rate to the end rate, faster near impact', () => {
+    expect(strobeFrequencyHz(0)).toBe(STROBE_START_HZ);
+    expect(strobeFrequencyHz(1)).toBe(STROBE_END_HZ);
+    expect(strobeFrequencyHz(5)).toBe(STROBE_END_HZ);
+    let previous = 0;
+    for (let i = 0; i <= 10; i += 1) {
+      const hz = strobeFrequencyHz(i / 10);
+      expect(hz).toBeGreaterThanOrEqual(previous);
+      previous = hz;
+    }
+    const firstHalf = strobeFrequencyHz(0.5) - strobeFrequencyHz(0);
+    const secondHalf = strobeFrequencyHz(1) - strobeFrequencyHz(0.5);
+    expect(secondHalf).toBeGreaterThan(firstHalf);
+  });
+
+  it('integrates the rate into a smooth cycle count', () => {
+    expect(strobeCycles(0, durationMs)).toBe(0);
+    const total = (durationMs / 1000) * (STROBE_START_HZ + (STROBE_END_HZ - STROBE_START_HZ) / 3);
+    expect(strobeCycles(1, durationMs)).toBeCloseTo(total, 6);
+    const dp = 1e-4;
+    for (const p of [0.1, 0.5, 0.9]) {
+      const rate = (strobeCycles(p + dp, durationMs) - strobeCycles(p, durationMs)) / (dp * (durationMs / 1000));
+      expect(rate).toBeCloseTo(strobeFrequencyHz(p), 2);
+    }
+  });
+
+  it('opens on red, flips more often near impact, and locks red at impact', () => {
+    expect(strobeIsRed(0, durationMs)).toBe(true);
+    expect(strobeIsRed(1, durationMs)).toBe(true);
+    expect(strobeIsRed(1.4, durationMs)).toBe(true);
+    const flipsBetween = (from: number, to: number): number => {
+      let flips = 0;
+      let last = strobeIsRed(from, durationMs);
+      for (let p = from; p < to; p += 0.001) {
+        const red = strobeIsRed(p, durationMs);
+        if (red !== last) flips += 1;
+        last = red;
+      }
+      return flips;
+    };
+    expect(flipsBetween(0.9, 0.999)).toBeGreaterThan(flipsBetween(0, 0.1) * 3);
+  });
+
+  it('dodges only when the torso leaves the silhouette or ducks under it', () => {
+    const baseline = standingBaseline();
+    const poseOf = (preset: 'standing_in_zone' | 'side_step_left' | 'side_step_right' | 'duck') =>
+      classifyDodgeAndPose(sampleSyntheticPose(preset, 0, { breathe: false }), baseline);
+    expect(judgeZoneBlast(poseOf('standing_in_zone')).dodged).toBe(false);
+    expect(judgeZoneBlast(poseOf('side_step_left'))).toMatchObject({ dodged: true, action: 'side_step_left' });
+    expect(judgeZoneBlast(poseOf('side_step_right'))).toMatchObject({ dodged: true, action: 'side_step_right' });
+    expect(judgeZoneBlast(poseOf('duck'))).toMatchObject({ dodged: true, action: 'duck' });
   });
 });

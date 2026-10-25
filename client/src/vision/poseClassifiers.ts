@@ -660,3 +660,199 @@ export class ArmRaiseHoldDetector {
     return { locked: false, heldMs, counting: true };
   }
 }
+
+/** Body parts an Osu!-style target ring can lock onto. Left and right are the player's own sides. */
+export type BodyPartTarget = 'head' | 'left_shoulder' | 'right_shoulder' | 'chest';
+
+export const BODY_PART_TARGETS: readonly BodyPartTarget[] = ['head', 'left_shoulder', 'right_shoulder', 'chest'];
+
+export const BODY_PART_LABEL: Record<BodyPartTarget, string> = {
+  head: 'Head / Face',
+  left_shoulder: 'Left Shoulder / Arm',
+  right_shoulder: 'Right Shoulder / Arm',
+  chest: 'Chest / Core',
+};
+
+/** Short tags drawn next to the ring on the canvas. */
+export const BODY_PART_TAG: Record<BodyPartTarget, string> = {
+  head: 'HEAD',
+  left_shoulder: 'L ARM',
+  right_shoulder: 'R ARM',
+  chest: 'CORE',
+};
+
+/** Inner circle radius as a share of shoulder width. Big enough to cover the part, small enough to lean out of. */
+export const PART_TARGET_RADIUS: Record<BodyPartTarget, number> = {
+  head: 0.26,
+  left_shoulder: 0.3,
+  right_shoulder: 0.3,
+  chest: 0.32,
+};
+
+/** Floor for the inner radius in normalized x units, so a tiny far-away body still gets a visible ring. */
+export const PART_TARGET_MIN_RADIUS = 0.03;
+
+/** The approach ring starts this many inner radii wide and shrinks to 1 at impact. */
+export const APPROACH_RING_START_SCALE = 3;
+
+/** Whole-body blast strobe ramps from this rate to {@link STROBE_END_HZ} as impact gets closer. */
+export const STROBE_START_HZ = 2;
+export const STROBE_END_HZ = 12;
+
+const PART_LANDMARKS: Record<Exclude<BodyPartTarget, 'chest'>, readonly number[]> = {
+  head: [POSE_LANDMARK.nose],
+  left_shoulder: [POSE_LANDMARK.leftShoulder, POSE_LANDMARK.leftElbow, POSE_LANDMARK.leftWrist],
+  right_shoulder: [POSE_LANDMARK.rightShoulder, POSE_LANDMARK.rightElbow, POSE_LANDMARK.rightWrist],
+};
+
+/**
+ * A target circle frozen in image space at the moment the telegraph starts.
+ * `radius` is in frame-height units; distances scale dx by `aspect` (frame width / height)
+ * so the circle stays round on a wide canvas.
+ */
+export interface PartTarget {
+  part: BodyPartTarget;
+  x: number;
+  y: number;
+  radius: number;
+  aspect: number;
+}
+
+export interface PartClearance {
+  /** True once every tracked point of the part sits outside the inner circle. */
+  cleared: boolean;
+  tracked: number;
+  inside: number;
+  /** Closest tracked point, in inner radii. Above 1 is outside. Infinity when nothing is tracked. */
+  closest: number;
+}
+
+export interface CombatJudgment {
+  kind: 'part_ring' | 'zone_blast';
+  part: BodyPartTarget | null;
+  dodged: boolean;
+  action: PoseActionType;
+  detail: string;
+}
+
+function shoulderMidpoint(landmarks: NormalizedLandmark[]): NormalizedLandmark | null {
+  const left = landmarkAt(landmarks, POSE_LANDMARK.leftShoulder);
+  const right = landmarkAt(landmarks, POSE_LANDMARK.rightShoulder);
+  if (!left || !right) return null;
+  return { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2, z: (left.z + right.z) / 2 };
+}
+
+/** Tracked points that decide whether a body part is still in the circle. Chest is the shoulder midpoint. */
+export function bodyPartPoints(landmarks: NormalizedLandmark[], part: BodyPartTarget): NormalizedLandmark[] {
+  if (part === 'chest') {
+    const mid = shoulderMidpoint(landmarks);
+    return mid ? [mid] : [];
+  }
+  return PART_LANDMARKS[part]
+    .map((index) => landmarkAt(landmarks, index))
+    .filter((landmark): landmark is NormalizedLandmark => landmark !== null);
+}
+
+/**
+ * Freezes a ring on the part where it is right now. Head locks on the nose, a shoulder on its
+ * shoulder joint, chest on the shoulder midpoint. Needs both shoulders to size the circle.
+ */
+export function lockPartTarget(
+  landmarks: NormalizedLandmark[],
+  part: BodyPartTarget,
+  aspect: number,
+): PartTarget | null {
+  const left = landmarkAt(landmarks, POSE_LANDMARK.leftShoulder);
+  const right = landmarkAt(landmarks, POSE_LANDMARK.rightShoulder);
+  if (!left || !right) return null;
+
+  let anchor: NormalizedLandmark | null;
+  if (part === 'head') anchor = landmarkAt(landmarks, POSE_LANDMARK.nose);
+  else if (part === 'left_shoulder') anchor = left;
+  else if (part === 'right_shoulder') anchor = right;
+  else anchor = shoulderMidpoint(landmarks);
+  if (!anchor) return null;
+
+  const safeAspect = aspect > 0 && Number.isFinite(aspect) ? aspect : 1;
+  const shoulderWidth = Math.abs(left.x - right.x);
+  const radius = Math.max(PART_TARGET_MIN_RADIUS, shoulderWidth * PART_TARGET_RADIUS[part]) * safeAspect;
+  return { part, x: anchor.x, y: anchor.y, radius, aspect: safeAspect };
+}
+
+/** Distance from the ring center in inner radii, measured on a round (aspect corrected) circle. */
+export function distanceInRadii(point: Pick<NormalizedLandmark, 'x' | 'y'>, target: PartTarget): number {
+  if (target.radius <= 0) return Number.POSITIVE_INFINITY;
+  return Math.hypot((point.x - target.x) * target.aspect, point.y - target.y) / target.radius;
+}
+
+/**
+ * Live overlap check for one ring. Any tracked point of the part inside the circle keeps it in danger.
+ * A part that has left the frame entirely counts as cleared.
+ */
+export function checkPartClearance(landmarks: NormalizedLandmark[] | null, target: PartTarget): PartClearance {
+  const points = landmarks ? bodyPartPoints(landmarks, target.part) : [];
+  let inside = 0;
+  let closest = Number.POSITIVE_INFINITY;
+  for (const point of points) {
+    const distance = distanceInRadii(point, target);
+    closest = Math.min(closest, distance);
+    if (distance <= 1) inside += 1;
+  }
+  return { cleared: inside === 0, tracked: points.length, inside, closest };
+}
+
+/** Outer ring scale over the countdown: {@link APPROACH_RING_START_SCALE} at 0, exactly 1 at impact. */
+export function approachRingScale(progress: number): number {
+  return APPROACH_RING_START_SCALE - (APPROACH_RING_START_SCALE - 1) * clamp01(progress);
+}
+
+/** Strobe rate at a point in the countdown. Eases in quadratically so the last second turns frantic. */
+export function strobeFrequencyHz(progress: number): number {
+  const p = clamp01(progress);
+  return STROBE_START_HZ + (STROBE_END_HZ - STROBE_START_HZ) * p * p;
+}
+
+/** Full red/green cycles completed so far: the integral of {@link strobeFrequencyHz} over elapsed time. */
+export function strobeCycles(progress: number, durationMs: number): number {
+  const p = clamp01(progress);
+  const seconds = Math.max(0, durationMs) / 1000;
+  return seconds * (STROBE_START_HZ * p + ((STROBE_END_HZ - STROBE_START_HZ) * p * p * p) / 3);
+}
+
+/** Each cycle shows red, then green. The strobe opens on red and locks solid red at impact. */
+export function strobeIsRed(progress: number, durationMs: number): boolean {
+  if (progress >= 1) return true;
+  return Math.floor(strobeCycles(progress, durationMs) * 2) % 2 === 0;
+}
+
+export function judgePartTarget(target: PartTarget, clearance: PartClearance, parried = false): CombatJudgment {
+  const label = BODY_PART_LABEL[target.part];
+  const dodged = parried || clearance.cleared;
+  let detail = `${label} was still inside the circle.`;
+  if (parried) detail = `Glove parry knocked the shot away from your ${label.toLowerCase()}.`;
+  else if (clearance.cleared) detail = `${label} cleared the circle in time.`;
+  return { kind: 'part_ring', part: target.part, dodged, action: 'none', detail };
+}
+
+/** Whole-body blast: the torso has to leave the silhouette to either side, or duck under it. */
+export function judgeZoneBlast(pose: DodgeClassification): CombatJudgment {
+  const action: PoseActionType = pose.isSideStepLeft
+    ? 'side_step_left'
+    : pose.isSideStepRight
+      ? 'side_step_right'
+      : pose.isDucking
+        ? 'duck'
+        : 'none';
+  const dodged = action !== 'none';
+  return {
+    kind: 'zone_blast',
+    part: null,
+    dodged,
+    action,
+    detail: dodged
+      ? action === 'duck'
+        ? 'Ducked under the silhouette blast.'
+        : 'Stepped clear of the silhouette blast.'
+      : 'Still inside the silhouette when it blew.',
+  };
+}
