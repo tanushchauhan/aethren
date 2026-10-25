@@ -10,8 +10,10 @@ import {
 import type { BuzzPattern } from '@once-upon/shared';
 import { GloveSimulatorPanel } from './GloveSimulatorPanel';
 import { SERIAL_BRIDGE_URL, SIMULATOR_HOTKEYS, useGloveHardware, type GloveHardwareController } from './useGloveHardware';
+import { DEBUG_HARDWARE_PATH } from '../debugRoutes';
 
-export const HARDWARE_TEST_PATH = '/hardware-test';
+/** The legacy `/hardware-test` URL redirects here. */
+export const HARDWARE_TEST_PATH = DEBUG_HARDWARE_PATH;
 
 const BUZZ_PATTERNS: readonly BuzzPattern[] = ['tick', 'cast', 'fizzle', 'hit'];
 

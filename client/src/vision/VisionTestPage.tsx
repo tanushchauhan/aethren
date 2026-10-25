@@ -69,9 +69,10 @@ import {
   type GauntletLevel,
   type GauntletState,
 } from './survivalGauntlet';
+import { DEBUG_VISION_PATH } from '../debugRoutes';
 
-/** Mount this view at `/vision-test`. The app shell is owned by another teammate. */
-export const VISION_TEST_PATH = '/vision-test';
+/** Mounted at /debug/vision; the legacy `/vision-test` URL redirects there. */
+export const VISION_TEST_PATH = DEBUG_VISION_PATH;
 
 /** Telegraph wind-up before the pose is judged. */
 export const ATTACK_COUNTDOWN_MS = 3000;

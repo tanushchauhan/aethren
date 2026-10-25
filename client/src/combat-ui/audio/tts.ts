@@ -1,10 +1,12 @@
+import { readActiveNarrator, type VoiceOption } from '../../audio-lab/voiceCatalog';
 import { serverUrl } from './serverUrl';
 
 /**
  * Narration for every combat screen.
  * Laptop A should use the Google Home Mini as its Bluetooth speaker.
  * Only the Spellbearer client invokes playback; the Partner sees captions. This module never calls Muse or
- * ElevenLabs and holds no API keys — it only asks our server at /api/tts.
+ * ElevenLabs and holds no API keys. It only asks our server at /api/tts, or, when a narrator was chosen on
+ * /debug/audio, the Vite dev server's /api/tts with that engine and voice.
  */
 
 const TTS_DEADLINE_MS = 800;
@@ -73,10 +75,12 @@ function browserSpeak(text: string, token: number): void {
   setActive(true);
   speakTimer = window.setTimeout(() => {
     if (token !== generation) return;
+    const narrator = readActiveNarrator();
+    const tuned = narrator?.engine === 'browser-web-speech' ? narrator : null;
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1;
-    utterance.pitch = 0.92;
-    utterance.lang = 'en-US';
+    utterance.rate = tuned?.rate ? Number(tuned.rate) : 1;
+    utterance.pitch = tuned?.pitch ? Number(tuned.pitch) : 0.92;
+    utterance.lang = tuned?.voice ?? 'en-US';
     utterance.onend = () => {
       if (token === generation) setActive(false);
     };
@@ -107,15 +111,34 @@ function readString(record: Record<string, unknown>, keys: readonly string[]): s
   return null;
 }
 
-async function fetchTts(text: string, signal: AbortSignal): Promise<TtsClip> {
-  const base = serverUrl();
-  let response = await fetch(`${base}/api/tts`, {
+function postTts(url: string, body: Record<string, string>, signal: AbortSignal): Promise<Response> {
+  return fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'audio/*,application/json' },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(body),
     signal,
   });
-  if (response.status === 404 || response.status === 405) {
+}
+
+/** The dev server answers /api/tts itself, so narration keeps a real voice while the game server is down. */
+function canUseDevTts(base: string): boolean {
+  return import.meta.env.DEV && typeof window !== 'undefined' && window.location.origin !== base;
+}
+
+async function fetchTts(text: string, signal: AbortSignal, narrator: VoiceOption | null): Promise<TtsClip> {
+  const base = serverUrl();
+  let response: Response;
+  if (narrator) {
+    response = await postTts('/api/tts', { text, engine: narrator.engine, voice: narrator.voice }, signal);
+  } else {
+    try {
+      response = await postTts(`${base}/api/tts`, { text }, signal);
+    } catch (error) {
+      if (signal.aborted || !canUseDevTts(base)) throw error;
+      response = await postTts('/api/tts', { text }, signal);
+    }
+  }
+  if (!narrator && (response.status === 404 || response.status === 405)) {
     response = await fetch(`${base}/api/tts?text=${encodeURIComponent(text)}`, {
       method: 'GET',
       headers: { Accept: 'audio/*,application/json' },
@@ -178,7 +201,8 @@ export function playNarration(request: NarrationRequest): void {
   stopNarration();
   const token = generation;
 
-  if (request.useBrowserTts) {
+  const narrator = readActiveNarrator();
+  if (request.useBrowserTts || narrator?.engine === 'browser-web-speech') {
     browserSpeak(text, token);
     return;
   }
@@ -200,7 +224,7 @@ export function playNarration(request: NarrationRequest): void {
 
   void (async () => {
     try {
-      const clip = await fetchTts(text, controller.signal);
+      const clip = await fetchTts(text, controller.signal, narrator);
       if (token !== generation) return;
       if (usedBrowser || performance.now() - started > TTS_DEADLINE_MS) {
         if (!usedBrowser) browserSpeak(text, token);
