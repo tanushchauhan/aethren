@@ -26,10 +26,10 @@ export function GloveSelect({ lostGlove = false, onBypass }: { lostGlove?: boole
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
-  async function pick(glove: GloveSummary) {
+  async function pick(glove: GloveSummary, force = false) {
     if (busy) return;
     setBusy(true);
-    const ok = await choose(glove.id);
+    const ok = await choose(glove.id, force);
     setBusy(false);
     setMessage(ok ? '' : `Glove ${glove.id} is not available right now.`);
   }
@@ -75,6 +75,10 @@ export function GloveSelect({ lostGlove = false, onBypass }: { lostGlove?: boole
             </button>
             {usable && <button type="button" className="glove-buzz" onClick={() => hub.send(glove.id, { cmd: 'ident' })}>
               Buzz this glove
+            </button>}
+            {state === 'in-use' && <button type="button" className="glove-buzz"
+              onClick={() => { if (window.confirm(`Take Glove ${glove.id} from the window that is using it?`)) void pick(glove, true); }}>
+              Take over (stale session)
             </button>}
           </li>;
         })}

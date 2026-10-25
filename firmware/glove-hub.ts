@@ -312,8 +312,12 @@ function handleClientMessage(socket: Socket, text: string): void {
     const g = gloves.get(message.id);
     const owner = owners.get(message.id);
     if (!g || !me) return reply(socket, { type: 'claim', id: message.id, ok: false, reason: 'unknown' });
-    if (owner && owner !== me) return reply(socket, { type: 'claim', id: message.id, ok: false, reason: 'in-use' });
+    if (owner && owner !== me && message.force !== true) return reply(socket, { type: 'claim', id: message.id, ok: false, reason: 'in-use' });
     if (Date.now() - g.lastSeen >= ONLINE_MS) return reply(socket, { type: 'claim', id: message.id, ok: false, reason: 'offline' });
+    if (owner && owner !== me) {
+      // Taking over a stale or abandoned session: the old window is told so it does not quietly claim the glove back.
+      for (const client of clients) if (clientIds.get(client) === owner) reply(client, { type: 'claim-lost', id: message.id });
+    }
     owners.set(message.id, me);
     reply(socket, { type: 'claim', id: message.id, ok: true });
     broadcast({ type: 'glove', glove: summary(g) });

@@ -111,7 +111,7 @@ export interface GloveHub {
   /** This browser connection's id, set once the hub says welcome. Compare with `GloveSummary.claimedBy`. */
   clientId: string | null;
   /** Resolves true when this connection now owns the glove, false when it is in use or offline. */
-  claim: (id: number) => Promise<boolean>;
+  claim: (id: number, force?: boolean) => Promise<boolean>;
   release: (id: number) => void;
   clear: (id?: number) => void;
 }
@@ -205,12 +205,12 @@ export function useGloveHub(url: string = GLOVE_HUB_URL): GloveHub {
     return () => { frameListeners.current.delete(listener); };
   }, []);
 
-  const claim = useCallback((id: number) => new Promise<boolean>((resolve) => {
+  const claim = useCallback((id: number, force = false) => new Promise<boolean>((resolve) => {
     const ws = socket.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return resolve(false);
     pendingClaims.current.get(id)?.(false);
     pendingClaims.current.set(id, resolve);
-    ws.send(JSON.stringify({ type: 'claim', id }));
+    ws.send(JSON.stringify({ type: 'claim', id, ...(force ? { force: true } : {}) }));
   }), []);
 
   const release = useCallback((id: number) => {

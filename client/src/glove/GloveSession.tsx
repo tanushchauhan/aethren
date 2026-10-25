@@ -29,7 +29,7 @@ export interface GloveSession {
   /** The glove this player has claimed, or null while they still need to pick one. */
   glove: GloveSummary | null;
   /** Claims a glove for this player. False when someone else is using it or it is offline. */
-  choose: (id: number) => Promise<boolean>;
+  choose: (id: number, force?: boolean) => Promise<boolean>;
   /** Gives the glove back so another player can use it. */
   leave: () => void;
   /** Every press, release, hold and dial move from every glove. Returns an unsubscribe function. */
@@ -46,8 +46,8 @@ export function GloveSessionProvider({ children }: { children: ReactNode }) {
     [gloves, clientId],
   );
 
-  const choose = useCallback(async (id: number) => {
-    const ok = await claim(id);
+  const choose = useCallback(async (id: number, force = false) => {
+    const ok = await claim(id, force);
     if (ok) {
       saveGlove(id);
       send(id, { cmd: 'ident' });
