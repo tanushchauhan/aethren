@@ -541,21 +541,9 @@ describe('glove bench markup', () => {
     expect(html).toContain('777');
   });
 
-  it('renders the hardware bench with the live port scanner, buzzer and LCD controls', () => {
+  it('renders the glove monitor with its hub instructions when the hub is offline', () => {
     const html = renderToStaticMarkup(createElement(HardwareTestPage));
-    for (const label of [
-      'Connect USB Arduino',
-      'Connect Bridge',
-      'D7 · Touch Sensor',
-      'D4 · Button 1 (Talk)',
-      'D8 · Button 2 (Lock)',
-      'A0 · Rotary Dial',
-      'I2C · Accelerometer',
-      'Buzzer (D5)',
-      'LCD (I2C)',
-      'Send to LCD',
-    ]) {
-      expect(html).toContain(label);
-    }
+    expect(html).toContain('Glove monitor');
+    expect(html).toContain('firmware hub');
   });
 });

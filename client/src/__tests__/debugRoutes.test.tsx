@@ -103,7 +103,7 @@ describe('LabsApp shell', () => {
   it('serves the hardware bench at /debug/hardware and through the legacy URL', () => {
     for (const path of [DEBUG_HARDWARE_PATH, '/hardware-test']) {
       const html = renderLabs(path);
-      expect(html, path).toContain('A0 · Rotary Dial');
+      expect(html, path).toContain('Glove monitor');
       expect(html, path).toMatch(/aria-current="page"[^>]*data-testid="nav-glove"/);
     }
   });

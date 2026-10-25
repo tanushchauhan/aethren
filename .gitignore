@@ -7,3 +7,6 @@ dist-ssr
 .env.local
 *.log
 .DS_Store
+
+# Glove firmware Wi-Fi credentials
+firmware/enchanted_glove/wifi_secrets.h
