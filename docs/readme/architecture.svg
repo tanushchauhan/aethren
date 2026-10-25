@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <marker id="arrow-gold" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d9b45a"/>
+    </marker>
+    <marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4fb3a9"/>
+    </marker>
+    <marker id="arrow-frost" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#98e8ff"/>
+    </marker>
+    <marker id="arrow-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a7a55"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="600" rx="18" fill="#0b1115"/>
+  <rect x="1" y="1" width="1198" height="598" rx="18" fill="none" stroke="#2a363c"/>
+
+  <!-- column headings -->
+  <g font-size="12" fill="#7d8b8f" letter-spacing="2">
+    <text x="165" y="40" text-anchor="middle">HARDWARE</text>
+    <text x="590" y="40" text-anchor="middle">LAPTOP</text>
+    <text x="1025" y="40" text-anchor="middle">GAME SCREENS</text>
+  </g>
+
+  <!-- gloves -->
+  <g>
+    <rect x="30" y="60" width="270" height="160" rx="10" fill="#141d22" stroke="#d9b45a" stroke-width="1.5"/>
+    <text x="50" y="92" font-size="17" font-weight="700" fill="#f1e3bd">Enchanted Glove 1</text>
+    <text x="50" y="116" font-size="12.5" fill="#c9bf9f">Arduino Uno R4 WiFi</text>
+    <text x="50" y="134" font-size="12.5" fill="#c9bf9f">+ Grove Base Shield</text>
+    <text x="50" y="162" font-size="12" fill="#8f9a9b">dial · B1 · B2 · touch</text>
+    <text x="50" y="180" font-size="12" fill="#8f9a9b">accelerometer · buzzer</text>
+    <text x="50" y="198" font-size="12" fill="#8f9a9b">16x2 RGB LCD</text>
+
+    <rect x="30" y="260" width="270" height="160" rx="10" fill="#141d22" stroke="#d9b45a" stroke-width="1.5"/>
+    <text x="50" y="292" font-size="17" font-weight="700" fill="#f1e3bd">Enchanted Glove 2</text>
+    <text x="50" y="316" font-size="12.5" fill="#c9bf9f">Same firmware,</text>
+    <text x="50" y="334" font-size="12.5" fill="#c9bf9f">different GLOVE_ID</text>
+    <text x="50" y="362" font-size="12" fill="#8f9a9b">flashed with</text>
+    <text x="50" y="380" font-size="12" fill="#8f9a9b">./flash.sh v4 | v2</text>
+  </g>
+
+  <!-- hub -->
+  <g>
+    <rect x="440" y="150" width="300" height="190" rx="10" fill="#122023" stroke="#4fb3a9" stroke-width="1.5"/>
+    <text x="460" y="184" font-size="17" font-weight="700" fill="#d8f2ee">Glove Hub</text>
+    <text x="460" y="206" font-size="12.5" fill="#9fcfc8">firmware/glove-hub.ts (Node)</text>
+    <text x="460" y="238" font-size="12" fill="#8f9a9b">UDP :4211  →  WebSocket :8765</text>
+    <text x="460" y="258" font-size="12" fill="#8f9a9b">hello handshake every 2 s</text>
+    <text x="460" y="278" font-size="12" fill="#8f9a9b">one claim per glove</text>
+    <text x="460" y="298" font-size="12" fill="#8f9a9b">relays the co-op boss fight</text>
+    <text x="460" y="318" font-size="12" fill="#8f9a9b">--simulate: two fake gloves</text>
+  </g>
+
+  <!-- browsers -->
+  <g>
+    <rect x="880" y="60" width="290" height="180" rx="10" fill="#1a1626" stroke="#c49bff" stroke-width="1.5"/>
+    <text x="900" y="92" font-size="17" font-weight="700" fill="#ece0ff">Browser A · host</text>
+    <text x="900" y="116" font-size="12.5" fill="#cbb6f0">React 19 + Vite + zustand</text>
+    <text x="900" y="146" font-size="12" fill="#8f9a9b">story, spell wheel, rituals</text>
+    <text x="900" y="166" font-size="12" fill="#8f9a9b">runs the battle store</text>
+    <text x="900" y="194" font-size="12" fill="#8f9a9b">webcam → MediaPipe pose</text>
+    <text x="900" y="212" font-size="12" fill="#8f9a9b">(local, never uploaded)</text>
+
+    <rect x="880" y="280" width="290" height="160" rx="10" fill="#1a1626" stroke="#c49bff" stroke-width="1.5"/>
+    <text x="900" y="312" font-size="17" font-weight="700" fill="#ece0ff">Browser B · guest</text>
+    <text x="900" y="336" font-size="12.5" fill="#cbb6f0">?hub=ws://&lt;hub-ip&gt;:8765</text>
+    <text x="900" y="366" font-size="12" fill="#8f9a9b">mirrors host snapshots</text>
+    <text x="900" y="386" font-size="12" fill="#8f9a9b">sends casts and parries</text>
+    <text x="900" y="406" font-size="12" fill="#8f9a9b">as intents</text>
+  </g>
+
+  <!-- server -->
+  <g>
+    <rect x="440" y="460" width="300" height="110" rx="10" fill="#0f1c24" stroke="#98e8ff" stroke-width="1.5"/>
+    <text x="460" y="492" font-size="17" font-weight="700" fill="#e2f8ff">Story Server</text>
+    <text x="460" y="514" font-size="12.5" fill="#a9d9e8">Express + Socket.IO :3001</text>
+    <text x="460" y="538" font-size="12" fill="#8f9a9b">serves the built client</text>
+    <text x="460" y="556" font-size="12" fill="#8f9a9b">four-letter room codes</text>
+  </g>
+
+  <!-- glove → hub (sensor frames) -->
+  <path d="M300,130 C370,130 380,205 436,210" fill="none" stroke="#d9b45a" stroke-width="2" marker-end="url(#arrow-gold)"/>
+  <path d="M300,330 C370,330 380,275 436,270" fill="none" stroke="#d9b45a" stroke-width="2" marker-end="url(#arrow-gold)"/>
+  <!-- hub → glove (buzz / lcd) -->
+  <path d="M436,232 C392,236 360,170 304,168" fill="none" stroke="#8a7a55" stroke-width="1.5" stroke-dasharray="5 5" marker-end="url(#arrow-dim)"/>
+  <path d="M436,250 C392,252 360,292 304,292" fill="none" stroke="#8a7a55" stroke-width="1.5" stroke-dasharray="5 5" marker-end="url(#arrow-dim)"/>
+  <g font-size="11.5">
+    <text x="318" y="106" fill="#d9b45a">UDP JSON · ~40 fps</text>
+    <text x="318" y="438" fill="#8a7a55">buzz · lcd · ident</text>
+  </g>
+
+  <!-- hub ↔ browsers -->
+  <path d="M744,205 C810,200 820,150 876,150" fill="none" stroke="#4fb3a9" stroke-width="2" marker-start="url(#arrow-teal)" marker-end="url(#arrow-teal)"/>
+  <path d="M744,285 C810,290 820,360 876,360" fill="none" stroke="#4fb3a9" stroke-width="2" marker-start="url(#arrow-teal)" marker-end="url(#arrow-teal)"/>
+  <text x="772" y="248" font-size="11.5" fill="#4fb3a9">WebSocket</text>
+  <text x="772" y="264" font-size="11.5" fill="#4fb3a9">TCP_NODELAY</text>
+
+  <!-- server ↔ browsers -->
+  <path d="M744,515 C860,515 1025,500 1025,444" fill="none" stroke="#98e8ff" stroke-width="1.6" stroke-dasharray="2 5" stroke-linecap="round" marker-end="url(#arrow-frost)"/>
+  <text x="800" y="545" font-size="11.5" fill="#98e8ff">Socket.IO · rooms (optional)</text>
+</svg>

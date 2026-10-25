@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 250" width="1200" height="250" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <rect width="1200" height="250" rx="18" fill="#0b1115"/>
+  <rect x="1" y="1" width="1198" height="248" rx="18" fill="none" stroke="#2a363c"/>
+
+  <!-- path -->
+  <path d="M80,110 H1120" stroke="#3a4a52" stroke-width="3" stroke-dasharray="2 8" stroke-linecap="round"/>
+
+  <g font-size="12" text-anchor="middle">
+    <!-- 1 title -->
+    <circle cx="80" cy="110" r="16" fill="#141d22" stroke="#d9b45a" stroke-width="2"/>
+    <text x="80" y="115" font-size="13" font-weight="700" fill="#f1e3bd">1</text>
+    <text x="80" y="60" font-size="14" font-weight="700" fill="#f1e3bd">Title</text>
+    <text x="80" y="156" fill="#8f9a9b">rainy forest</text>
+    <text x="80" y="174" fill="#8f9a9b">solo or co-op</text>
+
+    <!-- 2 rift -->
+    <circle cx="230" cy="110" r="16" fill="#141d22" stroke="#d9b45a" stroke-width="2"/>
+    <text x="230" y="115" font-size="13" font-weight="700" fill="#f1e3bd">2</text>
+    <text x="230" y="60" font-size="14" font-weight="700" fill="#f1e3bd">The Rift</text>
+    <text x="230" y="156" fill="#8f9a9b">voices, lightning,</text>
+    <text x="230" y="174" fill="#8f9a9b">two silhouettes</text>
+
+    <!-- 3 choice -->
+    <circle cx="380" cy="110" r="16" fill="#141d22" stroke="#d9b45a" stroke-width="2"/>
+    <text x="380" y="115" font-size="13" font-weight="700" fill="#f1e3bd">3</text>
+    <text x="380" y="60" font-size="14" font-weight="700" fill="#f1e3bd">…Which?</text>
+    <text x="380" y="156" fill="#8f9a9b">Stay (B1)</text>
+    <text x="380" y="174" fill="#8f9a9b">or Run (B2)</text>
+
+    <!-- 4 training -->
+    <circle cx="530" cy="110" r="16" fill="#141d22" stroke="#4fb3a9" stroke-width="2"/>
+    <text x="530" y="115" font-size="13" font-weight="700" fill="#d8f2ee">4</text>
+    <text x="530" y="60" font-size="14" font-weight="700" fill="#d8f2ee">Glove Training</text>
+    <text x="530" y="156" fill="#8f9a9b">6-step tutorial</text>
+    <text x="530" y="174" fill="#8f9a9b">mid-battle</text>
+
+    <!-- 5 wolves -->
+    <circle cx="680" cy="110" r="20" fill="#2b1810" stroke="#ff8a3d" stroke-width="2.5"/>
+    <text x="680" y="115" font-size="13" font-weight="700" fill="#ffe2cc">5</text>
+    <text x="680" y="60" font-size="14" font-weight="700" fill="#ffe2cc">Wolf Pack</text>
+    <text x="680" y="156" fill="#8f9a9b">2 stalkers +</text>
+    <text x="680" y="174" fill="#8f9a9b">a pack leader</text>
+
+    <!-- 6 escape -->
+    <circle cx="830" cy="110" r="16" fill="#141d22" stroke="#d9b45a" stroke-width="2"/>
+    <text x="830" y="115" font-size="13" font-weight="700" fill="#f1e3bd">6</text>
+    <text x="830" y="60" font-size="14" font-weight="700" fill="#f1e3bd">Escape</text>
+    <text x="830" y="156" fill="#8f9a9b">forest sprint,</text>
+    <text x="830" y="174" fill="#8f9a9b">castle, descent</text>
+
+    <!-- 7 gate -->
+    <circle cx="980" cy="110" r="16" fill="#141d22" stroke="#4fb3a9" stroke-width="2"/>
+    <text x="980" y="115" font-size="13" font-weight="700" fill="#d8f2ee">7</text>
+    <text x="980" y="60" font-size="14" font-weight="700" fill="#d8f2ee">At the Gate</text>
+    <text x="980" y="156" fill="#8f9a9b">pair with a second</text>
+    <text x="980" y="174" fill="#8f9a9b">screen, or go alone</text>
+
+    <!-- 8 boss -->
+    <circle cx="1120" cy="110" r="22" fill="#21142e" stroke="#c49bff" stroke-width="2.5"/>
+    <text x="1120" y="115" font-size="13" font-weight="700" fill="#ece0ff">8</text>
+    <text x="1120" y="60" font-size="14" font-weight="700" fill="#ece0ff">Gatekeeper</text>
+    <text x="1120" y="156" fill="#8f9a9b">240 HP solo</text>
+    <text x="1120" y="174" fill="#8f9a9b">360 HP co-op</text>
+  </g>
+  <text x="600" y="224" font-size="11.5" fill="#5f6d70" text-anchor="middle">Story scenes use authored dialogue, art, video and sound. Every scene can be skipped with Hold B2.</text>
+</svg>

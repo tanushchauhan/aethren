@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" width="1200" height="400" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d9b45a"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="400" rx="18" fill="#0b1115"/>
+  <rect x="1" y="1" width="1198" height="398" rx="18" fill="none" stroke="#2a363c"/>
+
+  <!-- steps -->
+  <g font-size="12.5">
+    <g transform="translate(30,40)">
+      <rect width="200" height="130" rx="10" fill="#141d22" stroke="#d9b45a" stroke-width="1.5"/>
+      <text x="18" y="32" font-size="11" fill="#8a7a55" letter-spacing="2">1 · CHOOSE</text>
+      <text x="18" y="60" font-size="16" font-weight="700" fill="#f1e3bd">Turn the dial</text>
+      <text x="18" y="86" fill="#8f9a9b">12 spells on the</text>
+      <text x="18" y="104" fill="#8f9a9b">radial wheel</text>
+    </g>
+    <g transform="translate(270,40)">
+      <rect width="200" height="130" rx="10" fill="#141d22" stroke="#d9b45a" stroke-width="1.5"/>
+      <text x="18" y="32" font-size="11" fill="#8a7a55" letter-spacing="2">2 · AIM</text>
+      <text x="18" y="60" font-size="16" font-weight="700" fill="#f1e3bd">Tap T</text>
+      <text x="18" y="86" fill="#8f9a9b">cycle through the</text>
+      <text x="18" y="104" fill="#8f9a9b">living enemies</text>
+    </g>
+    <g transform="translate(510,40)">
+      <rect width="200" height="130" rx="10" fill="#141d22" stroke="#d9b45a" stroke-width="1.5"/>
+      <text x="18" y="32" font-size="11" fill="#8a7a55" letter-spacing="2">3 · OPEN</text>
+      <text x="18" y="60" font-size="16" font-weight="700" fill="#f1e3bd">Press B1</text>
+      <text x="18" y="86" fill="#8f9a9b">the ritual stage</text>
+      <text x="18" y="104" fill="#8f9a9b">replaces the wheel</text>
+    </g>
+    <g transform="translate(750,40)">
+      <rect width="200" height="130" rx="10" fill="#141d22" stroke="#c49bff" stroke-width="1.5"/>
+      <text x="18" y="32" font-size="11" fill="#7f6aa6" letter-spacing="2">4 · WEAVE</text>
+      <text x="18" y="60" font-size="16" font-weight="700" fill="#ece0ff">Hit each step</text>
+      <text x="18" y="86" fill="#8f9a9b">2–5 steps, each with</text>
+      <text x="18" y="104" fill="#8f9a9b">its own timing bar</text>
+    </g>
+    <g transform="translate(990,40)">
+      <rect width="180" height="130" rx="10" fill="#141d22" stroke="#ff8a3d" stroke-width="1.5"/>
+      <text x="18" y="32" font-size="11" fill="#b86a35" letter-spacing="2">5 · RELEASE</text>
+      <text x="18" y="60" font-size="16" font-weight="700" fill="#ffe2cc">Spell fires</text>
+      <text x="18" y="86" fill="#8f9a9b">power × average</text>
+      <text x="18" y="104" fill="#8f9a9b">of step grades</text>
+    </g>
+  </g>
+  <g stroke="#d9b45a" stroke-width="2" marker-end="url(#a)">
+    <line x1="232" y1="105" x2="266" y2="105"/>
+    <line x1="472" y1="105" x2="506" y2="105"/>
+    <line x1="712" y1="105" x2="746" y2="105"/>
+    <line x1="952" y1="105" x2="986" y2="105"/>
+  </g>
+
+  <!-- timing bar -->
+  <text x="30" y="222" font-size="11" fill="#7d8b8f" letter-spacing="2">EACH RITUAL STEP · 4 SECOND TIMING BAR</text>
+  <g transform="translate(30,238)">
+    <rect x="0"    y="0" width="137"  height="44" fill="#4a1d1d"/>
+    <rect x="137"  y="0" width="182"  height="44" fill="#1d3a4a"/>
+    <rect x="319"  y="0" width="547"  height="44" fill="#6b5320"/>
+    <rect x="866"  y="0" width="160"  height="44" fill="#1d3a4a"/>
+    <rect x="1026" y="0" width="114"  height="44" fill="#4a1d1d"/>
+    <rect x="0" y="0" width="1140" height="44" fill="none" stroke="#3a4a52"/>
+    <g font-size="13" font-weight="700" text-anchor="middle">
+      <text x="68"   y="27" fill="#ff9b9b">EARLY ×0.75</text>
+      <text x="228"  y="27" fill="#98e8ff">GOOD ×1.15</text>
+      <text x="592"  y="27" fill="#ffe29a">★ PERFECT ×1.45</text>
+      <text x="946"  y="27" fill="#98e8ff">GOOD ×1.15</text>
+      <text x="1083" y="27" fill="#ff9b9b">LATE ×0.75</text>
+    </g>
+    <g font-size="11" fill="#7d8b8f" text-anchor="middle">
+      <text x="0"    y="64" text-anchor="start">0%</text>
+      <text x="137"  y="64">12%</text>
+      <text x="319"  y="64">28%</text>
+      <text x="866"  y="64">76%</text>
+      <text x="1026" y="64">90%</text>
+      <text x="1140" y="64" text-anchor="end">100%</text>
+    </g>
+  </g>
+  <g font-size="12.5">
+    <text x="30" y="350" fill="#e8dfc8">Steps are glove inputs (B1, B2, T, swing) and one body pose (raise arm). A step left to run out counts as missed (×0.5).</text>
+    <text x="30" y="374" fill="#8f9a9b">All perfect = "Perfect Weave". Unknown spells can be discovered by weaving their ritual from the wheel's hints.</text>
+  </g>
+</svg>
