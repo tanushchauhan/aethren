@@ -183,6 +183,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Listen on the network so other laptops at the demo can open the game.
+    host: true,
     // Dev only: forward server routes to the local server so the client can always use
     // same-origin URLs (`io()`, `fetch('/api/...')`), which is what production serves.
     proxy: {
