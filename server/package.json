@@ -3,20 +3,20 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Online presence rooms for the authored Once in a Memory story",
+  "description": "Authoritative combat server and story rooms for Once in a Memory",
   "scripts": {
-    "dev": "tsx watch src/storyServer.ts",
-    "start": "tsx src/storyServer.ts",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "@once-upon/shared": "workspace:*",
     "express": "^5.1.0",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.1",
-    "@types/multer": "^1.4.12",
     "@types/node": "^22.13.0",
     "socket.io-client": "^4.8.1",
     "tsx": "^4.19.3",

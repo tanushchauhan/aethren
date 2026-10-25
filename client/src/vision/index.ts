@@ -1,0 +1,121 @@
+export {
+  APPROACH_RING_START_SCALE,
+  ARM_RAISE_CLEARANCE,
+  ARM_RAISE_COOLDOWN_MS,
+  GESTURE_COOLDOWN_MS,
+  SWIPE_SPEED_THRESHOLD,
+  THRUST_SPEED_THRESHOLD,
+  ArmRaiseHoldDetector,
+  BODY_PART_LABEL,
+  BODY_PART_TAG,
+  BODY_PART_TARGETS,
+  HEAD_FALLBACK_DROP,
+  PART_TARGET_MAX_RADIUS,
+  PART_TARGET_MIN_RADIUS,
+  PART_TARGET_RADIUS,
+  STROBE_END_HZ,
+  STROBE_START_HZ,
+  WristVelocityTracker,
+  actionBadgeLabel,
+  approachRingScale,
+  baselineHeadY,
+  bodyPartPoints,
+  checkPartClearance,
+  checkPartClearances,
+  distanceInRadii,
+  buildPoseFrame,
+  checkInZone,
+  classifyDodgeAndPose,
+  computeCalibrationBaseline,
+  expectedDefense,
+  getZoneBounds,
+  headCenter,
+  judgePartTarget,
+  judgePartTargets,
+  judgeTelegraphDefense,
+  judgeZoneBlast,
+  lockPartTarget,
+  lockPartTargets,
+  normalizeGesturePower,
+  partTargetRadius,
+  resolveActiveAction,
+  resolveTorso,
+  strobeCycles,
+  strobeFrequencyHz,
+  strobeIsRed,
+  VIRTUAL_HIP_DROP,
+  VIRTUAL_HIP_MAX_Y,
+} from './poseClassifiers';
+export type {
+  ArmRaiseHoldState,
+  BodyPartTarget,
+  CombatJudgment,
+  DefenseJudgment,
+  DodgeClassification,
+  P0AttackType,
+  PartClearance,
+  PartTarget,
+  ResolvedTorso,
+  WristGesture,
+  WristSample,
+  WristTrackerOptions,
+  ZoneBounds,
+  ZoneCheck,
+} from './poseClassifiers';
+
+export {
+  SYNTHETIC_BODY,
+  SYNTHETIC_GESTURE_CYCLE_MS,
+  SYNTHETIC_PRESETS,
+  SYNTHETIC_PRESET_LABEL,
+  SYNTHETIC_STRIKE_END_MS,
+  SYNTHETIC_STRIKE_START_MS,
+  SyntheticPuppet,
+  buildSyntheticSkeleton,
+  generateSequence,
+  interpolateSyntheticPose,
+  sampleSyntheticPose,
+  silhouetteFromMetrics,
+} from './syntheticPoseGenerator';
+export type {
+  SilhouetteMetrics,
+  SyntheticPoseFrame,
+  SyntheticPosePreset,
+  SyntheticSampleOptions,
+} from './syntheticPoseGenerator';
+
+export {
+  POSE_MODEL_URL,
+  VISION_WASM_BASE,
+  PoseLandmarkerService,
+  isWebcamApiAvailable,
+  isWebGlAvailable,
+} from './poseLandmarkerService';
+export type { PoseLandmarkerServiceOptions, PoseServiceStatus, VisionSourceMode } from './poseLandmarkerService';
+
+export {
+  GAUNTLET_DIFFICULTIES,
+  GAUNTLET_DIFFICULTY_LABEL,
+  GAUNTLET_FINAL_WAVE,
+  GAUNTLET_HEARTS,
+  GAUNTLET_LEVELS,
+  advanceGauntletWave,
+  applyGauntletResult,
+  buildGauntletWave,
+  comboMultiplier,
+  createGauntletState,
+  levelForWave,
+  startGauntlet,
+} from './survivalGauntlet';
+export type {
+  GauntletAttack,
+  GauntletDifficulty,
+  GauntletIncoming,
+  GauntletLevel,
+  GauntletState,
+} from './survivalGauntlet';
+
+export { VisionCanvas, primeVisionAudio } from './VisionCanvas';
+export type { CombatOverlay, GameHud, VisionCanvasModel, VisionCanvasProps } from './VisionCanvas';
+
+export { VISION_TEST_PATH, VisionTestPage } from './VisionTestPage';

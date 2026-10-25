@@ -5,6 +5,6 @@ The current shared scope is the authored story through the first wolf encounter.
 - Presentation: title forest, scene transitions, dialogue, choices, sound mixing, accessibility, responsive viewport.
 - Story and assets: maintain checked-in dialogue, character colors/pitches, forest scenes, wolf artwork, and recordings.
 - Online rooms: maintain two-player room creation/joining and presence. Story advancement is currently local to each player.
-- Future combat: design separately after the encounter presentation is approved. Do not wire legacy spell, camera, hardware, or automatic combat systems back into the story.
+- Combat and glove: the room-based combat game, glove firmware/serial bridge and vision code are restored (design in [combat-design.md](combat-design.md)). The glove is the main controller. The debug labs live at `/debug/*`; the combat UI will be rebuilt inside the story.
 
-No runtime content generation or model services are used. Removed experiments remain recoverable in commit `af40c2e`.
+The Meta Muse track is dropped and its code is removed (chat memories, world generation, boss agent, transcription). The old `/combat` client and storybook protocol are gone too. Everything removed is recoverable from commit `04f97d7`; the full pre-cleanup project is in `af40c2e`.

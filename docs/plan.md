@@ -5,7 +5,7 @@ An authored fantasy visual novel with a rainy forest title, singleplayer or onli
 
 After the wolf encounter dialogue, the scene fades into a forest combat stage with three wolves. The stage has a local turn queue for the player and each wolf, portrait turn order, active-turn rings, health and energy bars, and battle music. Players can pass; wolves automatically use Roar, Charge and Slash, or Wait with energy costs, recovery, cooldowns, and self buffs. Each wolf moves to the foreground for its supplied action video and returns afterward. Player reactions, player damage resolution, dice, and boss progression are not implemented. See [Opponent combat](opponent-combat.md) for stats, rules, and video cues.
 
-All dialogue, artwork, and sound are checked-in assets. Nothing is generated at runtime. There are no model providers, speech synthesis/transcription services, chat imports, camera tracking, or glove controls.
+The main story and wolf encounter use checked-in dialogue, artwork, video, and sound; they do not depend on runtime generation, chat imports, camera tracking, or glove controls. Main’s separate debug labs retain their audio, vision, and hardware tools, and the server combat engine remains available alongside story rooms.
 
 ## Flow
 1. New Adventure chooses Singleplayer or Play Online; Join Adventure accepts a four-letter room code.
@@ -18,4 +18,8 @@ All dialogue, artwork, and sound are checked-in assets. Nothing is generated at 
 Dark teal, charcoal, muted gold, pixel fonts, translucent dialogue panels, slow camera movement, and sparse sound. Motion reduction disables camera movement and softens the flash. Next reveals or advances text; Skip bypasses dialogue while retaining the Stay/Run decision. Sound controls affect all story audio.
 
 ## Recovery
-Commit `af40c2e` preserves the complete project before cleanup, including retired integrations and combat experiments. Historical implementations can be recovered from Git; they are not part of the active game.
+Commit `af40c2e` preserves the complete project before cleanup, including retired integrations and combat experiments. Historical implementations can be recovered from Git. Main has since restored the server combat engine, glove controls, and debug labs described below; the story’s wolf encounter uses the local opponent implementation above.
+
+
+## Combat and glove (in progress)
+The round-based combat (telegraph, dodge, parry, team turn, Twin Cast, shared hearts), the glove controller and the debug labs are restored and being adapted to this story. See [combat-design.md](combat-design.md). The server engine runs the rounds (cast needs no spoken incantation) and the labs at `/debug` drive it. The combat UI will be rebuilt inside the story.
