@@ -333,6 +333,7 @@ Each laptop tracks only its own player, which keeps tracking fast and simple. At
 AI builds and runs the whole game world, so removing it removes the game.
 
 - **Muse Voice Transcribe:** transcribes every incantation.
+- **Narrator & Boss Voice (TTS):** tries Meta Muse Voice / audio synthesis first on the Meta API key; if unavailable, falls back to ElevenLabs (`eleven_flash_v2_5`) or OpenAI TTS, with browser `window.speechSynthesis` as an instant offline fallback.
 - **Muse Spark:** acts as the fairy-tale Narrator. It finds memorable moments in the group chat and turns them into the encounters, the boss and the incantation phrases, and writes Narrator lines. It also plays the boss as an agent, choosing each attack through tool calls. From P1, it also judges tone and names new spell combinations.
 - **Muse Image:** paints the cover, the monster and the boss.
 - **MediaPipe Pose Landmarker (computer vision):** tracks each player's body on their own laptop. No video is saved or sent.

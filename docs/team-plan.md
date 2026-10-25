@@ -22,7 +22,7 @@ For a hackathon build combining real-time multiplayer, browser computer vision, 
 | **Backend (`server/`)** | **Node.js + Express + Socket.IO + `tsx` + Zod** | Authoritative room state, sub-10ms clock sync (`ping`/`pong`), scheduled telegraphs, 15 Hz landmark relay, and REST endpoints (`/api/upload-chat`, `/api/transcribe`) on one port. | Fastify + native `ws` |
 | **AI Integration** | **`openai` Node SDK (pointed at Meta Muse API base URL) + Zod Structured Outputs** | Meta's Model API supports OpenAI-compatible chat/completions, structured JSON schemas, tool calling (**Muse Spark**), audio transcription (**Muse Voice Transcribe**), and image generation (**Muse Image**). | Direct `fetch` REST wrapper |
 | **Muse Connector (MCP)** | **`@modelcontextprotocol/sdk` (Streamable HTTP / SSE at `/mcp`)** | Exposes `list_memory_cards`, `create_quest`, `invite_player`, and `get_quest_status` on the same Express server with Bearer token auth so Muse on a phone can set up the quest. | FastMCP |
-| **Narrator Voice (TTS)** | **Web Speech API (`speechSynthesis`) / Server TTS Audio routed to Google Home Mini** | Laptop A pairs with Google Home Mini as a Bluetooth speaker; Narrator lines play aloud while synced captions display on both laptops. | ElevenLabs / OpenAI TTS |
+| **Narrator Voice (TTS)** | **Meta Muse TTS / Audio Output (Primary) -> Fallback: ElevenLabs (`eleven_flash_v2_5`) / OpenAI TTS (`gpt-4o-mini-tts`) / Browser `speechSynthesis`** | Try Meta's voice synthesis endpoint (`/v1/audio/speech` on the Muse API key) first for a 100% Meta Muse stack; if unavailable or slow, fall back to ElevenLabs (`eleven_flash_v2_5`, ~75ms latency) or OpenAI TTS, with browser `window.speechSynthesis` as the zero-network offline fallback. Audio routes to Google Home Mini on Laptop A. | Cartesia Sonic-2 / `kokoro-js` local TTS |
 | **Hosting & Deployment** | **Render or Railway** (single Node service serving API + Socket.IO + static Vite build + `/mcp`) | Gives a public `https://` URL immediately for both laptops (bypassing venue client-isolation Wi-Fi) and for Meta's cloud Muse MCP connector. | Fly.io or local server + `cloudflared` tunnel |
 
 ---
@@ -101,7 +101,11 @@ Each teammate acts as an orchestrator running **3 parallel coding agents** on is
   - **Muse Spark** world generator: takes chosen cards + player names and returns structured `WorldSchema` JSON (`title`, `intro`, `incantations`, `encounters`, `boss`) with Zod clamping/defaults.
   - **Muse Image** generator: fires 3 parallel calls (`cover`, `monster`, `boss`), streaming image URLs to the room as they resolve.
   - **Muse Voice Transcribe** (`POST /api/transcribe`): transcribes push-to-talk audio blob, performs 60% fuzzy word match against the active element's incantation phrase, and enforces the 3-attempt mercy rule (3rd try auto-passes at 0.5x power).
-  - **Cached Demo World**: writes and loads `server/src/ai/cached-demo-world.json` (plus static fallback images) so a single flag or API timeout instantly serves a complete world.
+  - **Narrator & Boss TTS Service (`POST /api/tts`)**:
+    1. **Primary:** Attempts Meta Muse Voice / Audio Output (`/v1/audio/speech` on the Meta Model API key) first so the entire voice loop stays on Meta's stack.
+    2. **Cloud Fallback:** Automatically falls back to **ElevenLabs (`eleven_flash_v2_5`)** (or OpenAI `gpt-4o-mini-tts` / Cartesia) with in-memory hash caching if Meta TTS is unsupported on the key or errors.
+    3. **Client Offline Fallback:** Signals the client to use `window.speechSynthesis` if network TTS exceeds 800ms.
+  - **Cached Demo World**: writes and loads `server/src/ai/cached-demo-world.json` (plus static fallback images and pre-cached telegraph audio clips) so a single flag or API timeout instantly serves a complete world.
 - **Testable independently via:** CLI test runner hitting `/api/chat-upload` and `/api/transcribe` with sample JSON/audio fixtures.
 
 #### Agent 1C — Boss Agent (Tool Calling) & Muse MCP Connector (`server/src/agents/`)
@@ -148,7 +152,7 @@ Each teammate acts as an orchestrator running **3 parallel coding agents** on is
   - **3-Element Spell Wheel (`Ember`, `Frost`, `Bloom`)**: rotates smoothly with rotary dial or arm-raise, displays the generated group-chat incantation phrase for the selected element, and shows fist-charge / out-of-position status.
   - **Push-to-Talk & Narrator Audio Engine**:
     - Captures mic audio ONLY while finger button (Laptop A) or `Spacebar` (Laptop B) is held; uploads blob to `/api/transcribe`.
-    - Plays Narrator TTS lines (via Web Speech API / audio stream on Laptop A routed to Google Home Mini) and renders high-contrast captions on every screen.
+    - Plays Narrator & Boss TTS lines on Laptop A (routed to the Google Home Mini): requests audio from `/api/tts` (which tries **Meta Muse TTS** first, then falls back to **ElevenLabs `eleven_flash_v2_5` / OpenAI TTS**), and automatically falls back to browser `window.speechSynthesis` if offline/slow, while rendering high-contrast captions on every screen.
     - Displays "Room Too Loud — Mic Gate Raised" banner when the Arduino sound sensor crosses threshold.
 - **Testable independently via:** Dev Mock Toolbar triggering telegraphs, wheel rotations, and push-to-talk recordings.
 
