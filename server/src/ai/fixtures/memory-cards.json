@@ -22,5 +22,13 @@
     "people": ["Maya"],
     "mood": "proud",
     "color": "#52B788"
+  },
+  {
+    "id": "card-karaoke",
+    "quote": "we are never doing karaoke again. by never i mean thursday",
+    "date": "2026-02-14",
+    "people": ["Dev", "Priya"],
+    "mood": "silly",
+    "color": "#FFB703"
   }
 ]

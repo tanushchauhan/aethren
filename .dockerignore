@@ -1,0 +1,26 @@
+# Dependencies and build output are recreated inside the image
+**/node_modules
+**/dist
+**/.vite
+**/coverage
+**/*.tsbuildinfo
+
+# Secrets: Coolify injects env vars at runtime
+**/.env
+**/.env.*
+!**/.env.example
+
+# VCS, tooling, editor and OS noise
+.git
+.gitignore
+.claude
+.vscode
+.idea
+**/*.log
+**/.DS_Store
+
+# Not needed in the image
+docs
+firmware
+Dockerfile
+.dockerignore
