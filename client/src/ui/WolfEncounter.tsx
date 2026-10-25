@@ -1,3 +1,4 @@
+import { AfterWolfEncounter } from './AfterWolfEncounter';
 import { WolfCombatStage } from './WolfCombatStage';
 import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
@@ -7,13 +8,14 @@ import { RainOverlay } from './components/RainOverlay';
 export function WolfEncounter({ muted, onToggleSound }: { muted: boolean; onToggleSound: () => void }) {
   const [choice, setChoice] = useState<'stay' | 'run' | null>(null);
   const reduced = useReducedMotion();
-  const [stage, setStage] = useState<'story' | 'transition' | 'combat'>('story');
+  const [stage, setStage] = useState<'story' | 'transition' | 'combat' | 'after'>('story');
   useEffect(() => {
     ['/art/combat/wolf-clearing.png', '/art/combat/wolf-stalker.png', '/art/combat/wolf-leader.png'].forEach(src => { const image = new Image(); image.src = src; });
   }, []);
   const firstChoice = useRef<HTMLButtonElement>(null);
   useEffect(() => { firstChoice.current?.focus(); }, []);
-  if (stage === 'combat') return <WolfCombatStage muted={muted} onToggleSound={onToggleSound} />;
+  if (stage === 'after') return <AfterWolfEncounter muted={muted} onToggleSound={onToggleSound} />;
+  if (stage === 'combat') return <WolfCombatStage muted={muted} onToggleSound={onToggleSound} onContinue={() => setStage('after')} />;
   return <motion.main initial={false} animate={{ opacity: stage === 'transition' ? 0 : 1 }}
     transition={{ duration: reduced ? .15 : .7 }}
     onAnimationComplete={() => { if (stage === 'transition') setStage('combat'); }}

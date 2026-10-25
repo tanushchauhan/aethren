@@ -3,7 +3,7 @@
 .wolf-combat-heading { position: absolute; top: 9%; left: 0; right: 0; text-align: center; text-shadow: 0 3px 6px #020609; pointer-events: none; }
 .wolf-combat-heading p { margin: 0 0 8px; font-size: 14px; letter-spacing: 4px; text-transform: uppercase; color: #afc0bb; }
 .wolf-combat-heading h1 { margin: 0; font-size: 32px; font-weight: 400; outline: none; }
-.wolf-formation { position: absolute; inset: 25% 14% 36%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 4%; }
+.wolf-formation { position: absolute; inset: 23% 14% 40%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 4%; }
 .wolf-combatant { position: relative; width: 100%; aspect-ratio: 3 / 2; min-width: 0; }
 .wolf-turn-ring { position: absolute; bottom: -5px; left: 9%; right: 9%; height: 13%; border: 2px solid #f17078; border-radius: 50%; background: #b0223233; box-shadow: 0 0 14px #eb3349aa, inset 0 0 12px #eb334977; transition: background .25s, border-color .25s, box-shadow .25s; }
 .wolf-combatant.is-active .wolf-turn-ring { border-color: #a0f3b1; background: #2ba76544; box-shadow: 0 0 20px #55ec8bcc, inset 0 0 14px #55ec8b99; }
@@ -11,7 +11,7 @@
 .wolf-combatant.mirrored .wolf-sprite { transform: scaleX(-1); }
 .wolf-bars { position: absolute; bottom: calc(100% + 12px); left: 10%; right: 5%; display: grid; gap: 10px; }
 .wolf-stat-bar { position: relative; height: 18px; }
-.wolf-stat-track { position: relative; box-sizing: border-box; height: 100%; border: 3px solid #431d29; border-radius: 12px; background: #161b20; overflow: hidden; box-shadow: 0 2px 3px #0009; }
+.wolf-stat-track { position: relative; box-sizing: border-box; height: 100%; border: 3px solid #431d29; border-radius: 0; background: #161b20; overflow: hidden; box-shadow: 0 2px 3px #0009; }
 .wolf-stat-fill { display: block; height: 100%; background: #d66072; }
 .wolf-stat-markers { position: absolute; inset: 0; }
 .wolf-stat-markers i { position: absolute; top: 0; bottom: 0; width: 2px; background: #0a0b0ee6; }
@@ -43,3 +43,34 @@
 .wolf-move-intent { position: absolute; top: calc(100% + 16px); left: 50%; transform: translateX(-50%); white-space: nowrap; padding: 5px 12px; background: #081820dc; border: 1px solid #8d7b50; color: #e7d4a5; font-size: 16px; }
 .combat-pass:disabled { opacity: .35; cursor: default; }
 .combat-pass:disabled:hover { background: #081820d9; }
+
+.spell-effect { position: absolute; z-index: 4; inset: 0; pointer-events: none; overflow: hidden; }
+.spell-particle { display: block; position: absolute; mask-size: contain; mask-repeat: no-repeat; mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; filter: drop-shadow(0 0 10px currentColor) drop-shadow(0 0 16px currentColor); }
+.spell-projectile { width: 130px; height: 130px; margin-left: -65px; margin-top: -65px; }
+.spell-impact { position: absolute; }
+.spell-wave { width: 100px; height: 100px; left: -50px; top: -50px; }
+.spell-fragment { width: 35px; height: 35px; left: -17px; top: -17px; }
+.wolf-hit-feedback { position: absolute; top: -90px; left: 50%; padding: 5px 12px; background: #06101ab3; border: 1px solid #ffb1b1; border-radius: 0; color: #ffd6d6; font-size: 24px; pointer-events: none; }
+.wolf-hit-feedback.dodge { color: #d9f4ff; border-color: #a3d7ed; font-size: 18px; }
+.wolf-hurt { animation: wolf-hit-flash .35s ease-out; }
+@keyframes wolf-hit-flash { 0%, 40% { filter: brightness(1.8) sepia(1) saturate(3) hue-rotate(310deg); } 100% { filter: brightness(.72); } }
+@media (prefers-reduced-motion: reduce) { .wolf-hurt { animation: none; } }
+.turn-announcement { z-index: 4; }
+.turn-announcement h2 { margin: 0; font-size: 32px; font-weight: 400; }
+.spell-travel-core { position: absolute; }
+.spell-casting-sigil { width: 140px; height: 140px; left: calc(50% - 70px); top: calc(68% - 70px); }
+.spell-trail { width: 65px; height: 65px; margin-left: -32px; margin-top: -32px; }
+.spell-inner-core { width: 85px; height: 85px; left: -42px; top: -42px; }
+.spell-residue { width: 110px; height: 110px; left: -55px; top: -55px; }
+.encounter-victory { position: absolute; z-index: 8; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; background: #04111ac9; text-align: center; }
+.encounter-victory > p { margin: 0; text-transform: uppercase; letter-spacing: 5px; color: #e7d4a5; font-size: 19px; }
+.encounter-victory h2 { margin: 0; font-size: 48px; font-weight: 400; color: #f3e8cf; text-shadow: 0 3px 8px #000; }
+.encounter-victory > span { color: #c3d3dd; font-size: 20px; }
+.encounter-victory button { margin-top: 12px; border: 1px solid #fff9; background: #dceafa30; padding: 12px 32px; font: 22px 'Pixelify Sans', monospace; color: #fff; cursor: pointer; }
+.encounter-victory button:focus-visible { outline: 2px solid #e7d4a5; outline-offset: 5px; }
+.after-encounter-story { position: absolute; left: 12%; right: 12%; bottom: 12%; padding: 32px; background: #06121dd9; border: 1px solid #b5bfc87a; color: #e7e2cb; }
+.after-encounter-story h1 { font-size: 40px; font-weight: 400; outline: none; margin: 8px 0 20px; }
+.after-encounter-story p { font-size: 23px; line-height: 1.6; margin: 0; }
+.player-panel-footer .diagnostic-end-turn { border: 1px solid #ffffff8c; padding: 5px 12px; text-decoration: none; }
+
+.wolf-combat-stage button, .wolf-combat-stage select { border-radius: 0; }
