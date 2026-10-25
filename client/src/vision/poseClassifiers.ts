@@ -58,6 +58,15 @@ const UPPER_BODY_INDICES = [
 
 const HIP_INDICES = [POSE_LANDMARK.leftHip, POSE_LANDMARK.rightHip] as const;
 
+/** MediaPipe face points. The shared map only lists body joints. */
+const FACE_LANDMARK = { leftEye: 2, rightEye: 5, leftEar: 7, rightEar: 8 } as const;
+
+/**
+ * With no face seen during calibration, the head center sits this many shoulder widths
+ * (measured in pixels) above the shoulder line.
+ */
+export const HEAD_FALLBACK_DROP = 0.42;
+
 export interface ZoneBounds {
   minX: number;
   maxX: number;
@@ -216,7 +225,33 @@ function averageVisibility(landmarks: NormalizedLandmark[], indices: readonly nu
 }
 
 /**
- * Average a standing clip into shoulder height, shoulder width, hip height, and center x.
+ * Middle of the head: the nose and both ears averaged. When an ear is hidden (a turned head),
+ * the eyes stand in so the center does not slide toward the one visible ear.
+ */
+export function headCenter(landmarks: NormalizedLandmark[]): NormalizedLandmark | null {
+  const nose = landmarkAt(landmarks, POSE_LANDMARK.nose);
+  const leftEar = landmarkAt(landmarks, FACE_LANDMARK.leftEar);
+  const rightEar = landmarkAt(landmarks, FACE_LANDMARK.rightEar);
+  const sides =
+    leftEar && rightEar
+      ? [leftEar, rightEar]
+      : [landmarkAt(landmarks, FACE_LANDMARK.leftEye), landmarkAt(landmarks, FACE_LANDMARK.rightEye)];
+  const points = [nose, ...sides].filter((point): point is NormalizedLandmark => point !== null);
+  if (points.length === 0) return null;
+  let x = 0;
+  let y = 0;
+  let z = 0;
+  for (const point of points) {
+    x += point.x;
+    y += point.y;
+    z += point.z;
+  }
+  return { x: x / points.length, y: y / points.length, z: z / points.length };
+}
+
+/**
+ * Average a standing clip into shoulder height, shoulder width, hip height, center x, and the
+ * head center when the face is visible.
  * The caller collects the clip for {@link CALIBRATION_DURATION_MS} (3 seconds), or passes a
  * single recent frame for an instant lock. Hips off screen fall back to {@link resolveTorso}.
  * Returns null when no frame contains both shoulders.
@@ -230,6 +265,8 @@ export function computeCalibrationBaseline(
   let hipY = 0;
   let centerX = 0;
   let count = 0;
+  let headY = 0;
+  let headCount = 0;
 
   for (const frame of samples) {
     const torso = resolveTorso(frame);
@@ -241,6 +278,12 @@ export function computeCalibrationBaseline(
     hipY += (leftHip.y + rightHip.y) / 2;
     centerX += (leftShoulder.x + rightShoulder.x) / 2;
     count += 1;
+
+    const head = headCenter(frame);
+    if (head) {
+      headY += head.y;
+      headCount += 1;
+    }
   }
 
   if (count === 0) return null;
@@ -251,7 +294,19 @@ export function computeCalibrationBaseline(
     hipY: hipY / count,
     centerX: centerX / count,
     calibratedAt: timestampMs,
+    ...(headCount > 0 ? { noseY: headY / headCount } : {}),
   };
+}
+
+/**
+ * Head center height for drawing the silhouette. Uses the calibrated head when there is one,
+ * otherwise {@link HEAD_FALLBACK_DROP} shoulder widths above the shoulders. `aspect` (frame
+ * width / height) turns the shoulder width from x units into y units.
+ */
+export function baselineHeadY(baseline: CalibrationBaseline, aspect = 1): number {
+  if (baseline.noseY !== undefined && Number.isFinite(baseline.noseY)) return baseline.noseY;
+  const safeAspect = aspect > 0 && Number.isFinite(aspect) ? aspect : 1;
+  return baseline.shoulderY - baseline.shoulderWidth * safeAspect * HEAD_FALLBACK_DROP;
 }
 
 /**
@@ -681,9 +736,13 @@ export const BODY_PART_TAG: Record<BodyPartTarget, string> = {
   chest: 'CORE',
 };
 
-/** Inner circle radius as a share of shoulder width. Big enough to cover the part, small enough to lean out of. */
+/**
+ * Inner circle radius as a share of the calibrated shoulder width. The head ring is a bit wider
+ * than a real head (about half a shoulder width across), so it covers the face without swallowing
+ * the shoulders, and it scales with the player whether they stand 1 m or 2 m back.
+ */
 export const PART_TARGET_RADIUS: Record<BodyPartTarget, number> = {
-  head: 0.26,
+  head: 0.28,
   left_shoulder: 0.3,
   right_shoulder: 0.3,
   chest: 0.32,
@@ -692,6 +751,14 @@ export const PART_TARGET_RADIUS: Record<BodyPartTarget, number> = {
 /** Floor for the inner radius in normalized x units, so a tiny far-away body still gets a visible ring. */
 export const PART_TARGET_MIN_RADIUS = 0.03;
 
+/** Ceiling for the inner radius in normalized x units, so a face right at the lens can still lean out. */
+export const PART_TARGET_MAX_RADIUS: Record<BodyPartTarget, number> = {
+  head: 0.11,
+  left_shoulder: 0.12,
+  right_shoulder: 0.12,
+  chest: 0.13,
+};
+
 /** The approach ring starts this many inner radii wide and shrinks to 1 at impact. */
 export const APPROACH_RING_START_SCALE = 3;
 
@@ -699,8 +766,7 @@ export const APPROACH_RING_START_SCALE = 3;
 export const STROBE_START_HZ = 2;
 export const STROBE_END_HZ = 12;
 
-const PART_LANDMARKS: Record<Exclude<BodyPartTarget, 'chest'>, readonly number[]> = {
-  head: [POSE_LANDMARK.nose],
+const PART_LANDMARKS: Record<Exclude<BodyPartTarget, 'chest' | 'head'>, readonly number[]> = {
   left_shoulder: [POSE_LANDMARK.leftShoulder, POSE_LANDMARK.leftElbow, POSE_LANDMARK.leftWrist],
   right_shoulder: [POSE_LANDMARK.rightShoulder, POSE_LANDMARK.rightElbow, POSE_LANDMARK.rightWrist],
 };
@@ -730,6 +796,8 @@ export interface PartClearance {
 export interface CombatJudgment {
   kind: 'part_ring' | 'zone_blast';
   part: BodyPartTarget | null;
+  /** Every ring in a multi-ring attack. Absent for a blast. */
+  parts?: readonly BodyPartTarget[];
   dodged: boolean;
   action: PoseActionType;
   detail: string;
@@ -742,11 +810,18 @@ function shoulderMidpoint(landmarks: NormalizedLandmark[]): NormalizedLandmark |
   return { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2, z: (left.z + right.z) / 2 };
 }
 
-/** Tracked points that decide whether a body part is still in the circle. Chest is the shoulder midpoint. */
+/**
+ * Tracked points that decide whether a body part is still in the circle. Head is the head center,
+ * so the whole head has to leave, not just a tilted nose. Chest is the shoulder midpoint.
+ */
 export function bodyPartPoints(landmarks: NormalizedLandmark[], part: BodyPartTarget): NormalizedLandmark[] {
   if (part === 'chest') {
     const mid = shoulderMidpoint(landmarks);
     return mid ? [mid] : [];
+  }
+  if (part === 'head') {
+    const head = headCenter(landmarks);
+    return head ? [head] : [];
   }
   return PART_LANDMARKS[part]
     .map((index) => landmarkAt(landmarks, index))
@@ -754,29 +829,61 @@ export function bodyPartPoints(landmarks: NormalizedLandmark[], part: BodyPartTa
 }
 
 /**
- * Freezes a ring on the part where it is right now. Head locks on the nose, a shoulder on its
- * shoulder joint, chest on the shoulder midpoint. Needs both shoulders to size the circle.
+ * Inner ring radius in normalized x units: {@link PART_TARGET_RADIUS} of the shoulder width,
+ * clamped between {@link PART_TARGET_MIN_RADIUS} and {@link PART_TARGET_MAX_RADIUS}.
+ */
+export function partTargetRadius(part: BodyPartTarget, shoulderWidth: number): number {
+  const width = Number.isFinite(shoulderWidth) ? Math.max(0, shoulderWidth) : 0;
+  return Math.min(PART_TARGET_MAX_RADIUS[part], Math.max(PART_TARGET_MIN_RADIUS, width * PART_TARGET_RADIUS[part]));
+}
+
+/**
+ * Freezes a ring on the part where it is right now. Head locks on the head center (nose and
+ * ears), a shoulder on its shoulder joint, chest on the shoulder midpoint.
+ * The circle is sized from `calibratedShoulderWidth` when given, so a torso that is turned or
+ * mid-dodge at lock time does not shrink the ring. Without it, both live shoulders are required.
  */
 export function lockPartTarget(
   landmarks: NormalizedLandmark[],
   part: BodyPartTarget,
   aspect: number,
+  calibratedShoulderWidth?: number,
 ): PartTarget | null {
   const left = landmarkAt(landmarks, POSE_LANDMARK.leftShoulder);
   const right = landmarkAt(landmarks, POSE_LANDMARK.rightShoulder);
-  if (!left || !right) return null;
+  const calibrated =
+    calibratedShoulderWidth !== undefined && Number.isFinite(calibratedShoulderWidth) && calibratedShoulderWidth > 0.001
+      ? calibratedShoulderWidth
+      : null;
+  const shoulderWidth = calibrated ?? (left && right ? Math.abs(left.x - right.x) : null);
+  if (shoulderWidth === null) return null;
 
   let anchor: NormalizedLandmark | null;
-  if (part === 'head') anchor = landmarkAt(landmarks, POSE_LANDMARK.nose);
+  if (part === 'head') anchor = headCenter(landmarks);
   else if (part === 'left_shoulder') anchor = left;
   else if (part === 'right_shoulder') anchor = right;
   else anchor = shoulderMidpoint(landmarks);
   if (!anchor) return null;
 
   const safeAspect = aspect > 0 && Number.isFinite(aspect) ? aspect : 1;
-  const shoulderWidth = Math.abs(left.x - right.x);
-  const radius = Math.max(PART_TARGET_MIN_RADIUS, shoulderWidth * PART_TARGET_RADIUS[part]) * safeAspect;
+  const radius = partTargetRadius(part, shoulderWidth) * safeAspect;
   return { part, x: anchor.x, y: anchor.y, radius, aspect: safeAspect };
+}
+
+/** Locks every ring of a multi-ring attack on the same frame. Null if any part cannot be found. */
+export function lockPartTargets(
+  landmarks: NormalizedLandmark[],
+  parts: readonly BodyPartTarget[],
+  aspect: number,
+  calibratedShoulderWidth?: number,
+): PartTarget[] | null {
+  const targets: PartTarget[] = [];
+  for (const part of parts) {
+    const target = lockPartTarget(landmarks, part, aspect, calibratedShoulderWidth);
+    if (!target) return null;
+    targets.push(target);
+  }
+  return targets.length > 0 ? targets : null;
 }
 
 /** Distance from the ring center in inner radii, measured on a round (aspect corrected) circle. */
@@ -799,6 +906,14 @@ export function checkPartClearance(landmarks: NormalizedLandmark[] | null, targe
     if (distance <= 1) inside += 1;
   }
   return { cleared: inside === 0, tracked: points.length, inside, closest };
+}
+
+/** One live clearance per ring, in the same order as `targets`. */
+export function checkPartClearances(
+  landmarks: NormalizedLandmark[] | null,
+  targets: readonly PartTarget[],
+): PartClearance[] {
+  return targets.map((target) => checkPartClearance(landmarks, target));
 }
 
 /** Outer ring scale over the countdown: {@link APPROACH_RING_START_SCALE} at 0, exactly 1 at impact. */
@@ -831,7 +946,41 @@ export function judgePartTarget(target: PartTarget, clearance: PartClearance, pa
   let detail = `${label} was still inside the circle.`;
   if (parried) detail = `Glove parry knocked the shot away from your ${label.toLowerCase()}.`;
   else if (clearance.cleared) detail = `${label} cleared the circle in time.`;
-  return { kind: 'part_ring', part: target.part, dodged, action: 'none', detail };
+  return { kind: 'part_ring', part: target.part, parts: [target.part], dodged, action: 'none', detail };
+}
+
+function joinLabels(labels: readonly string[]): string {
+  if (labels.length <= 1) return labels[0] ?? '';
+  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+}
+
+/**
+ * Multi-ring verdict: dodged only when every targeted part is outside its own circle at impact
+ * (or the glove parried). A missing clearance counts as still inside.
+ */
+export function judgePartTargets(
+  targets: readonly PartTarget[],
+  clearances: readonly PartClearance[],
+  parried = false,
+): CombatJudgment {
+  const first = targets[0];
+  if (!first) {
+    return { kind: 'part_ring', part: null, parts: [], dodged: parried, action: 'none', detail: 'No ring was locked on.' };
+  }
+  if (targets.length === 1) {
+    const clearance = clearances[0] ?? { cleared: false, tracked: 0, inside: 0, closest: 0 };
+    return judgePartTarget(first, clearance, parried);
+  }
+
+  const parts = targets.map((target) => target.part);
+  const stuck = targets
+    .filter((_, index) => !(clearances[index]?.cleared ?? false))
+    .map((target) => BODY_PART_LABEL[target.part]);
+  const dodged = parried || stuck.length === 0;
+  let detail = `${joinLabels(stuck)} ${stuck.length > 1 ? 'were' : 'was'} still inside the circle.`;
+  if (parried) detail = `Glove parry knocked away all ${targets.length} shots.`;
+  else if (stuck.length === 0) detail = `${joinLabels(parts.map((part) => BODY_PART_LABEL[part]))} all cleared in time.`;
+  return { kind: 'part_ring', part: first.part, parts, dodged, action: 'none', detail };
 }
 
 /** Whole-body blast: the torso has to leave the silhouette to either side, or duck under it. */

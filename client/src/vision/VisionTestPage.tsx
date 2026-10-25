@@ -7,10 +7,17 @@ import {
   POSE_TRACK_HZ,
 } from '@once-upon/shared';
 import type { CalibrationBaseline, NormalizedLandmark, PoseFrame } from '@once-upon/shared';
-import { VisionCanvas, primeVisionAudio, type CombatOverlay, type VisionCanvasModel } from './VisionCanvas';
+import {
+  VisionCanvas,
+  primeVisionAudio,
+  type CombatOverlay,
+  type GameHud,
+  type VisionCanvasModel,
+} from './VisionCanvas';
 import {
   ArmRaiseHoldDetector,
   BODY_PART_LABEL,
+  BODY_PART_TAG,
   BODY_PART_TARGETS,
   STROBE_END_HZ,
   STROBE_START_HZ,
@@ -20,11 +27,11 @@ import {
   checkInZone,
   classifyDodgeAndPose,
   computeCalibrationBaseline,
-  checkPartClearance,
-  judgePartTarget,
+  checkPartClearances,
+  judgePartTargets,
   judgeTelegraphDefense,
   judgeZoneBlast,
-  lockPartTarget,
+  lockPartTargets,
   resolveActiveAction,
   resolveTorso,
   type BodyPartTarget,
@@ -40,6 +47,28 @@ import {
   sampleSyntheticPose,
   type SyntheticPosePreset,
 } from './syntheticPoseGenerator';
+import {
+  GAUNTLET_DIFFICULTIES,
+  GAUNTLET_DIFFICULTY_LABEL,
+  GAUNTLET_DIFFICULTY_TUNING,
+  GAUNTLET_FINAL_WAVE,
+  GAUNTLET_HEARTS,
+  GAUNTLET_LEVELS,
+  GAUNTLET_START_DELAY_MS,
+  GAUNTLET_WAVE_BREAK_MS,
+  advanceGauntletWave,
+  applyGauntletResult,
+  buildGauntletWave,
+  comboMultiplier,
+  createGauntletState,
+  levelForWave,
+  levelTitle,
+  startGauntlet,
+  type GauntletAttack,
+  type GauntletDifficulty,
+  type GauntletLevel,
+  type GauntletState,
+} from './survivalGauntlet';
 
 /** Mount this view at `/vision-test`. The app shell is owned by another teammate. */
 export const VISION_TEST_PATH = '/vision-test';
@@ -105,10 +134,13 @@ const ATTACK_META: Record<P0AttackType, { label: string; cue: string; how: strin
   },
 };
 
-/** Every attack the tester can throw. Classic telegraphs are the original P0 banner attacks. */
+/**
+ * Every attack the tester can throw. Classic telegraphs are the original P0 banner attacks.
+ * A ring attack with two parts is a dual-ring attack: both parts have to clear.
+ */
 type IncomingAttack =
   | { kind: 'classic'; attack: P0AttackType }
-  | { kind: 'part_ring'; part: BodyPartTarget }
+  | { kind: 'part_ring'; parts: readonly BodyPartTarget[] }
   | { kind: 'zone_blast' };
 
 interface AttackResult {
@@ -116,19 +148,21 @@ interface AttackResult {
   label: string;
   dodged: boolean;
   detail: string;
+  /** Per ring, whether that part was outside its circle. Empty for other attacks. */
+  clears: readonly boolean[];
 }
 
 const RING_HOW: Record<BodyPartTarget, string> = {
-  head: 'Tilt your head or duck to clear just your head.',
+  head: 'Lean or duck so your whole head leaves the circle.',
   left_shoulder: 'Lean or pull your left side away.',
   right_shoulder: 'Lean or pull your right side away.',
   chest: 'Step or lean so your shoulder line leaves the circle.',
 };
 
 const COMBO_WAVE: readonly IncomingAttack[] = [
-  { kind: 'part_ring', part: 'head' },
-  { kind: 'part_ring', part: 'left_shoulder' },
-  { kind: 'part_ring', part: 'right_shoulder' },
+  { kind: 'part_ring', parts: ['head'] },
+  { kind: 'part_ring', parts: ['left_shoulder'] },
+  { kind: 'part_ring', parts: ['right_shoulder'] },
   { kind: 'zone_blast' },
 ];
 
@@ -136,15 +170,25 @@ const CLASSIC_WAVE: readonly IncomingAttack[] = P0_ATTACKS.map((attack) => ({ ki
 
 function attackLabel(incoming: IncomingAttack): string {
   if (incoming.kind === 'classic') return ATTACK_META[incoming.attack].label;
-  if (incoming.kind === 'part_ring') return `Target ring: ${BODY_PART_LABEL[incoming.part]}`;
+  if (incoming.kind === 'part_ring') {
+    if (incoming.parts.length > 1) return `Dual rings: ${incoming.parts.map((part) => BODY_PART_TAG[part]).join(' + ')}`;
+    const [part] = incoming.parts;
+    return `Target ring: ${part ? BODY_PART_LABEL[part] : 'Body'}`;
+  }
   return 'Silhouette blast';
 }
 
-function attackCue(incoming: IncomingAttack, clear: boolean): string {
+function attackCue(incoming: IncomingAttack, clear: boolean, clears: readonly boolean[]): string {
   if (incoming.kind === 'classic') return clear ? 'CLEAR! HOLD IT!' : ATTACK_META[incoming.attack].cue;
   if (incoming.kind === 'part_ring') {
-    const part = BODY_PART_LABEL[incoming.part].toUpperCase();
-    return clear ? `CLEAR! KEEP YOUR ${part} OUT!` : `MOVE YOUR ${part} OUT OF THE CIRCLE!`;
+    if (incoming.parts.length > 1) {
+      if (clear) return 'BOTH CLEAR! HOLD IT!';
+      const stuck = incoming.parts.filter((_, index) => !clears[index]).map((part) => BODY_PART_TAG[part]);
+      return `MOVE ${stuck.join(' AND ')} OUT OF ${stuck.length > 1 ? 'BOTH CIRCLES' : 'ITS CIRCLE'}!`;
+    }
+    const [part] = incoming.parts;
+    const name = part ? BODY_PART_LABEL[part].toUpperCase() : 'BODY';
+    return clear ? `CLEAR! KEEP YOUR ${name} OUT!` : `MOVE YOUR ${name} OUT OF THE CIRCLE!`;
   }
   return clear ? 'CLEAR! STAY OUT OF THE OUTLINE!' : 'STEP OR DUCK FULLY OUT OF YOUR SILHOUETTE!';
 }
@@ -192,24 +236,71 @@ interface PendingAttack {
   /** The countdown banner starts here. Demo attacks after the first wait out a short gap. */
   startAt: number;
   judgeAt: number;
-  /** A ring freezes on its body part the moment the warning starts, then stays put. */
-  target: PartTarget | null;
+  /** Countdown length, reused when a ring locks on or the player gets back home. */
+  windowMs: number;
+  /** Rings freeze on their body parts the moment the warning starts, then stay put. Empty until then. */
+  targets: PartTarget[];
+  /** Hold the countdown until the player is back in the silhouette (after a blast in the gauntlet). */
+  requireHome: boolean;
+  /** Scored by the Survival Gauntlet instead of the tester. */
+  game: boolean;
 }
 
 interface ImpactRecord {
   incoming: IncomingAttack;
-  target: PartTarget | null;
+  targets: readonly PartTarget[];
+  clears: readonly boolean[];
   dodged: boolean;
   at: number;
+}
+
+interface CountdownHud {
+  incoming: IncomingAttack;
+  remainingMs: number;
+  waitingMs: number;
+  windowMs: number;
+  clear: boolean;
+  clears: readonly boolean[];
+  locking: boolean;
+  holdingHome: boolean;
+  game: boolean;
 }
 
 interface HudState {
   calibrationPhase: CalibrationPhase;
   /** Time left in the current calibration phase. */
   phaseRemainingMs: number;
-  countdown: { incoming: IncomingAttack; remainingMs: number; waitingMs: number; clear: boolean; locking: boolean } | null;
+  countdown: CountdownHud | null;
   flash: AttackResult | null;
   tracking: TrackingState;
+}
+
+interface GameEvent {
+  id: number;
+  label: string;
+  dodged: boolean;
+  points: number;
+  detail: string;
+}
+
+const HIGH_SCORE_KEY = 'vision-gauntlet-high-score';
+
+function loadHighScore(difficulty: GauntletDifficulty): number {
+  try {
+    const raw = window.localStorage.getItem(`${HIGH_SCORE_KEY}:${difficulty}`);
+    const value = raw ? Number.parseInt(raw, 10) : 0;
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveHighScore(difficulty: GauntletDifficulty, score: number): void {
+  try {
+    window.localStorage.setItem(`${HIGH_SCORE_KEY}:${difficulty}`, String(score));
+  } catch {
+    // Private mode or blocked storage: the high score just lasts for this visit.
+  }
 }
 
 const IDLE_HUD: HudState = {
@@ -255,6 +346,28 @@ function seconds(ms: number): string {
   return `${(Math.max(0, ms) / 1000).toFixed(1)}s`;
 }
 
+function pendingAttack(
+  incoming: IncomingAttack,
+  startAt: number,
+  windowMs = ATTACK_COUNTDOWN_MS,
+  options: { requireHome?: boolean; game?: boolean } = {},
+): PendingAttack {
+  return {
+    incoming,
+    startAt,
+    judgeAt: startAt + windowMs,
+    windowMs,
+    targets: [],
+    requireHome: options.requireHome ?? false,
+    game: options.game ?? false,
+  };
+}
+
+function heartsText(hearts: number): string {
+  const left = Math.max(0, Math.min(GAUNTLET_HEARTS, hearts));
+  return '❤️'.repeat(left) + '🖤'.repeat(GAUNTLET_HEARTS - left);
+}
+
 export function VisionTestPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const serviceRef = useRef<PoseLandmarkerService | null>(null);
@@ -284,6 +397,7 @@ export function VisionTestPage() {
   const flashRef = useRef<{ judgment: AttackResult; at: number } | null>(null);
   const impactRef = useRef<ImpactRecord | null>(null);
   const landmarksRef = useRef<NormalizedLandmark[] | null>(null);
+  const gameQueueRef = useRef<GauntletAttack[]>([]);
 
   const [requestedMode, setRequestedMode] = useState<VisionSourceMode>('synthetic');
   const [status, setStatus] = useState<PoseServiceStatus>({
@@ -308,6 +422,9 @@ export function VisionTestPage() {
   const [calibrationNote, setCalibrationNote] = useState<string | null>(null);
   const [teammate, setTeammate] = useState<TeammatePreview>('off');
   const [starting, setStarting] = useState(false);
+  const [game, setGame] = useState<GauntletState>(() => createGauntletState('normal', loadHighScore('normal')));
+  const gameRef = useRef(game);
+  const [gameEvent, setGameEvent] = useState<GameEvent | null>(null);
 
   useEffect(() => {
     if (!wheelNotice) return;
@@ -332,6 +449,7 @@ export function VisionTestPage() {
     checklistRef.current = EMPTY_CHECKLIST;
     setChecklist(EMPTY_CHECKLIST);
     setCalibrationNote(null);
+    cancelAttacks();
 
     setStarting(true);
     void service.start(video, requestedMode).then(() => {
@@ -429,18 +547,29 @@ export function VisionTestPage() {
         }
 
         const pending = pendingRef.current;
-        if (pending && pending.incoming.kind === 'part_ring' && !pending.target && now >= pending.startAt) {
-          // No ring without a body to aim at. The countdown waits until the part is found.
-          pending.target = landmarks ? lockPartTarget(landmarks, pending.incoming.part, frameAspect()) : null;
-          pending.startAt = now;
-          pending.judgeAt = now + ATTACK_COUNTDOWN_MS;
+        if (pending && now >= pending.startAt) {
+          if (pending.requireHome) {
+            // After a blast the next warning holds until the player is back in the silhouette.
+            if (zone.inZone) pending.requireHome = false;
+            pending.startAt = now;
+            pending.judgeAt = now + pending.windowMs;
+          } else if (pending.incoming.kind === 'part_ring' && pending.targets.length === 0) {
+            // No ring without a body to aim at. The countdown waits until every part is found.
+            const locked = landmarks
+              ? lockPartTargets(landmarks, pending.incoming.parts, frameAspect(), baselineRef.current?.shoulderWidth)
+              : null;
+            pending.targets = locked ?? [];
+            pending.startAt = now;
+            pending.judgeAt = now + pending.windowMs;
+          }
         }
         if (pending && now >= pending.judgeAt) {
           pendingRef.current = null;
           resolveAttack(pending, now);
         }
         const live = pendingRef.current;
-        const liveClear = live && now >= live.startAt ? judgeAttack(live).dodged : false;
+        const liveJudgment = live && now >= live.startAt && !live.requireHome ? judgeAttack(live) : null;
+        const liveClear = liveJudgment?.dodged ?? false;
 
         if (now - lastStream >= streamStep) {
           lastStream = now;
@@ -497,7 +626,8 @@ export function VisionTestPage() {
           armCounting: arm.counting,
           confidence: pose.confidence,
           actionNote: actionNoteFor(gesture, arm.heldMs, arm.counting),
-          combat: combatOverlay(live, liveClear, zone.inZone, now),
+          combat: combatOverlay(live, liveJudgment, zone.inZone, now),
+          gameHud: gameHudFor(gameRef.current),
         });
 
         const flash = flashRef.current;
@@ -514,8 +644,12 @@ export function VisionTestPage() {
                 incoming: live.incoming,
                 remainingMs: Math.max(0, live.judgeAt - now),
                 waitingMs: Math.max(0, live.startAt - now),
+                windowMs: live.windowMs,
                 clear: liveClear,
-                locking: live.incoming.kind === 'part_ring' && !live.target,
+                clears: liveJudgment?.clears ?? [],
+                locking: live.incoming.kind === 'part_ring' && live.targets.length === 0 && !live.requireHome,
+                holdingHome: live.requireHome && now >= live.startAt,
+                game: live.game,
               }
             : null,
           flash: flash && now - flash.at < RESULT_FLASH_MS ? flash.judgment : null,
@@ -563,71 +697,167 @@ export function VisionTestPage() {
         poseRef.current,
         incoming.attack === 'projectile' && parryRef.current,
       );
-      return { kind: 'classic', label, dodged: judgment.dodged, detail: judgment.detail };
+      return { kind: 'classic', label, dodged: judgment.dodged, detail: judgment.detail, clears: [] };
     }
     if (incoming.kind === 'zone_blast') {
       const judgment = judgeZoneBlast(poseRef.current);
-      return { kind: 'zone_blast', label, dodged: judgment.dodged, detail: judgment.detail };
+      return { kind: 'zone_blast', label, dodged: judgment.dodged, detail: judgment.detail, clears: [] };
     }
-    if (!pending.target) {
-      return { kind: 'part_ring', label, dodged: false, detail: 'No body in view to aim at yet.' };
+    if (pending.targets.length === 0) {
+      return { kind: 'part_ring', label, dodged: false, detail: 'No body in view to aim at yet.', clears: [] };
     }
-    const clearance = checkPartClearance(landmarksRef.current, pending.target);
-    const judgment = judgePartTarget(pending.target, clearance, parryRef.current);
-    return { kind: 'part_ring', label, dodged: judgment.dodged, detail: judgment.detail };
+    const clearances = checkPartClearances(landmarksRef.current, pending.targets);
+    const judgment = judgePartTargets(pending.targets, clearances, parryRef.current);
+    return {
+      kind: 'part_ring',
+      label,
+      dodged: judgment.dodged,
+      detail: judgment.detail,
+      clears: clearances.map((clearance) => clearance.cleared),
+    };
   }
 
-  /** Live ring or strobe while an attack runs, then the burst and the blast call-back pulse. */
+  /** Live rings or strobe while an attack runs, then the burst and the blast call-back pulse. */
   function combatOverlay(
     live: PendingAttack | null,
-    clear: boolean,
+    judgment: AttackResult | null,
     inZone: boolean,
     now: number,
   ): CombatOverlay | null {
-    if (live && live.incoming.kind !== 'classic' && now >= live.startAt) {
-      if (live.incoming.kind === 'part_ring' && !live.target) return null;
+    if (live && live.incoming.kind !== 'classic' && now >= live.startAt && !live.requireHome) {
+      if (live.incoming.kind === 'part_ring' && live.targets.length === 0) return null;
       return {
         kind: live.incoming.kind,
         startAt: live.startAt,
         judgeAt: live.judgeAt,
-        target: live.target,
-        clear,
+        targets: live.targets,
+        clears: judgment?.clears ?? [],
+        clear: judgment?.dodged ?? false,
         impact: null,
       };
     }
     const impact = impactRef.current;
     if (!impact || impact.incoming.kind === 'classic') return null;
     const age = now - impact.at;
-    const keep =
-      age < IMPACT_OVERLAY_MS || (impact.incoming.kind === 'zone_blast' && age < BLAST_CALLBACK_MS && !inZone);
-    if (!keep) return null;
+    const blastCallBack =
+      impact.incoming.kind === 'zone_blast' && !inZone && (age < BLAST_CALLBACK_MS || Boolean(live?.requireHome));
+    if (age >= IMPACT_OVERLAY_MS && !blastCallBack) return null;
     return {
       kind: impact.incoming.kind,
       startAt: impact.at - ATTACK_COUNTDOWN_MS,
       judgeAt: impact.at,
-      target: impact.target,
+      targets: impact.targets,
+      clears: impact.clears,
       clear: impact.dodged,
       impact: { at: impact.at, dodged: impact.dodged },
     };
   }
 
-  /** Judges the held pose, flashes the result, and queues the next demo attack. */
+  function gameHudFor(state: GauntletState): GameHud | null {
+    if (state.status !== 'running') return null;
+    return {
+      hearts: state.hearts,
+      maxHearts: GAUNTLET_HEARTS,
+      score: state.score,
+      multiplier: comboMultiplier(state.streak),
+      level: levelForWave(state.wave).level,
+    };
+  }
+
+  /** Judges the held pose, flashes the result, and queues the next demo or gauntlet attack. */
   function resolveAttack(pending: PendingAttack, now: number): void {
     const judgment = judgeAttack(pending);
     setDefense(judgment);
     flashRef.current = { judgment, at: now };
-    impactRef.current = { incoming: pending.incoming, target: pending.target, dodged: judgment.dodged, at: now };
+    impactRef.current = {
+      incoming: pending.incoming,
+      targets: pending.targets,
+      clears: judgment.clears,
+      dodged: judgment.dodged,
+      at: now,
+    };
+    if (pending.game) {
+      resolveGameAttack(pending, judgment, now);
+      return;
+    }
     if (!demoActiveRef.current) return;
 
     setDemoResults((previous) => [...(previous ?? []), judgment]);
     const next = demoQueueRef.current.shift();
     if (next) {
-      const startAt = now + DEMO_GAP_MS;
-      pendingRef.current = { incoming: next, startAt, judgeAt: startAt + ATTACK_COUNTDOWN_MS, target: null };
+      pendingRef.current = pendingAttack(next, now + DEMO_GAP_MS);
     } else {
       demoActiveRef.current = false;
       setDemoActive(false);
     }
+  }
+
+  function commitGame(next: GauntletState): void {
+    if (next.highScore > gameRef.current.highScore) saveHighScore(next.difficulty, next.highScore);
+    gameRef.current = next;
+    setGame(next);
+  }
+
+  function scheduleGameAttack(attack: GauntletAttack, startAt: number): void {
+    pendingRef.current = pendingAttack(attack.incoming, startAt, attack.windowMs, {
+      requireHome: attack.requireHome,
+      game: true,
+    });
+  }
+
+  function queueGameWave(wave: number, now: number, leadMs: number, previousWasBlast: boolean): void {
+    const [first, ...rest] = buildGauntletWave(wave, gameRef.current.difficulty, Math.random, previousWasBlast);
+    gameQueueRef.current = rest;
+    if (first) scheduleGameAttack(first, now + leadMs);
+  }
+
+  /** Scores the attack, then lines up the next one, the next wave, or the end of the run. */
+  function resolveGameAttack(pending: PendingAttack, judgment: AttackResult, now: number): void {
+    const { incoming } = pending;
+    if (incoming.kind === 'classic') return;
+    const { state, points } = applyGauntletResult(gameRef.current, incoming, judgment.dodged);
+    setGameEvent({ id: now, label: judgment.label, dodged: judgment.dodged, points, detail: judgment.detail });
+    if (state.status !== 'running') {
+      gameQueueRef.current = [];
+      commitGame(state);
+      return;
+    }
+    const next = gameQueueRef.current.shift();
+    if (next) {
+      commitGame(state);
+      scheduleGameAttack(next, now + next.gapMs);
+      return;
+    }
+    const advanced = advanceGauntletWave(state);
+    commitGame(advanced);
+    if (advanced.status === 'running') {
+      queueGameWave(advanced.wave, now, GAUNTLET_WAVE_BREAK_MS, incoming.kind === 'zone_blast');
+    }
+  }
+
+  function startSurvivalGame(): void {
+    primeVisionAudio();
+    pendingRef.current = null;
+    demoQueueRef.current = [];
+    demoActiveRef.current = false;
+    setDemoActive(false);
+    const { difficulty, highScore } = gameRef.current;
+    const state = startGauntlet(difficulty, highScore);
+    commitGame(state);
+    setGameEvent(null);
+    queueGameWave(state.wave, performance.now(), GAUNTLET_START_DELAY_MS, false);
+  }
+
+  function stopSurvivalGame(): void {
+    pendingRef.current = null;
+    gameQueueRef.current = [];
+    if (gameRef.current.status === 'running') commitGame({ ...gameRef.current, status: 'idle' });
+  }
+
+  function chooseDifficulty(difficulty: GauntletDifficulty): void {
+    if (gameRef.current.status === 'running') return;
+    commitGame(createGauntletState(difficulty, loadHighScore(difficulty)));
+    setGameEvent(null);
   }
 
   /** Uses frames the loop already sampled, so the landmarker never sees an out-of-order timestamp. */
@@ -667,7 +897,7 @@ export function VisionTestPage() {
   function launchAttack(incoming: IncomingAttack): void {
     primeVisionAudio();
     const now = performance.now();
-    const pending: PendingAttack = { incoming, startAt: now, judgeAt: now + ATTACK_COUNTDOWN_MS, target: null };
+    const pending = pendingAttack(incoming, now);
     if (instantJudge && incoming.kind !== 'part_ring') {
       resolveAttack(pending, now);
       return;
@@ -685,14 +915,16 @@ export function VisionTestPage() {
     setDemoActive(true);
     setDemoResults([]);
     setDemoTotal(wave.length);
-    pendingRef.current = { incoming: first, startAt: now, judgeAt: now + ATTACK_COUNTDOWN_MS, target: null };
+    pendingRef.current = pendingAttack(first, now);
   }
 
+  /** Clears every queued attack, including a running gauntlet. Only touches refs and state setters. */
   function cancelAttacks(): void {
     pendingRef.current = null;
     demoQueueRef.current = [];
     demoActiveRef.current = false;
     setDemoActive(false);
+    stopSurvivalGame();
   }
 
   function resetChecklist(): void {
@@ -740,10 +972,8 @@ export function VisionTestPage() {
                 Show attack guide (2 attack types)
               </button>
             )}
-            <div className="relative">
-              <VisionCanvas model={model} videoRef={videoRef} />
-              <CanvasBanner hud={hud} />
-            </div>
+            <LiveStatusBar hud={hud} game={game} />
+            <VisionCanvas model={model} videoRef={videoRef} />
             <p className="text-xs text-amber-100/60">
               The glowing outline is your zone. The white skeleton is you. Badges on top show the move being read
               right now: <span className="text-amber-100">{actionBadgeLabel(model.activeAction)}</span>.
@@ -899,6 +1129,15 @@ export function VisionTestPage() {
               </button>
             </StepCard>
 
+            <SurvivalGauntletPanel
+              game={game}
+              lastEvent={gameEvent}
+              locked={webcamLive && !model.calibrated}
+              onStart={startSurvivalGame}
+              onStop={stopSurvivalGame}
+              onDifficulty={chooseDifficulty}
+            />
+
             <StepCard
               step={3}
               title="Incoming enemy attack tester"
@@ -923,7 +1162,7 @@ export function VisionTestPage() {
                     title={`🎯 Osu! Ring → ${BODY_PART_LABEL[part]}`}
                     hint={RING_HOW[part]}
                     disabled={attackBusy}
-                    onClick={() => launchAttack({ kind: 'part_ring', part })}
+                    onClick={() => launchAttack({ kind: 'part_ring', parts: [part] })}
                   />
                 ))}
                 <AttackButton
@@ -1048,68 +1287,262 @@ export function VisionTestPage() {
   );
 }
 
-function CanvasBanner({ hud }: { hud: HudState }) {
-  let tone: 'gold' | 'green' | 'red' = 'gold';
-  let headline: string | null = null;
-  let detail: string | null = null;
-  // Attack banners sit at the top so the ring and the silhouette stay visible.
-  let placement: 'center' | 'top' = 'center';
+/**
+ * Live telegraph and status bar. It sits above the video, never on it, so the player can always
+ * see their head, the rings, and the flashing silhouette. The canvas only keeps small corner pills
+ * and short tags beside each ring.
+ */
+function LiveStatusBar({ hud, game }: { hud: HudState; game: GauntletState }) {
+  let tone: 'gold' | 'green' | 'red' | 'muted' = 'muted';
+  let headline = 'READY';
+  let detail = 'Warnings and results show up here, so nothing ever covers the video.';
+  let progress: number | null = null;
+  const countdown = hud.countdown;
 
-  if (hud.countdown) {
-    placement = 'top';
-    const label = attackLabel(hud.countdown.incoming).toUpperCase();
-    if (hud.countdown.waitingMs > 0) {
+  if (countdown) {
+    tone = 'gold';
+    const label = attackLabel(countdown.incoming).toUpperCase();
+    if (countdown.holdingHome) {
+      headline = 'RETURN TO YOUR SILHOUETTE';
+      detail = `Step back into the outline. ${label} starts when you are home.`;
+    } else if (countdown.waitingMs > 0) {
       headline = `NEXT: ${label}`;
-      detail = `Get back in your zone. Warning starts in ${seconds(hud.countdown.waitingMs)}.`;
-    } else if (hud.countdown.locking) {
+      detail = `Get back in your zone. Warning starts in ${seconds(countdown.waitingMs)}.`;
+    } else if (countdown.locking) {
       headline = `AIMING: ${label}`;
       detail = 'Step into view so the ring can lock on.';
     } else {
-      tone = hud.countdown.clear ? 'green' : 'red';
-      headline = `${label} IN ${seconds(hud.countdown.remainingMs)}`;
-      detail = attackCue(hud.countdown.incoming, hud.countdown.clear);
+      tone = countdown.clear ? 'green' : 'red';
+      headline = `${label} IN ${seconds(countdown.remainingMs)}`;
+      detail = attackCue(countdown.incoming, countdown.clear, countdown.clears);
+      progress = countdown.windowMs > 0 ? countdown.remainingMs / countdown.windowMs : 0;
     }
   } else if (hud.flash) {
-    placement = hud.flash.kind === 'classic' ? 'center' : 'top';
     tone = hud.flash.dodged ? 'green' : 'red';
     headline = hud.flash.dodged ? 'DODGED!' : 'HIT!';
     detail = hud.flash.detail;
   } else if (hud.calibrationPhase === 'get_ready') {
+    tone = 'gold';
     headline = `GET READY ${seconds(hud.phaseRemainingMs)}`;
     detail = 'Step into place and stand still.';
   } else if (hud.calibrationPhase === 'sampling') {
+    tone = 'gold';
     headline = `HOLD STILL ${seconds(hud.phaseRemainingMs)}`;
     detail = 'Measuring your standing pose.';
+  } else if (game.status === 'over') {
+    tone = 'red';
+    headline = `GAME OVER · ${game.score} POINTS`;
+    detail = `You reached wave ${game.wave}. Start the Survival Gauntlet again to beat ${game.highScore}.`;
+  } else if (game.status === 'cleared') {
+    tone = 'green';
+    headline = `GAUNTLET CLEARED · ${game.score} POINTS`;
+    detail = `All ${GAUNTLET_FINAL_WAVE} waves survived with ${game.hearts} hearts left.`;
   }
 
-  if (!headline) return null;
   const toneClass =
     tone === 'green'
-      ? 'border-emerald-200/60 bg-emerald-950/75 text-emerald-50'
+      ? 'border-emerald-200/60 bg-emerald-950/70 text-emerald-50'
       : tone === 'red'
-        ? 'border-rose-300/60 bg-rose-950/75 text-rose-50'
-        : 'border-amber-200/60 bg-stone-950/75 text-amber-50';
-  const top = placement === 'top';
+        ? 'border-rose-300/60 bg-rose-950/70 text-rose-50'
+        : tone === 'gold'
+          ? 'border-amber-200/60 bg-stone-950/70 text-amber-50'
+          : 'border-white/10 bg-black/30 text-amber-50/80';
+  const barClass = tone === 'green' ? 'bg-emerald-300' : tone === 'red' ? 'bg-rose-400' : 'bg-amber-200';
+  const running = game.status === 'running';
+  const level = levelForWave(game.wave);
 
   return (
-    <div
-      className={`pointer-events-none absolute inset-0 flex justify-center p-6 ${top ? 'items-start pt-14' : 'items-center'}`}
-      data-testid="canvas-banner"
-    >
-      <div
-        className={`max-w-[90%] rounded-3xl border text-center shadow-2xl backdrop-blur-sm ${toneClass} ${
-          top ? 'px-4 py-2' : 'px-6 py-4'
-        }`}
-      >
-        <p className={`font-serif font-semibold tracking-wide ${top ? 'text-lg sm:text-2xl' : 'text-2xl sm:text-4xl'}`}>
-          {headline}
-        </p>
-        {detail ? (
-          <p className={`mt-1 font-medium tracking-[0.12em] ${top ? 'text-xs sm:text-sm' : 'text-sm sm:text-lg'}`}>
-            {detail}
-          </p>
+    <section className={`rounded-2xl border px-4 py-3 transition-colors ${toneClass}`} data-testid="canvas-banner">
+      <div className="flex min-h-[3.5rem] flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0 flex-1">
+          <p className="font-serif text-lg font-semibold tracking-wide sm:text-2xl">{headline}</p>
+          <p className="mt-0.5 text-xs font-medium tracking-[0.12em] sm:text-sm">{detail}</p>
+        </div>
+        {running ? (
+          <div className="flex flex-col items-end gap-0.5 text-right text-xs" data-testid="status-bar-game">
+            <span className="text-base leading-none" aria-label={`${game.hearts} hearts`}>
+              {heartsText(game.hearts)}
+            </span>
+            <span className="font-semibold tracking-[0.12em]">
+              {game.score} PTS · {comboMultiplier(game.streak)}x COMBO
+            </span>
+            <span className="tracking-[0.12em] opacity-80">
+              WAVE {game.wave} · {levelTitle(level).toUpperCase()}
+            </span>
+          </div>
         ) : null}
       </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/40">
+        <div
+          className={`h-full ${barClass}`}
+          style={{ width: `${progress === null ? 0 : Math.round(Math.min(1, Math.max(0, progress)) * 100)}%` }}
+        />
+      </div>
+    </section>
+  );
+}
+
+function SurvivalGauntletPanel({
+  game,
+  lastEvent,
+  locked,
+  onStart,
+  onStop,
+  onDifficulty,
+}: {
+  game: GauntletState;
+  lastEvent: GameEvent | null;
+  /** True on the webcam before the zone is locked: blasts need a real silhouette. */
+  locked: boolean;
+  onStart: () => void;
+  onStop: () => void;
+  onDifficulty: (difficulty: GauntletDifficulty) => void;
+}) {
+  const running = game.status === 'running';
+  const level = levelForWave(game.wave);
+  const tuning = GAUNTLET_DIFFICULTY_TUNING[game.difficulty];
+  const statusText =
+    game.status === 'running'
+      ? `Wave ${game.wave} / ${GAUNTLET_FINAL_WAVE}`
+      : game.status === 'over'
+        ? 'Game over'
+        : game.status === 'cleared'
+          ? 'Cleared!'
+          : 'Not started';
+
+  return (
+    <section
+      className="rounded-3xl border border-rose-300/30 bg-gradient-to-br from-rose-950/40 via-black/30 to-emerald-950/30 p-4"
+      data-testid="survival-gauntlet"
+    >
+      <header className="mb-2 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold">⚔️ Play Survival Gauntlet (Escalating Challenge Game)</h2>
+        <span className="text-xs text-amber-200/70" data-testid="gauntlet-status">
+          {statusText}
+        </span>
+      </header>
+      <p className="text-xs text-amber-100/70">
+        {GAUNTLET_FINAL_WAVE} waves on {GAUNTLET_HEARTS} shared hearts. Rings get faster, then come in pairs, then
+        chain into silhouette blasts. After a blast, get back into your outline before the next attack starts.
+      </p>
+
+      <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
+        <GameStat label="Hearts" testId="gauntlet-hearts" wide>
+          {heartsText(game.hearts)}
+        </GameStat>
+        <GameStat label="Score" testId="gauntlet-score">
+          {game.score}
+        </GameStat>
+        <GameStat label="Combo" testId="gauntlet-combo">
+          {comboMultiplier(game.streak)}x · {game.streak} streak
+        </GameStat>
+        <GameStat label="Level" testId="gauntlet-level" wide>
+          {levelTitle(level)}
+        </GameStat>
+        <GameStat label="High score" testId="gauntlet-high-score">
+          {game.highScore}
+        </GameStat>
+      </dl>
+
+      <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Difficulty">
+        {GAUNTLET_DIFFICULTIES.map((difficulty) => (
+          <button
+            key={difficulty}
+            type="button"
+            className={chipClass(game.difficulty === difficulty)}
+            onClick={() => onDifficulty(difficulty)}
+            disabled={running}
+            data-testid={`gauntlet-difficulty-${difficulty}`}
+          >
+            {GAUNTLET_DIFFICULTY_LABEL[difficulty]}
+          </button>
+        ))}
+      </div>
+
+      {running ? (
+        <button
+          type="button"
+          className="mt-3 w-full rounded-full border border-rose-200/60 bg-rose-500/20 px-4 py-2 text-sm font-semibold text-rose-50"
+          onClick={onStop}
+          data-testid="gauntlet-stop-button"
+        >
+          Stop
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="mt-3 w-full rounded-full bg-gradient-to-r from-rose-400 via-amber-300 to-emerald-300 px-4 py-2 text-sm font-semibold text-stone-950 disabled:opacity-50"
+          onClick={onStart}
+          disabled={locked}
+          data-testid="gauntlet-start-button"
+        >
+          {game.status === 'idle' ? 'Start Survival Game' : 'Play Again'}
+        </button>
+      )}
+      {locked ? (
+        <p className="mt-1 text-xs text-amber-200/80">Lock your zone in Step 1 first, so blasts have a silhouette.</p>
+      ) : null}
+
+      <ol className="mt-3 flex flex-col gap-1 text-xs" data-testid="gauntlet-levels">
+        {GAUNTLET_LEVELS.map((item, index) => {
+          const nextLevel = GAUNTLET_LEVELS[index + 1];
+          const lastWave = nextLevel ? nextLevel.firstWave - 1 : GAUNTLET_FINAL_WAVE;
+          const active = running && item.level === level.level;
+          return (
+            <li
+              key={item.level}
+              className={`rounded-xl border px-2 py-1 ${
+                active ? 'border-amber-200/60 bg-amber-300/15 text-amber-50' : 'border-white/10 text-amber-50/70'
+              }`}
+            >
+              <span className="font-medium">{levelTitle(item)}</span> · waves {item.firstWave}-{lastWave} ·{' '}
+              {((item.windowMs * tuning.time) / 1000).toFixed(1)}s rings · {LEVEL_HINT[item.level]}
+            </li>
+          );
+        })}
+      </ol>
+
+      <p className="mt-3 text-sm" data-testid="gauntlet-last-event">
+        {lastEvent
+          ? `${lastEvent.dodged ? `DODGED +${lastEvent.points}` : 'HIT -1 heart'} · ${lastEvent.label}: ${lastEvent.detail}`
+          : running
+            ? 'First wave incoming. Stand in your silhouette.'
+            : 'Pick a difficulty and press Start. Step back so your head and both arms are in view.'}
+      </p>
+      {game.status === 'over' || game.status === 'cleared' ? (
+        <p className="mt-1 text-xs text-amber-100/70" data-testid="gauntlet-summary">
+          {game.dodged} dodged, {game.hits} hits, best streak {game.bestStreak}.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+const LEVEL_HINT: Record<GauntletLevel['level'], string> = {
+  1: 'single rings',
+  2: 'faster rings and a silhouette blast',
+  3: 'two rings at once',
+  4: 'rapid chain and a blast',
+  5: 'dual rings, snipes, and blasts',
+};
+
+function GameStat({
+  label,
+  testId,
+  wide = false,
+  children,
+}: {
+  label: string;
+  testId: string;
+  wide?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`rounded-2xl border border-white/10 bg-black/25 px-3 py-2 ${wide ? 'col-span-2' : ''}`}>
+      <dt className="text-[10px] uppercase tracking-[0.18em] text-amber-200/60">{label}</dt>
+      <dd className="font-semibold" data-testid={testId}>
+        {children}
+      </dd>
     </div>
   );
 }

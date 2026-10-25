@@ -242,6 +242,9 @@ export function buildSyntheticSkeleton(
   const hipY = metrics.hipY + motion.duck * 0.35 + breath.y * 0.3;
   const noseY = metrics.noseY + motion.duck * 0.85 + breath.y * 1.1;
   const z = motion.translateZ;
+  // Face and limb offsets were tuned on the default body. A calibrated outline rescales them so a
+  // wide or narrow player gets a head and arms in proportion, not a fixed-size face.
+  const s = metrics.shoulderHalf / SYNTHETIC_BODY.shoulderHalf;
 
   const landmarks: NormalizedLandmark[] = Array.from({ length: POSE_LANDMARK_COUNT }, () =>
     point(centerX, 0.5, z),
@@ -251,26 +254,26 @@ export function buildSyntheticSkeleton(
   };
 
   set(0, point(centerX, noseY, z));
-  set(1, point(centerX + 0.015, noseY - 0.018, z - 0.01));
-  set(2, point(centerX + 0.028, noseY - 0.02, z - 0.01));
-  set(3, point(centerX + 0.042, noseY - 0.018, z - 0.005));
-  set(4, point(centerX - 0.015, noseY - 0.018, z - 0.01));
-  set(5, point(centerX - 0.028, noseY - 0.02, z - 0.01));
-  set(6, point(centerX - 0.042, noseY - 0.018, z - 0.005));
-  set(7, point(centerX + 0.055, noseY - 0.01, z + 0.01));
-  set(8, point(centerX - 0.055, noseY - 0.01, z + 0.01));
-  set(9, point(centerX + 0.018, noseY + 0.02, z - 0.005));
-  set(10, point(centerX - 0.018, noseY + 0.02, z - 0.005));
+  set(1, point(centerX + 0.015 * s, noseY - 0.018 * s, z - 0.01));
+  set(2, point(centerX + 0.028 * s, noseY - 0.02 * s, z - 0.01));
+  set(3, point(centerX + 0.042 * s, noseY - 0.018 * s, z - 0.005));
+  set(4, point(centerX - 0.015 * s, noseY - 0.018 * s, z - 0.01));
+  set(5, point(centerX - 0.028 * s, noseY - 0.02 * s, z - 0.01));
+  set(6, point(centerX - 0.042 * s, noseY - 0.018 * s, z - 0.005));
+  set(7, point(centerX + 0.055 * s, noseY - 0.01 * s, z + 0.01));
+  set(8, point(centerX - 0.055 * s, noseY - 0.01 * s, z + 0.01));
+  set(9, point(centerX + 0.018 * s, noseY + 0.02 * s, z - 0.005));
+  set(10, point(centerX - 0.018 * s, noseY + 0.02 * s, z - 0.005));
 
   const leftShoulder = point(centerX + shoulderHalf, shoulderY, z);
   const rightShoulder = point(centerX - shoulderHalf, shoulderY, z);
   set(11, leftShoulder);
   set(12, rightShoulder);
 
-  let leftElbow: Vec3 = { x: centerX + shoulderHalf + 0.03, y: shoulderY + 0.12, z: z - 0.02 };
-  let leftWrist: Vec3 = { x: centerX + shoulderHalf + 0.045, y: shoulderY + 0.24, z: z - 0.04 };
-  let rightElbow: Vec3 = { x: centerX - shoulderHalf - 0.03, y: shoulderY + 0.12, z: z - 0.02 };
-  let rightWrist: Vec3 = { x: centerX - shoulderHalf - 0.045, y: shoulderY + 0.24, z: z - 0.04 };
+  let leftElbow: Vec3 = { x: centerX + shoulderHalf + 0.03 * s, y: shoulderY + 0.12 * s, z: z - 0.02 };
+  let leftWrist: Vec3 = { x: centerX + shoulderHalf + 0.045 * s, y: shoulderY + 0.24 * s, z: z - 0.04 };
+  let rightElbow: Vec3 = { x: centerX - shoulderHalf - 0.03 * s, y: shoulderY + 0.12 * s, z: z - 0.02 };
+  let rightWrist: Vec3 = { x: centerX - shoulderHalf - 0.045 * s, y: shoulderY + 0.24 * s, z: z - 0.04 };
 
   if (motion.duck > 0) {
     leftElbow = { ...leftElbow, y: leftElbow.y + motion.duck * 0.25 };
@@ -280,8 +283,8 @@ export function buildSyntheticSkeleton(
   }
 
   if (motion.armRaise > 0) {
-    const raisedElbow = { x: centerX - shoulderHalf - 0.01, y: shoulderY - 0.16, z: z - 0.03 };
-    const raisedWrist = { x: centerX - shoulderHalf + 0.01, y: noseY - 0.14, z: z - 0.05 };
+    const raisedElbow = { x: centerX - shoulderHalf - 0.01 * s, y: shoulderY - 0.16 * s, z: z - 0.03 };
+    const raisedWrist = { x: centerX - shoulderHalf + 0.01 * s, y: noseY - 0.14 * s, z: z - 0.05 };
     rightElbow = blendPoint(rightElbow, raisedElbow, motion.armRaise);
     rightWrist = blendPoint(rightWrist, raisedWrist, motion.armRaise);
   }
@@ -317,12 +320,12 @@ export function buildSyntheticSkeleton(
   set(14, point(rightElbow.x, rightElbow.y, rightElbow.z));
   set(15, point(leftWrist.x, leftWrist.y, leftWrist.z));
   set(16, point(rightWrist.x, rightWrist.y, rightWrist.z));
-  set(17, point(leftWrist.x + 0.012, leftWrist.y + 0.02, leftWrist.z));
-  set(18, point(rightWrist.x - 0.012, rightWrist.y + 0.02, rightWrist.z));
-  set(19, point(leftWrist.x + 0.004, leftWrist.y + 0.03, leftWrist.z - 0.01));
-  set(20, point(rightWrist.x - 0.004, rightWrist.y + 0.03, rightWrist.z - 0.01));
-  set(21, point(leftWrist.x - 0.012, leftWrist.y + 0.014, leftWrist.z));
-  set(22, point(rightWrist.x + 0.012, rightWrist.y + 0.014, rightWrist.z));
+  set(17, point(leftWrist.x + 0.012 * s, leftWrist.y + 0.02 * s, leftWrist.z));
+  set(18, point(rightWrist.x - 0.012 * s, rightWrist.y + 0.02 * s, rightWrist.z));
+  set(19, point(leftWrist.x + 0.004 * s, leftWrist.y + 0.03 * s, leftWrist.z - 0.01));
+  set(20, point(rightWrist.x - 0.004 * s, rightWrist.y + 0.03 * s, rightWrist.z - 0.01));
+  set(21, point(leftWrist.x - 0.012 * s, leftWrist.y + 0.014 * s, leftWrist.z));
+  set(22, point(rightWrist.x + 0.012 * s, rightWrist.y + 0.014 * s, rightWrist.z));
 
   const leftHip = point(centerX + hipHalf, hipY, z + 0.01);
   const rightHip = point(centerX - hipHalf, hipY, z + 0.01);

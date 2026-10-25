@@ -12,6 +12,9 @@ import {
   APPROACH_RING_START_SCALE,
   ARM_RAISE_CLEARANCE,
   ArmRaiseHoldDetector,
+  HEAD_FALLBACK_DROP,
+  PART_TARGET_MAX_RADIUS,
+  PART_TARGET_MIN_RADIUS,
   PART_TARGET_RADIUS,
   STROBE_END_HZ,
   STROBE_START_HZ,
@@ -19,15 +22,21 @@ import {
   THRUST_SPEED_THRESHOLD,
   WristVelocityTracker,
   approachRingScale,
+  baselineHeadY,
   checkInZone,
   checkPartClearance,
+  checkPartClearances,
+  headCenter,
   classifyDodgeAndPose,
   computeCalibrationBaseline,
   getZoneBounds,
   judgePartTarget,
+  judgePartTargets,
   judgeTelegraphDefense,
   judgeZoneBlast,
   lockPartTarget,
+  lockPartTargets,
+  partTargetRadius,
   resolveTorso,
   strobeCycles,
   strobeFrequencyHz,
@@ -42,7 +51,28 @@ import {
   generateSequence,
   interpolateSyntheticPose,
   sampleSyntheticPose,
+  silhouetteFromMetrics,
 } from '../syntheticPoseGenerator';
+
+function shiftLandmarks(
+  landmarks: NormalizedLandmark[],
+  indices: readonly number[],
+  dx: number,
+  dy: number,
+): NormalizedLandmark[] {
+  return landmarks.map((landmark, index) =>
+    indices.includes(index) ? { ...landmark, x: landmark.x + dx, y: landmark.y + dy } : landmark,
+  );
+}
+
+/** Grows the whole body around a point, like the player walking toward the camera. */
+function scaleAbout(landmarks: NormalizedLandmark[], cx: number, cy: number, factor: number): NormalizedLandmark[] {
+  return landmarks.map((landmark) => ({
+    ...landmark,
+    x: cx + (landmark.x - cx) * factor,
+    y: cy + (landmark.y - cy) * factor,
+  }));
+}
 
 function standingBaseline(): CalibrationBaseline {
   const frames = generateSequence('standing_in_zone', CALIBRATION_DURATION_MS, 0, 30, { breathe: false });
@@ -53,6 +83,11 @@ function standingBaseline(): CalibrationBaseline {
   if (!baseline) throw new Error('standing clip did not produce a baseline');
   return baseline;
 }
+
+/** MediaPipe face points: nose, eyes, ears, mouth. */
+const HEAD_INDICES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+const LEFT_EAR = 7;
+const RIGHT_EAR = 8;
 
 function withLandmark(
   landmarks: NormalizedLandmark[],
@@ -65,8 +100,11 @@ function withLandmark(
 }
 
 describe('computeCalibrationBaseline', () => {
-  it('averages a 3 second standing clip into shoulder, hip, and center', () => {
+  it('averages a 3 second standing clip into shoulder, hip, center, and head', () => {
     const baseline = standingBaseline();
+    const head = headCenter(sampleSyntheticPose('standing_in_zone', 0, { breathe: false }));
+    expect(baseline.noseY).toBeCloseTo(head?.y ?? Number.NaN, 5);
+    expect(baseline.noseY).toBeLessThan(baseline.shoulderY);
     expect(baseline.shoulderY).toBeCloseTo(SYNTHETIC_BODY.shoulderY, 5);
     expect(baseline.shoulderWidth).toBeCloseTo(SYNTHETIC_BODY.shoulderHalf * 2, 5);
     expect(baseline.hipY).toBeCloseTo(SYNTHETIC_BODY.hipY, 5);
@@ -440,8 +478,10 @@ describe('Osu! body-part target rings', () => {
   it('locks on the part and sizes the circle from shoulder width in frame-height units', () => {
     const head = target('head');
     const nose = standing[POSE_LANDMARK.nose];
-    expect(head.x).toBeCloseTo(nose?.x ?? 0, 6);
-    expect(head.y).toBeCloseTo(nose?.y ?? 0, 6);
+    const leftEar = standing[LEFT_EAR];
+    const rightEar = standing[RIGHT_EAR];
+    expect(head.x).toBeCloseTo(((nose?.x ?? 0) + (leftEar?.x ?? 0) + (rightEar?.x ?? 0)) / 3, 6);
+    expect(head.y).toBeCloseTo(((nose?.y ?? 0) + (leftEar?.y ?? 0) + (rightEar?.y ?? 0)) / 3, 6);
     expect(head.radius).toBeCloseTo(SYNTHETIC_BODY.shoulderHalf * 2 * PART_TARGET_RADIUS.head * aspect, 6);
 
     const left = target('left_shoulder');
@@ -466,15 +506,19 @@ describe('Osu! body-part target rings', () => {
   it('measures a round circle on a wide frame', () => {
     const head = target('head');
     const edgeX = head.radius / head.aspect;
-    const point = (dx: number): NormalizedLandmark => ({ x: head.x + dx, y: head.y, z: 0, visibility: 1 });
-    const only = (landmark: NormalizedLandmark) => withLandmark(standing, POSE_LANDMARK.nose, landmark);
-    expect(checkPartClearance(only(point(edgeX * 0.98)), head).cleared).toBe(false);
-    expect(checkPartClearance(only(point(edgeX * 1.02)), head).cleared).toBe(true);
-    expect(checkPartClearance(only({ ...point(0), y: head.y + head.radius * 1.02 }), head).cleared).toBe(true);
+    const moved = (dx: number, dy: number) => shift(standing, HEAD_INDICES, dx, dy);
+    expect(checkPartClearance(moved(edgeX * 0.98, 0), head).cleared).toBe(false);
+    expect(checkPartClearance(moved(edgeX * 1.02, 0), head).cleared).toBe(true);
+    expect(checkPartClearance(moved(0, head.radius * 1.02), head).cleared).toBe(true);
+  });
+
+  it('needs the whole head to leave, so a nose tilt alone stays in danger', () => {
+    const noseOnly = shift(standing, [POSE_LANDMARK.nose], 0.06, 0.02);
+    expect(checkPartClearance(noseOnly, target('head')).cleared).toBe(false);
   });
 
   it('clears only the part that moved', () => {
-    const headIndices = [POSE_LANDMARK.nose];
+    const headIndices = HEAD_INDICES;
     const leftArm = [POSE_LANDMARK.leftShoulder, POSE_LANDMARK.leftElbow, POSE_LANDMARK.leftWrist];
     const headTilt = shift(standing, headIndices, 0.06, 0.02);
     expect(checkPartClearance(headTilt, target('head')).cleared).toBe(true);
@@ -513,6 +557,150 @@ describe('Osu! body-part target rings', () => {
     expect(approachRingScale(1)).toBe(1);
     expect(approachRingScale(-1)).toBe(APPROACH_RING_START_SCALE);
     expect(approachRingScale(2)).toBe(1);
+  });
+});
+
+describe('silhouette head', () => {
+  it('falls back to a head center a fixed share of shoulder width above the shoulders', () => {
+    const baseline: CalibrationBaseline = { shoulderY: 0.4, shoulderWidth: 0.2, hipY: 0.8, centerX: 0.5, calibratedAt: 0 };
+    const aspect = 16 / 9;
+    expect(baselineHeadY(baseline, aspect)).toBeCloseTo(0.4 - 0.2 * aspect * HEAD_FALLBACK_DROP, 6);
+    expect(baselineHeadY({ ...baseline, noseY: 0.22 }, aspect)).toBe(0.22);
+  });
+
+  it('leaves the head out of the baseline when no face was seen', () => {
+    const faceless = sampleSyntheticPose('standing_in_zone', 0, { breathe: false }).map((landmark, index) =>
+      HEAD_INDICES.includes(index as (typeof HEAD_INDICES)[number]) ? { ...landmark, visibility: 0 } : landmark,
+    );
+    const baseline = computeCalibrationBaseline([faceless], 0);
+    expect(baseline?.noseY).toBeUndefined();
+  });
+
+  it('scales face points with the calibrated shoulders instead of using a fixed-size face', () => {
+    const metrics = { centerX: 0.5, shoulderY: 0.4, hipY: 0.8, noseY: 0.25 };
+    const narrow = silhouetteFromMetrics({ ...metrics, shoulderHalf: 0.09, hipHalf: 0.075 });
+    const wide = silhouetteFromMetrics({ ...metrics, shoulderHalf: 0.18, hipHalf: 0.15 });
+    const earSpan = (landmarks: NormalizedLandmark[]) =>
+      Math.abs((landmarks[LEFT_EAR]?.x ?? 0) - (landmarks[RIGHT_EAR]?.x ?? 0));
+    expect(earSpan(wide)).toBeCloseTo(earSpan(narrow) * 2, 6);
+    expect(wide[POSE_LANDMARK.nose]?.y).toBe(0.25);
+  });
+});
+
+describe('proportional ring sizing', () => {
+  const aspect = 16 / 9;
+
+  it('scales every ring linearly with shoulder width between the clamps', () => {
+    for (const part of ['head', 'left_shoulder', 'right_shoulder', 'chest'] as const) {
+      const far = partTargetRadius(part, 0.15);
+      const near = partTargetRadius(part, 0.3);
+      expect(far).toBeCloseTo(0.15 * PART_TARGET_RADIUS[part], 6);
+      expect(near).toBeCloseTo(far * 2, 6);
+    }
+  });
+
+  it('keeps a tiny far body visible and a face at the lens dodgeable', () => {
+    expect(partTargetRadius('head', 0.01)).toBe(PART_TARGET_MIN_RADIUS);
+    expect(partTargetRadius('head', 0)).toBe(PART_TARGET_MIN_RADIUS);
+    expect(partTargetRadius('head', Number.NaN)).toBe(PART_TARGET_MIN_RADIUS);
+    expect(partTargetRadius('head', 0.9)).toBe(PART_TARGET_MAX_RADIUS.head);
+    expect(partTargetRadius('chest', 0.9)).toBe(PART_TARGET_MAX_RADIUS.chest);
+  });
+
+  it('sizes the head ring a little wider than the head, about half a shoulder width across', () => {
+    const width = 0.2;
+    const diameter = partTargetRadius('head', width) * 2;
+    expect(diameter / width).toBeGreaterThan(0.5);
+    expect(diameter / width).toBeLessThan(0.6);
+  });
+
+  it('sizes from the calibrated shoulder width when given, even with the torso turned', () => {
+    const standing = sampleSyntheticPose('standing_in_zone', 0, { breathe: false });
+    const turned = shiftLandmarks(standing, [POSE_LANDMARK.leftShoulder], -0.06, 0);
+    const live = lockPartTarget(turned, 'head', aspect);
+    const calibrated = lockPartTarget(turned, 'head', aspect, 0.18);
+    expect(calibrated?.radius).toBeCloseTo(partTargetRadius('head', 0.18) * aspect, 6);
+    expect(live?.radius ?? 0).toBeLessThan(calibrated?.radius ?? 0);
+  });
+
+  it('locks a head ring from the calibrated width even when a shoulder drops out', () => {
+    const standing = sampleSyntheticPose('standing_in_zone', 0, { breathe: false });
+    const noShoulder = withLandmark(standing, POSE_LANDMARK.rightShoulder, { visibility: 0 });
+    expect(lockPartTarget(noShoulder, 'head', aspect)).toBeNull();
+    expect(lockPartTarget(noShoulder, 'head', aspect, 0.18)?.part).toBe('head');
+  });
+
+  it('matches a closer player with a proportionally bigger ring', () => {
+    const near = scaleAbout(sampleSyntheticPose('standing_in_zone', 0, { breathe: false }), 0.5, 0.4, 2);
+    const far = sampleSyntheticPose('standing_in_zone', 0, { breathe: false });
+    const nearHead = lockPartTarget(near, 'head', aspect);
+    const farHead = lockPartTarget(far, 'head', aspect);
+    expect((nearHead?.radius ?? 0) / (farHead?.radius ?? 1)).toBeCloseTo(2, 6);
+  });
+});
+
+describe('dual target rings', () => {
+  const aspect = 16 / 9;
+  const standing = sampleSyntheticPose('standing_in_zone', 0, { breathe: false });
+  const leftArm = [POSE_LANDMARK.leftShoulder, POSE_LANDMARK.leftElbow, POSE_LANDMARK.leftWrist];
+  const rightArm = [POSE_LANDMARK.rightShoulder, POSE_LANDMARK.rightElbow, POSE_LANDMARK.rightWrist];
+
+  function lock(parts: Parameters<typeof lockPartTargets>[1]) {
+    const targets = lockPartTargets(standing, parts, aspect);
+    if (!targets) throw new Error('no targets');
+    return targets;
+  }
+
+  it('locks one ring per part, in order', () => {
+    const targets = lock(['head', 'left_shoulder']);
+    expect(targets.map((target) => target.part)).toEqual(['head', 'left_shoulder']);
+    expect(lockPartTargets(withLandmark(standing, POSE_LANDMARK.leftShoulder, { visibility: 0 }), ['head', 'left_shoulder'], aspect)).toBeNull();
+  });
+
+  it('keeps rings from overlapping on a standing body', () => {
+    const [head, left] = lock(['head', 'left_shoulder']);
+    if (!head || !left) throw new Error('missing ring');
+    const gap = Math.hypot((head.x - left.x) * aspect, head.y - left.y);
+    expect(gap).toBeGreaterThan(head.radius + left.radius);
+  });
+
+  it('judges HIT when only one of two parts cleared', () => {
+    const targets = lock(['head', 'left_shoulder']);
+    const headOnly = shiftLandmarks(standing, HEAD_INDICES, 0.08, 0);
+    const clearances = checkPartClearances(headOnly, targets);
+    expect(clearances.map((clearance) => clearance.cleared)).toEqual([true, false]);
+    const judgment = judgePartTargets(targets, clearances);
+    expect(judgment).toMatchObject({ kind: 'part_ring', dodged: false, parts: ['head', 'left_shoulder'] });
+    expect(judgment.detail).toContain('Left Shoulder');
+  });
+
+  it('judges DODGED only when both parts are outside their circles', () => {
+    const targets = lock(['left_shoulder', 'right_shoulder']);
+    const both = shiftLandmarks(shiftLandmarks(standing, leftArm, 0.08, 0), rightArm, -0.08, 0);
+    const clearances = checkPartClearances(both, targets);
+    expect(clearances.every((clearance) => clearance.cleared)).toBe(true);
+    expect(judgePartTargets(targets, clearances).dodged).toBe(true);
+  });
+
+  it('treats a whole-body side step as clearing every ring at once', () => {
+    const targets = lock(['head', 'right_shoulder']);
+    const stepped = sampleSyntheticPose('side_step_left', 0, { breathe: false });
+    expect(judgePartTargets(targets, checkPartClearances(stepped, targets)).dodged).toBe(true);
+  });
+
+  it('counts a missing clearance as still inside, and a parry as a dodge', () => {
+    const targets = lock(['head', 'left_shoulder']);
+    const clearances = checkPartClearances(standing, targets);
+    expect(judgePartTargets(targets, clearances.slice(0, 1)).dodged).toBe(false);
+    expect(judgePartTargets(targets, clearances, true).dodged).toBe(true);
+    expect(judgePartTargets([], []).dodged).toBe(false);
+  });
+
+  it('matches the single-ring verdict for one target', () => {
+    const [head] = lock(['head']);
+    if (!head) throw new Error('missing ring');
+    const clearance = checkPartClearance(standing, head);
+    expect(judgePartTargets([head], [clearance])).toEqual(judgePartTarget(head, clearance));
   });
 });
 

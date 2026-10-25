@@ -9,6 +9,8 @@ export {
   BODY_PART_LABEL,
   BODY_PART_TAG,
   BODY_PART_TARGETS,
+  HEAD_FALLBACK_DROP,
+  PART_TARGET_MAX_RADIUS,
   PART_TARGET_MIN_RADIUS,
   PART_TARGET_RADIUS,
   STROBE_END_HZ,
@@ -16,8 +18,10 @@ export {
   WristVelocityTracker,
   actionBadgeLabel,
   approachRingScale,
+  baselineHeadY,
   bodyPartPoints,
   checkPartClearance,
+  checkPartClearances,
   distanceInRadii,
   buildPoseFrame,
   checkInZone,
@@ -25,11 +29,15 @@ export {
   computeCalibrationBaseline,
   expectedDefense,
   getZoneBounds,
+  headCenter,
   judgePartTarget,
+  judgePartTargets,
   judgeTelegraphDefense,
   judgeZoneBlast,
   lockPartTarget,
+  lockPartTargets,
   normalizeGesturePower,
+  partTargetRadius,
   resolveActiveAction,
   resolveTorso,
   strobeCycles,
@@ -85,7 +93,29 @@ export {
 } from './poseLandmarkerService';
 export type { PoseLandmarkerServiceOptions, PoseServiceStatus, VisionSourceMode } from './poseLandmarkerService';
 
+export {
+  GAUNTLET_DIFFICULTIES,
+  GAUNTLET_DIFFICULTY_LABEL,
+  GAUNTLET_FINAL_WAVE,
+  GAUNTLET_HEARTS,
+  GAUNTLET_LEVELS,
+  advanceGauntletWave,
+  applyGauntletResult,
+  buildGauntletWave,
+  comboMultiplier,
+  createGauntletState,
+  levelForWave,
+  startGauntlet,
+} from './survivalGauntlet';
+export type {
+  GauntletAttack,
+  GauntletDifficulty,
+  GauntletIncoming,
+  GauntletLevel,
+  GauntletState,
+} from './survivalGauntlet';
+
 export { VisionCanvas, primeVisionAudio } from './VisionCanvas';
-export type { CombatOverlay, VisionCanvasModel, VisionCanvasProps } from './VisionCanvas';
+export type { CombatOverlay, GameHud, VisionCanvasModel, VisionCanvasProps } from './VisionCanvas';
 
 export { VISION_TEST_PATH, VisionTestPage } from './VisionTestPage';

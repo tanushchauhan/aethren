@@ -4,9 +4,11 @@ import {
   BODY_PART_TAG,
   actionBadgeLabel,
   approachRingScale,
+  baselineHeadY,
   getZoneBounds,
   strobeCycles,
   strobeIsRed,
+  type BodyPartTarget,
   type PartTarget,
 } from './poseClassifiers';
 import { silhouetteFromMetrics } from './syntheticPoseGenerator';
@@ -20,9 +22,11 @@ export interface CombatOverlay {
   kind: 'part_ring' | 'zone_blast';
   startAt: number;
   judgeAt: number;
-  /** Frozen ring center for `part_ring`. Null for a blast. */
-  target: PartTarget | null;
-  /** True while the targeted part (or the whole torso) is out of danger right now. */
+  /** Frozen ring centers for `part_ring`, two for a dual-ring attack. Empty for a blast. */
+  targets: readonly PartTarget[];
+  /** Per ring, in the same order as `targets`: true while that part is outside its circle. */
+  clears: readonly boolean[];
+  /** True while every targeted part (or the whole torso) is out of danger right now. */
   clear: boolean;
   /** Set once the attack is judged, which plays the burst and the call-back pulse. */
   impact: { at: number; dodged: boolean } | null;
@@ -48,6 +52,16 @@ export interface VisionCanvasModel {
   actionNote: string;
   /** Optional so other labs can keep building the model without attacks. */
   combat?: CombatOverlay | null;
+  /** Survival game status for the corner pill. Optional, like `combat`. */
+  gameHud?: GameHud | null;
+}
+
+export interface GameHud {
+  hearts: number;
+  maxHearts: number;
+  score: number;
+  multiplier: number;
+  level: number;
 }
 
 interface FrameRect {
@@ -64,6 +78,8 @@ interface PaintStyle {
   lineWidth: number;
   /** Fill the head and torso so a silhouette can fade in with overlap. */
   fillBody: boolean;
+  /** Draw the head as a clean outline sized from the shoulders instead of tracing face points. */
+  headOutline?: boolean;
 }
 
 const POSE_EDGES: readonly (readonly [number, number])[] = [
@@ -79,6 +95,15 @@ const POSE_EDGES: readonly (readonly [number, number])[] = [
 ];
 
 const JOINTS = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+
+/** Landmarks 0 to 10 are the face. */
+const LAST_FACE_INDEX = 10;
+
+/** Head outline half-width as a share of shoulder width, so the head is about half a shoulder-width across. */
+const HEAD_RADIUS_SHARE = 0.25;
+
+/** A head is a little taller than it is wide. */
+const HEAD_HEIGHT_RATIO = 1.22;
 
 const GOLD = '#f5c16c';
 const GREEN = '#8dffc1';
@@ -259,9 +284,11 @@ function traceEdges(
   rect: FrameRect,
   mirror: boolean,
   placed?: readonly (readonly [number, number])[],
+  skipFace = false,
 ): void {
   ctx.beginPath();
   for (const [start, end] of POSE_EDGES) {
+    if (skipFace && start <= LAST_FACE_INDEX && end <= LAST_FACE_INDEX) continue;
     const a = placed ? placed[start] : mapPoint(landmarks[start]?.x ?? 0, landmarks[start]?.y ?? 0, rect, mirror);
     const b = placed ? placed[end] : mapPoint(landmarks[end]?.x ?? 0, landmarks[end]?.y ?? 0, rect, mirror);
     if (!a || !b) continue;
@@ -305,13 +332,16 @@ function drawSkeleton(
   ctx.lineJoin = 'round';
   ctx.strokeStyle = style.stroke;
   ctx.fillStyle = style.fill;
-  if (style.fillBody) fillBody(ctx, placed);
+  const head = style.headOutline ? headShape(placed) : null;
+  if (style.fillBody) fillBody(ctx, placed, head);
   ctx.shadowColor = style.glow;
   ctx.shadowBlur = style.lineWidth * 4;
-  traceEdges(ctx, landmarks, rect, mirror, placed);
+  traceEdges(ctx, landmarks, rect, mirror, placed, head !== null);
+  if (head) strokeHead(ctx, head);
   ctx.shadowBlur = 0;
   ctx.fillStyle = style.stroke;
   for (const index of JOINTS) {
+    if (head && index === 0) continue;
     const joint = placed[index];
     if (!joint) continue;
     ctx.beginPath();
@@ -321,7 +351,59 @@ function drawSkeleton(
   ctx.restore();
 }
 
-function fillBody(ctx: CanvasRenderingContext2D, placed: readonly (readonly [number, number])[]): void {
+interface HeadShape {
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+  /** Shoulder midpoint, where the neck meets the torso. */
+  neckX: number;
+  neckY: number;
+}
+
+/**
+ * Head centered on the nose point (the silhouette puts it at the calibrated head center),
+ * sized from the on-screen shoulder width so it matches a real head at any distance.
+ */
+function headShape(placed: readonly (readonly [number, number])[]): HeadShape | null {
+  const nose = placed[0];
+  const leftShoulder = placed[11];
+  const rightShoulder = placed[12];
+  if (!nose || !leftShoulder || !rightShoulder) return null;
+  const shoulderPx = Math.hypot(leftShoulder[0] - rightShoulder[0], leftShoulder[1] - rightShoulder[1]);
+  const rx = Math.max(8, shoulderPx * HEAD_RADIUS_SHARE);
+  return {
+    x: nose[0],
+    y: nose[1],
+    rx,
+    ry: rx * HEAD_HEIGHT_RATIO,
+    neckX: (leftShoulder[0] + rightShoulder[0]) / 2,
+    neckY: (leftShoulder[1] + rightShoulder[1]) / 2,
+  };
+}
+
+function traceHead(ctx: CanvasRenderingContext2D, head: HeadShape): void {
+  ctx.beginPath();
+  ctx.ellipse(head.x, head.y, head.rx, head.ry, 0, 0, Math.PI * 2);
+}
+
+function strokeHead(ctx: CanvasRenderingContext2D, head: HeadShape): void {
+  traceHead(ctx, head);
+  ctx.stroke();
+  const chin = head.y + head.ry;
+  if (chin < head.neckY) {
+    ctx.beginPath();
+    ctx.moveTo(head.x, chin);
+    ctx.lineTo(head.neckX, head.neckY);
+    ctx.stroke();
+  }
+}
+
+function fillBody(
+  ctx: CanvasRenderingContext2D,
+  placed: readonly (readonly [number, number])[],
+  head: HeadShape | null,
+): void {
   const nose = placed[0];
   const leftShoulder = placed[11];
   const rightShoulder = placed[12];
@@ -336,11 +418,9 @@ function fillBody(ctx: CanvasRenderingContext2D, placed: readonly (readonly [num
     ctx.closePath();
     ctx.fill();
   }
-  if (nose && leftShoulder && rightShoulder) {
-    const shoulderY = (leftShoulder[1] + rightShoulder[1]) / 2;
-    const radius = Math.max(10, Math.abs(shoulderY - nose[1]) * 0.72);
-    ctx.beginPath();
-    ctx.arc(nose[0], nose[1], radius, 0, Math.PI * 2);
+  const shape = head ?? (nose ? headShape(placed) : null);
+  if (shape) {
+    traceHead(ctx, shape);
     ctx.fill();
   }
 }
@@ -428,10 +508,11 @@ function drawLabel(
   y: number,
   color: string,
   font: string,
+  align: CanvasTextAlign = 'center',
 ): void {
   ctx.save();
   ctx.font = font;
-  ctx.textAlign = 'center';
+  ctx.textAlign = align;
   ctx.textBaseline = 'middle';
   ctx.lineWidth = 5;
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
@@ -441,6 +522,53 @@ function drawLabel(
   ctx.shadowBlur = 12;
   ctx.fillText(text, x, y);
   ctx.restore();
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+interface LabelAnchor {
+  x: number;
+  y: number;
+  align: CanvasTextAlign;
+}
+
+/** Keeps side labels below the top pills and above the bottom bar. */
+function clampLabelY(rect: FrameRect, y: number): number {
+  return clampNumber(y, rect.y + rect.h * 0.14, rect.y + rect.h * 0.84);
+}
+
+/**
+ * Which side of a ring its tag sits on, pointing away from the body in the mirrored view
+ * (the player's left shows on the right of the screen).
+ */
+const RING_LABEL_SIDE: Record<BodyPartTarget, 1 | -1> = {
+  head: 1,
+  left_shoulder: 1,
+  right_shoulder: -1,
+  chest: 1,
+};
+
+/** Tag spot just outside a ring, flipped to the other side when it would run off the frame. */
+function ringLabelAnchor(rect: FrameRect, cx: number, cy: number, radius: number, part: BodyPartTarget): LabelAnchor {
+  const gap = radius * 1.15 + 8;
+  let side = RING_LABEL_SIDE[part];
+  const room = side > 0 ? rect.x + rect.w - (cx + gap) : cx - gap - rect.x;
+  if (room < rect.w * 0.12) side = side > 0 ? -1 : 1;
+  return { x: cx + side * gap, y: clampLabelY(rect, cy), align: side > 0 ? 'left' : 'right' };
+}
+
+/** Label spot beside the silhouette box, on whichever side has more room. */
+function besideZone(rect: FrameRect, zone: FrameRect): LabelAnchor {
+  const leftRoom = zone.x - rect.x;
+  const rightRoom = rect.x + rect.w - (zone.x + zone.w);
+  const right = rightRoom >= leftRoom;
+  return {
+    x: right ? zone.x + zone.w + 14 : zone.x - 14,
+    y: clampLabelY(rect, zone.y + zone.h * 0.3),
+    align: right ? 'left' : 'right',
+  };
 }
 
 /** Expanding shockwave rings and spokes, green for a dodge and red for a hit. */
@@ -487,40 +615,53 @@ function drawBurst(
   ctx.restore();
 }
 
-/** Osu!-style ring: a bullseye frozen on the body part and an approach ring closing in on it. */
-function drawPartRing(ctx: CanvasRenderingContext2D, rect: FrameRect, overlay: CombatOverlay, nowMs: number): void {
-  const target = overlay.target;
-  if (!target) return;
+/**
+ * Osu!-style ring: a bullseye frozen on one body part and an approach ring closing in on it.
+ * A dual-ring attack draws this once per ring, each with its own live CLEAR or MOVE state.
+ * Text sits beside the ring so the face and body underneath stay visible.
+ */
+function drawPartRing(
+  ctx: CanvasRenderingContext2D,
+  rect: FrameRect,
+  overlay: CombatOverlay,
+  target: PartTarget,
+  clear: boolean,
+  nowMs: number,
+): void {
   const [cx, cy] = mapPoint(target.x, target.y, rect, true);
   const radius = Math.max(8, target.radius * rect.h);
   const tag = BODY_PART_TAG[target.part];
-  const labelFont = canvasFont(rect, 0.022);
+  const labelFont = canvasFont(rect, 0.02, 800);
+  const lineGap = Math.max(12, rect.w * 0.02) * 0.62;
+  const anchor = ringLabelAnchor(rect, cx, cy, radius, target.part);
 
   if (overlay.impact) {
     const life = (nowMs - overlay.impact.at) / IMPACT_BURST_MS;
     if (life < 0 || life > 1) return;
-    drawBurst(ctx, cx, cy, radius, overlay.impact.dodged, life);
+    const ringDodged = overlay.impact.dodged || clear;
+    drawBurst(ctx, cx, cy, radius, ringDodged, life);
     const pop = 1 + 0.35 * Math.sin(Math.min(1, life * 3) * Math.PI);
     drawLabel(
       ctx,
-      overlay.impact.dodged ? 'DODGED!' : 'HIT!',
-      cx,
-      cy - radius * 1.6 - life * 20,
-      overlay.impact.dodged ? EMERALD : CRIMSON,
-      canvasFont(rect, 0.04 * pop, 900),
+      ringDodged ? 'CLEAR!' : 'HIT!',
+      anchor.x,
+      anchor.y,
+      ringDodged ? EMERALD : CRIMSON,
+      canvasFont(rect, 0.03 * pop, 900),
+      anchor.align,
     );
     return;
   }
 
   const progress = clampProgress(nowMs, overlay);
-  const danger = !overlay.clear;
+  const danger = !clear;
   const throb = 0.5 + 0.5 * Math.sin(nowMs / (danger ? 70 : 160));
   const core = danger ? (throb > 0.5 ? CRIMSON : EMBER) : EMERALD;
 
   ctx.save();
   const glow = ctx.createRadialGradient(cx, cy, radius * 0.1, cx, cy, radius);
-  glow.addColorStop(0, danger ? 'rgba(255, 60, 60, 0.45)' : 'rgba(52, 245, 160, 0.35)');
-  glow.addColorStop(1, danger ? 'rgba(255, 138, 61, 0.12)' : 'rgba(52, 245, 160, 0.06)');
+  glow.addColorStop(0, danger ? 'rgba(255, 60, 60, 0.22)' : 'rgba(52, 245, 160, 0.18)');
+  glow.addColorStop(1, danger ? 'rgba(255, 138, 61, 0.1)' : 'rgba(52, 245, 160, 0.05)');
   ctx.fillStyle = glow;
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -534,25 +675,22 @@ function drawPartRing(ctx: CanvasRenderingContext2D, rect: FrameRect, overlay: C
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.stroke();
 
+  const tick = radius * 0.25;
   ctx.lineWidth = Math.max(1.5, radius * 0.03);
   ctx.beginPath();
-  ctx.arc(cx, cy, radius * 0.55, 0, Math.PI * 2);
-  ctx.stroke();
-  const tick = radius * 0.25;
-  ctx.beginPath();
   ctx.moveTo(cx - radius - tick, cy);
-  ctx.lineTo(cx - radius * 0.7, cy);
-  ctx.moveTo(cx + radius * 0.7, cy);
+  ctx.lineTo(cx - radius * 0.8, cy);
+  ctx.moveTo(cx + radius * 0.8, cy);
   ctx.lineTo(cx + radius + tick, cy);
   ctx.moveTo(cx, cy - radius - tick);
-  ctx.lineTo(cx, cy - radius * 0.7);
-  ctx.moveTo(cx, cy + radius * 0.7);
+  ctx.lineTo(cx, cy - radius * 0.8);
+  ctx.moveTo(cx, cy + radius * 0.8);
   ctx.lineTo(cx, cy + radius + tick);
   ctx.stroke();
 
   ctx.fillStyle = core;
   ctx.beginPath();
-  ctx.arc(cx, cy, Math.max(3, radius * (0.1 + 0.04 * throb)), 0, Math.PI * 2);
+  ctx.arc(cx, cy, Math.max(2.5, radius * (0.06 + 0.03 * throb)), 0, Math.PI * 2);
   ctx.fill();
 
   const scale = approachRingScale(progress);
@@ -567,9 +705,14 @@ function drawPartRing(ctx: CanvasRenderingContext2D, rect: FrameRect, overlay: C
   ctx.restore();
 
   const remaining = Math.max(0, (overlay.judgeAt - nowMs) / 1000);
-  drawLabel(ctx, `🎯 ${tag}`, cx, cy - radius * 1.35, core, labelFont);
-  drawLabel(ctx, danger ? 'MOVE!' : 'CLEAR!', cx, cy + radius * 1.35, core, labelFont);
-  drawLabel(ctx, remaining.toFixed(1), cx, cy, '#ffffff', canvasFont(rect, 0.016));
+  drawLabel(ctx, `${tag} ${remaining.toFixed(1)}s`, anchor.x, anchor.y - lineGap, core, labelFont, anchor.align);
+  drawLabel(ctx, danger ? 'MOVE!' : 'CLEAR!', anchor.x, anchor.y + lineGap, core, labelFont, anchor.align);
+}
+
+function drawPartRings(ctx: CanvasRenderingContext2D, rect: FrameRect, overlay: CombatOverlay, nowMs: number): void {
+  overlay.targets.forEach((target, index) => {
+    drawPartRing(ctx, rect, overlay, target, overlay.clears[index] ?? overlay.clear, nowMs);
+  });
 }
 
 /** Silhouette tint for a blast: accelerating red/green strobe, then a gold/green call-back pulse. */
@@ -606,7 +749,9 @@ function drawBlastOverlay(
   const zone = zoneRect(baseline, rect);
   const cx = zone.x + zone.w / 2;
   const cy = zone.y + zone.h / 2;
-  const font = canvasFont(rect, 0.03, 900);
+  const anchor = besideZone(rect, zone);
+  const font = canvasFont(rect, 0.026, 900);
+  const lineGap = Math.max(12, rect.w * 0.026) * 0.65;
 
   if (overlay.impact) {
     const age = nowMs - overlay.impact.at;
@@ -616,13 +761,15 @@ function drawBlastOverlay(
       drawLabel(
         ctx,
         overlay.impact.dodged ? 'DODGED!' : 'HIT!',
-        cx,
-        zone.y - rect.h * 0.05,
+        anchor.x,
+        anchor.y,
         overlay.impact.dodged ? EMERALD : CRIMSON,
-        canvasFont(rect, 0.045, 900),
+        canvasFont(rect, 0.038, 900),
+        anchor.align,
       );
     } else {
-      drawLabel(ctx, 'BACK IN THE ZONE', cx, zone.y - rect.h * 0.05, GOLD, font);
+      drawLabel(ctx, 'COME BACK', anchor.x, anchor.y - lineGap, GOLD, font, anchor.align);
+      drawLabel(ctx, 'TO THE ZONE', anchor.x, anchor.y + lineGap, GOLD, font, anchor.align);
     }
     return;
   }
@@ -643,14 +790,9 @@ function drawBlastOverlay(
   ctx.fillRect(0, 0, width, height);
 
   const remaining = Math.max(0, (overlay.judgeAt - nowMs) / 1000);
-  drawLabel(
-    ctx,
-    overlay.clear ? `CLEAR! STAY OUT ${remaining.toFixed(1)}` : `⚡ GET OUT! ${remaining.toFixed(1)}`,
-    cx,
-    zone.y - rect.h * 0.05,
-    overlay.clear ? EMERALD : red ? CRIMSON : EMERALD,
-    font,
-  );
+  const color = overlay.clear ? EMERALD : red ? CRIMSON : EMERALD;
+  drawLabel(ctx, overlay.clear ? 'CLEAR!' : '⚡ GET OUT!', anchor.x, anchor.y - lineGap, color, font, anchor.align);
+  drawLabel(ctx, `${remaining.toFixed(1)}s`, anchor.x, anchor.y + lineGap, color, font, anchor.align);
 }
 
 function paint(
@@ -678,7 +820,7 @@ function paint(
       hipHalf: Math.max(0.02, model.baseline.shoulderWidth * 0.42),
       shoulderY: model.baseline.shoulderY,
       hipY: model.baseline.hipY,
-      noseY: model.baseline.shoulderY - Math.max(0.08, Math.abs(model.baseline.hipY - model.baseline.shoulderY) * 0.55),
+      noseY: baselineHeadY(model.baseline, rect.w / Math.max(1, rect.h)),
     });
     const pulse = model.inZone ? 1 : 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(nowMs / 180));
     const fillAlpha = 0.05 + model.overlapScore * (model.inZone ? 0.55 : 0.28);
@@ -689,6 +831,7 @@ function paint(
           glow: tint.glow,
           lineWidth: Math.max(4, rect.w * 0.009),
           fillBody: true,
+          headOutline: true,
         }
       : {
           stroke: model.inZone ? `rgba(141, 255, 193, ${0.75 + 0.25 * pulse})` : `rgba(245, 193, 108, ${0.35 + 0.5 * pulse})`,
@@ -696,6 +839,7 @@ function paint(
           glow: model.inZone ? GREEN : GOLD,
           lineWidth: Math.max(2.5, rect.w * 0.006),
           fillBody: true,
+          headOutline: true,
         };
     drawSkeleton(ctx, outline, rect, true, silhouetteStyle, null);
     drawReturnSnap(ctx, rect, snapStartedAt, nowMs);
@@ -712,7 +856,7 @@ function paint(
     }, null);
   }
 
-  if (combat?.kind === 'part_ring') drawPartRing(ctx, rect, combat, nowMs);
+  if (combat?.kind === 'part_ring') drawPartRings(ctx, rect, combat, nowMs);
 
   model.teammatePoses.forEach((pose, index) => {
     if (pose.landmarks.length === 0) return;
@@ -728,6 +872,7 @@ function paint(
       glow: home ? GREEN : GOLD,
       lineWidth: Math.max(1.5, rect.w * 0.0025),
       fillBody: true,
+      headOutline: true,
     }, slot);
     ctx.save();
     ctx.fillStyle = home ? GREEN : GOLD;
@@ -844,23 +989,33 @@ export function VisionCanvas({ model, videoRef }: VisionCanvasProps) {
         autoPlay
       />
       <canvas ref={canvasRef} className="h-full w-full" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap gap-2 p-3">
-        <StatusPill testId="calibration-progress" tone="gold">
-          CAL {seconds.toFixed(1)} / 3.0s
-        </StatusPill>
-        <StatusPill testId="zone-badge" tone={model.inZone ? 'green' : 'gold'}>
-          {zoneLabel}
-        </StatusPill>
-        <StatusPill testId="action-badge" tone={model.activeAction === 'none' ? 'muted' : 'green'}>
-          {actionBadgeLabel(model.activeAction)}
-          {model.actionNote ? ` ${model.actionNote}` : ''}
-        </StatusPill>
-        <StatusPill testId="fps-badge" tone="muted">
-          {fps} FPS
-        </StatusPill>
-        <StatusPill testId="stream-badge" tone="gold">
-          <span className={streamLit ? 'text-amber-200' : 'text-amber-200/30'}>●</span> NET {model.streamHz} Hz
-        </StatusPill>
+      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
+        <div className="flex flex-wrap gap-2">
+          <StatusPill testId="calibration-progress" tone="gold">
+            CAL {seconds.toFixed(1)} / 3.0s
+          </StatusPill>
+          <StatusPill testId="zone-badge" tone={model.inZone ? 'green' : 'gold'}>
+            {zoneLabel}
+          </StatusPill>
+          <StatusPill testId="action-badge" tone={model.activeAction === 'none' ? 'muted' : 'green'}>
+            {actionBadgeLabel(model.activeAction)}
+            {model.actionNote ? ` ${model.actionNote}` : ''}
+          </StatusPill>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          {model.gameHud ? (
+            <StatusPill testId="game-hud-badge" tone={model.gameHud.hearts > 1 ? 'green' : 'red'}>
+              ❤ {model.gameHud.hearts}/{model.gameHud.maxHearts} · {model.gameHud.score} · {model.gameHud.multiplier}x · L
+              {model.gameHud.level}
+            </StatusPill>
+          ) : null}
+          <StatusPill testId="fps-badge" tone="muted">
+            {fps} FPS
+          </StatusPill>
+          <StatusPill testId="stream-badge" tone="gold">
+            <span className={streamLit ? 'text-amber-200' : 'text-amber-200/30'}>●</span> NET {model.streamHz} Hz
+          </StatusPill>
+        </div>
       </div>
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-3 text-xs text-amber-50/80">
         <div className="max-w-[70%]">
@@ -898,14 +1053,16 @@ function StatusPill({
 }: {
   children: ReactNode;
   testId: string;
-  tone: 'gold' | 'green' | 'muted';
+  tone: 'gold' | 'green' | 'red' | 'muted';
 }) {
   const toneClass =
     tone === 'green'
       ? 'border-emerald-200/40 bg-emerald-300/15 text-emerald-100'
-      : tone === 'gold'
-        ? 'border-amber-200/40 bg-amber-300/15 text-amber-100'
-        : 'border-white/15 bg-black/30 text-amber-50/80';
+      : tone === 'red'
+        ? 'border-rose-300/50 bg-rose-500/20 text-rose-100'
+        : tone === 'gold'
+          ? 'border-amber-200/40 bg-amber-300/15 text-amber-100'
+          : 'border-white/15 bg-black/30 text-amber-50/80';
   return (
     <span
       data-testid={testId}
