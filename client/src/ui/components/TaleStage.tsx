@@ -19,7 +19,11 @@ interface TaleStageProps {
 
 export function TaleStage({ screen, children, roomCode, caption }: TaleStageProps) {
   const narrator = useGameStore(s => s.gameState?.narratorCaption);
-  caption = narrator || caption;
+  const openingLines: Record<string, string> = {
+    upload: 'Every friendship holds a story. Choose the memories that will awaken yours.',
+    opening: 'A few forgotten moments flicker in the moonlight. Which will you carry into the tale?',
+  };
+  caption = narrator || caption || openingLines[screen];
   return (
     <div
       className={cx('ouam-stage', caption ? 'ouam-stage-captioned' : undefined)}
@@ -27,12 +31,14 @@ export function TaleStage({ screen, children, roomCode, caption }: TaleStageProp
       style={stageVars}
     >
       <div className="ouam-shell">
-        <div className="ouam-topbar">{roomCode ? <RoomCodeBadge code={roomCode} /> : null}</div>
+        <div className="ouam-topbar"><span className="vn-chapter">Once in a Memory · {screen === 'upload' ? 'Prologue' : screen === 'opening' ? 'Memories' : screen === 'ending' ? 'Epilogue' : 'The tale'}</span>{roomCode ? <RoomCodeBadge code={roomCode} /> : null}</div>
         {children}
       </div>
       {caption ? (
         <p className="ouam-caption" role="status">
+          <span className="vn-nameplate">The storyteller</span>
           {caption}
+          <span className="vn-dialogue-diamond" aria-hidden="true">◆</span>
         </p>
       ) : null}
     </div>

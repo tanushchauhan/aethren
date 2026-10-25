@@ -1,5 +1,7 @@
 # Once Upon a Memory: HackTX Meta + Hardware Game Design
 
+> Current art direction and Muse asset handoff: [Meta Muse asset-generation instructions](muse-asset-generation.md). Use this guide for the visual-novel presentation and generated artwork.
+
 ## Two glove wearers (P0 contract)
 
 Both collaborators wear enchanted gloves: **a spellbearer on Laptop A** and **a spellbearer on Laptop B**. Each glove connects to its wearer's laptop through its own Arduino and serial bridge. Both players have the same dial, finger-button push-to-talk, fist charge, motion, touch-parry, and arm/disarm controls. Keyboard and on-screen inputs remain fallback controls for either player.

@@ -7,6 +7,7 @@ import { LandingScreen } from './LandingScreen';
 import { MemoryCarousel } from './MemoryCarousel';
 import { StorybookIntro } from './StorybookIntro';
 import './storybook.css';
+import './visual-novel.css';
 import { useUiStore } from './storeBindings';
 
 /**

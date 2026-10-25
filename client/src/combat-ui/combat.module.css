@@ -967,3 +967,90 @@
 .root { background: #101c22; font-family: 'VT323', monospace; }
 .foe, .rail, .vision, .caption { border-radius: 0; background: #13262b; }
 .root :global(.ouam-button) { border-radius: 0; background: #29473c; color: #e5dbaf; font: 23px 'VT323', monospace; border-color: #8ea08a; }
+
+/* Visual novel scene: characters above, dialogue and choices below. */
+.root {
+  isolation: isolate; padding: 24px 4vw 66px; gap: 16px 32px;
+  grid-template-columns: minmax(240px,.8fr) minmax(0,1.2fr);
+  grid-template-rows: auto auto minmax(280px,1fr) auto auto;
+  grid-template-areas: "ribbon ribbon" "hearts hearts" "foe vision" "caption caption" "rail rail";
+  background: #091820 url('/art/forest-base.png') center / cover no-repeat;
+  font-family: 'Pixelify Sans',monospace;
+}
+.root::before { content: ''; position: absolute; inset: 0; z-index: -1; background: #06121b66; pointer-events: none; }
+.ribbon { background: #0b1c25d9; border: 1px solid #a38f6255; padding: 12px 20px; }
+.round, .phases li, .heartCount, .wardCopy { font-family: 'Pixelify Sans',monospace; }
+.phases li { border-radius: 0; letter-spacing: .03em; font-size: 12px; border: 0; }
+.phases li[data-active='true'] { background: #d5be8522; color: #f2d69c; box-shadow: inset 0 -1px #d5be85; }
+.hearts { justify-content: flex-start; padding: 0; }
+.heartOn,.heartOff { width: 24px; }
+.foe { position: relative; padding: 0 20px 20px; border: 0; background: transparent; align-items: center; gap: 8px; }
+.portraitFrame { width: 200px; height: 210px; aspect-ratio: auto; max-height: none; background: transparent; box-shadow: none; border-radius: 0; overflow: visible; }
+.art { object-fit: contain; filter: drop-shadow(0 12px 12px #0008); }
+.portrait { object-fit: contain; }
+.foeName { color: #f4deac; font-size: 25px; text-shadow: 2px 2px #071319; }
+.hpRow { width: min(260px,100%); }
+.hpTrack { height: 5px; border-radius: 0; }
+.hpText { text-align: center; font-size: 13px; }
+.weak { font-size: 14px; background: #07141bbf; padding: 4px 12px; }
+.meterBlock { align-items: center; padding: 12px; background: #0b1c25d9; border: 1px solid #a38f6255; width: min(300px,100%); }
+.meter { height: 8px; }
+.shard,.shardOn { border-radius: 0; transform: none; }
+.shardOn { background: #d5be85; }
+.meterStatus { font-size: 16px; font-weight: 400; }
+.meterWindow { font-size: 12px; }
+.vision { min-height: 280px; background: transparent; box-shadow: none; align-self: center; }
+.visionTag { position: static; align-self: flex-start; color: #d9c394; font-size: 12px; }
+.vision { flex-direction: column; }
+.calibration { width: 100%; }
+.silhouette { width: 110px; color: #d0e3db; }
+.calibText { font: 32px/1.3 'Pixelify Sans',monospace; max-width: 500px; }
+.calibration .pttHint { max-width: 390px; width: 100%; margin-top: 16px; font-size: 17px; }
+.rail { display: grid; grid-template-columns: minmax(180px,.8fr) minmax(200px,1.1fr) minmax(220px,1fr); align-items: start; gap: 28px; padding: 24px; border: 1px solid #a38f6270; background: #0b1d27f0; }
+.meterTitle { color: #cfb886; font-size: 12px; letter-spacing: .1em; margin-bottom: 10px; }
+.choiceList { display: grid; gap: 6px; }
+.spellChoice { display: flex; gap: 14px; align-items: center; width: 100%; padding: 9px 14px; background: transparent; border: 1px solid transparent; color: #c8d3cd; text-align: left; font: 22px 'Pixelify Sans',monospace; text-transform: capitalize; cursor: pointer; }
+.spellChoice[aria-pressed='true'] { color: #ffe3a5; border-color: #c7ad73; background: #d5be8512; }
+.spellChoice:hover:not(:disabled) { background: #d5be8520; }
+.spellChoice kbd { margin-left: auto; font: 13px 'Pixelify Sans',monospace; color: #a1b4b4; }
+.choiceLock { margin-top: 10px; background: transparent; color: #b4c6c5; border: 0; border-bottom: 1px solid #728c8c; padding: 4px 0; font: 14px 'Pixelify Sans',monospace; cursor: pointer; }
+.incantation .phrase { color: #f6e6bf; font: 26px/1.4 'Pixelify Sans',monospace; margin: 14px 0; }
+.wheelHint, .pttHint { width: 100%; font: 14px/1.5 'Pixelify Sans',monospace; text-align: left; color: #b4c6c5; }
+.spellActions { display: grid; gap: 10px; }
+.transcript { text-align: left; font-size: 15px; color: #d9ceac; min-height: 0; }
+.castActions { justify-content: stretch; flex-wrap: nowrap; }
+.castActions button { flex: 1; }
+.root :global(.ouam-button) { background: #d5be8512; color: #f4deac; border: 1px solid #bda471; font: 18px/1.3 'Pixelify Sans',monospace; box-shadow: none; }
+.root :global(.ouam-button):hover:not(:disabled) { background: #d5be852a; }
+.caption { margin-top: 12px; min-height: 110px; padding: 30px 32px 24px; border: 1px solid #c9b883; background: #0c1d27f5; box-shadow: 0 0 0 3px #07141b,0 0 0 4px #ae996a55; }
+.speaker { position: absolute; top: -18px; left: 24px; padding: 6px 20px; background: #253b43; border: 1px solid #c9b883; color: #f8e6b7; font-size: 17px; }
+.captionText { font: 22px/1.5 'Pixelify Sans',monospace; }
+.overlay[data-attack] { background: #07141bc9; }
+@media(min-width:1100px) and (min-height:800px) { .portraitFrame { width: 230px; height: 260px; } }
+@media(max-width:800px) {
+  .root { padding: 18px 20px 70px; gap: 18px; grid-template-columns: minmax(0,1fr); grid-template-rows: auto; grid-template-areas: "ribbon" "hearts" "foe" "vision" "caption" "rail"; }
+  .ribbon { display: flex; flex-wrap: wrap; padding: 12px; }
+  .phases { justify-content: flex-start; gap: 4px; }
+  .phases li { padding: 6px; font-size: 10px; }
+  .foe { padding: 0; }
+  .portraitFrame { height: 190px; }
+  .vision { min-height: 0; }
+  .visionTag { align-self: center; text-align: center; }
+  .calibration { padding: 8px; }
+  .calibText { font-size: 25px; }
+  .calibration .pttHint { font-size: 15px; margin-top: 8px; text-align: center; }
+  .rail { grid-template-columns: minmax(0,1fr); gap: 24px; padding: 20px; }
+  .choiceList { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .spellChoice { font-size: 17px; padding: 10px 5px; gap: 4px; justify-content: center; }
+  .spellChoice kbd { display: none; }
+  .caption { padding: 30px 22px 22px; }
+  .captionText { font-size: 18px; }
+  .overlay { position: fixed; }
+}
+@media(min-width:1100px) {
+  .foe { display: grid; grid-template-columns: minmax(120px,.9fr) minmax(160px,1fr); align-content: center; align-items: center; gap: 10px 18px; padding: 0; }
+  .portraitFrame { grid-column: 1; grid-row: 1 / span 6; width: 100%; height: 260px; }
+  .foeName, .hpRow, .weak, .ward, .wardBroken, .meterBlock { grid-column: 2; }
+  .foeName { font-size: 22px; }
+  .meterBlock { width: 100%; }
+}

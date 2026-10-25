@@ -35,7 +35,6 @@ function Heart({ filled }: { filled: boolean }) {
 function MonsterArt() {
   return (
     <svg className={styles.art} viewBox="0 0 320 400" aria-hidden="true">
-      <rect width="320" height="400" fill="#100c16" />
       <ellipse cx="160" cy="360" rx="120" ry="18" fill="#2a140c" />
       <path d="M40 250c20-70 50-90 90-80 10 30 20 70 10 110" fill="#3a2214" />
       <path d="M280 250c-20-70-50-90-90-80-10 30-20 70-10 110" fill="#3a2214" />
@@ -54,7 +53,6 @@ function MonsterArt() {
 function BossArt() {
   return (
     <svg className={styles.art} viewBox="0 0 320 400" aria-hidden="true">
-      <rect width="320" height="400" fill="#070814" />
       <circle cx="160" cy="78" r="46" fill="#1c2438" />
       <path d="M118 70l14-40 12 28 16-36 16 36 12-28 14 40z" fill="#d7ffe8" />
       <path d="M96 150c8-40 28-62 64-62s56 22 64 62l28 190H68z" fill="#142033" />

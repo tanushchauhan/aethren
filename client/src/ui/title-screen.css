@@ -30,3 +30,32 @@
 @media (max-width:700px) { .title-backdrop { background-position: 58% center; } .title-content { padding: 100px 26px 100px; justify-content: flex-start; background: #03101745; } .game-title { letter-spacing: -2px; margin-bottom: 55px; } .game-title span { font-size: 26px; } .game-title strong { font-size: 38px; } .title-menu { margin-left: 22px; } .title-footer { font-size: 16px; flex-direction: column; gap: 4px; } }
 @media (max-height:600px) and (min-width:701px) { .title-content { padding-top: 40px; padding-bottom: 65px; } .game-title { margin-bottom: 25px; } .title-menu { gap: 4px; } }
 @media (prefers-reduced-motion:reduce) { .title-rain i { animation: none; display: none; } }
+
+@font-face { font-family: 'Pixelify Sans'; src: url('/fonts/PixelifySans.ttf') format('truetype'); font-weight: 400 700; font-display: swap; }
+.forest-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; background: #071015; }
+.game-title { margin-bottom: 28px; width: min(570px, 44vw); }
+.game-title img { display: block; width: 100%; height: auto; filter: drop-shadow(2px 4px 3px #071015); }
+.title-menu button { font: 36px/1.2 'Pixelify Sans', monospace; letter-spacing: .5px; display: flex; align-items: center; gap: 15px; padding: 12px 24px; width: 100%; box-sizing: border-box; }
+.title-menu button::before { display: none; }
+.menu-diamond { color: #b7b99b; font-size: 13px; text-shadow: none; }
+.title-menu button:hover .menu-diamond, .title-menu button:focus-visible .menu-diamond { color: #ffe0a1; text-shadow: 0 0 10px #f8d996; }
+.title-dialog, .title-dialog input, .title-dialog textarea, .title-confirm, .title-dialog h2 { font-family: 'Pixelify Sans', monospace; }
+.title-content { padding-left: 6vw; }
+.music-control { position: fixed; z-index: 30; bottom: 14px; right: 20px; padding: 8px 12px; border: 1px solid #8b9c7c70; background: #081317d9; color: #dfd9b8; font: 15px 'Pixelify Sans', monospace; cursor: pointer; }
+.music-control:focus-visible { outline: 2px solid #ffe2ab; outline-offset: 4px; }
+.title-footer { bottom: 25px; right: 190px; }
+@media(max-width:700px) { .title-content { padding-left: 24px; padding-top: 100px; background: transparent; } .game-title { width: min(100%, 420px); margin-bottom: 30px; } .title-menu { margin-left: 0; } .title-menu button { font-size: 29px; padding: 12px 16px; } .title-footer { bottom: 64px; right: 20px; } }
+
+/* A single illuminated choice, framed like the reference's game menu. */
+.title-menu { width: min(390px, 100%); gap: 10px; }
+.title-menu button::before, .title-menu button::after { content: ''; display: block; position: absolute; left: 12px; right: 12px; width: auto; height: 1px; border: 0; background: #d6b77b; opacity: 0; box-shadow: 0 0 8px #e5bd6255; }
+.title-menu button::before { top: 0; }
+.title-menu button::after { bottom: 0; }
+.title-menu button[data-active="true"] { color: #ffe5ad; background: #dca34b0d; text-shadow: 0 0 14px #f4c57066, 2px 3px #071015; }
+.title-menu button[data-active="true"]::before, .title-menu button[data-active="true"]::after { opacity: .85; }
+.title-menu button:not([data-active="true"])::before { opacity: 0; }
+.menu-diamond { flex: 0 0 13px; }
+.title-menu button[data-active="true"] .menu-diamond { color: #ffe0a1; font-size: 0; height: 16px; background: #ffe0a1; clip-path: polygon(15% 0, 100% 50%, 15% 100%); filter: drop-shadow(0 0 5px #efc576); }
+.menu-flourish { margin-left: auto; color: #e7c68b; font-size: 15px; opacity: 0; }
+.title-menu button[data-active="true"] .menu-flourish { opacity: 1; }
+.title-menu button:focus-visible { outline: 1px solid #e6d6aa; outline-offset: 4px; }

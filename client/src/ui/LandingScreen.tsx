@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { getUiStore, useUiStore } from './storeBindings';
 import './title-screen.css';
+import { ForestCanvas } from './ForestCanvas';
 
 type Menu = 'create' | 'join' | 'demo' | 'quest';
 export function LandingScreen() {
@@ -8,6 +9,7 @@ export function LandingScreen() {
   const mock = useUiStore(s => s.mockMode);
   const connection = useUiStore(s => s.connection);
   const networkError = useUiStore(s => s.lastError);
+  const [highlighted, setHighlighted] = useState<Menu>('create');
   const [menu, setMenu] = useState<Menu | null>(null);
   const [name, setName] = useState(nameInStore);
   const [code, setCode] = useState('');
@@ -40,21 +42,29 @@ export function LandingScreen() {
   }
   const titles = { create: 'Begin your story', join: 'Find your friends', demo: 'Step into the tale', quest: 'Consult the oracle' };
   return <main className="title-screen">
-    <div className="title-backdrop" aria-hidden="true" />
-    <div className="title-rain" aria-hidden="true">{Array.from({ length: 44 }, (_, i) => <i key={i} style={{ left: `${(i * 37) % 103}%`, animationDelay: `${-i * .17}s`, animationDuration: `${.7 + (i % 5) * .12}s`, opacity: .08 + (i % 4) * .05 }} />)}</div>
+    <ForestCanvas />
     <section className="title-content" aria-label="Main menu">
-      <h1 className="game-title"><span>Once Upon</span><strong>a Memory</strong></h1>
+      <h1 className="game-title"><img src="/art/memory-logo.png" alt="Once in a Memory" /></h1>
       <nav className="title-menu" aria-label="Choose your adventure">
-        <button onClick={() => setMenu('create')}>New adventure</button>
-        <button onClick={() => setMenu('join')}>Join adventure</button>
-        <button onClick={() => setMenu('demo')}>Quick start</button>
-        <button onClick={() => setMenu('quest')}>The oracle</button>
+        {([['create', 'New adventure'], ['join', 'Join adventure'], ['demo', 'Quick start'], ['quest', 'The oracle']] as const).map(([item, label]) => (
+          <button key={item} data-active={highlighted === item}
+            onPointerEnter={() => setHighlighted(item)} onFocus={() => setHighlighted(item)}
+            onClick={() => { setHighlighted(item); setMenu(item); }}>
+            <span className="menu-diamond" aria-hidden="true">◆</span>{label}
+            <span className="menu-flourish" aria-hidden="true">✦</span>
+          </button>
+        ))}
       </nav>
     </section>
     <footer className="title-footer"><span>A co-op spellcasting adventure</span><span>Every memory has its magic.</span></footer>
-    <dialog ref={dialog} className="title-dialog" onCancel={() => setMenu(null)}>
+    <dialog ref={dialog} className="title-dialog vn-setup" aria-labelledby="setup-title" onCancel={() => setMenu(null)}>
       <button className="dialog-close" aria-label="Back to title screen" onClick={() => setMenu(null)}>×</button>
-      <h2>{menu ? titles[menu] : ''}</h2>
+      <span className="vn-nameplate">The storyteller</span>
+      <div className="vn-setup-story">
+        <p className="vn-chapter">{menu === 'join' ? 'A familiar path' : menu === 'quest' ? 'A whispered wish' : 'The first page'}</p>
+        <h2 id="setup-title">{menu ? titles[menu] : ''}</h2>
+        <p>{menu === 'join' ? 'Somewhere in the wood, your friends are waiting. What name shall we call, and which path will lead you to them?' : menu === 'quest' ? 'The forest is listening. Tell it the adventure you hope to find.' : 'Every tale begins with a name. Yours is about to become part of the magic.'}</p>
+      </div>
       <form onSubmit={submit}>
         {menu === 'quest' ? <label>What do you seek?<textarea value={quest} maxLength={400} onChange={e => setQuest(e.target.value)} /></label> : <label>Your name<input value={name} maxLength={32} autoComplete="nickname" onChange={e => setName(e.target.value)} /></label>}
         {menu === 'join' && <label>Room code<input value={code} maxLength={4} autoCapitalize="characters" autoComplete="off" onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))} /></label>}

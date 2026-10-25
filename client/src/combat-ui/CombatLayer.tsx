@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ELEMENTS_P0, ELEMENT_COLORS, NOISE_LOUD_THRESHOLD, type Gesture } from '../net/contract';
+import { ELEMENTS_P0, NOISE_LOUD_THRESHOLD, type Gesture } from '../net/contract';
 import { useGameStore, getServerNow } from '../net/store';
 import { BattleStage } from './BattleStage';
 import { TelegraphOverlay } from './TelegraphOverlay';
@@ -26,6 +26,7 @@ function CombatScreen() {
   const [held, setHeld] = useState(false);
   const [pageActive, setPageActive] = useState(true);
   const [recording, setRecording] = useState(false);
+  useEffect(() => { window.dispatchEvent(new CustomEvent('ouam:recording', { detail: recording })); return () => { window.dispatchEvent(new CustomEvent('ouam:recording', { detail: false })); }; }, [recording]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Choose an element, then hold to speak.');
   const [ready, setReady] = useState<{ element: typeof spell.element; transcript: string; power: number } | null>(null);
@@ -141,35 +142,39 @@ function CombatScreen() {
     return () => window.removeEventListener('ouam:gesture', release);
   });
 
-  return <main className={styles.root} aria-label="Battle stage">
+  return <main className={styles.root} data-phase={game.phase} aria-label="Battle stage">
     <BattleStage />
     <section className={styles.vision} aria-label="Player stage">
-      <span className={styles.visionTag}>{mock ? 'Demo preview' : 'Live quest'} · Spellbearer · your enchanted glove</span>
+      <span className={styles.visionTag}>{local?.name || 'Spellbearer'} · {mock ? 'Practice tale' : 'Your place in the tale'}</span>
       <div className={styles.calibration}>
-        <svg className={styles.silhouette} viewBox="0 0 180 280" aria-hidden="true"><circle cx="90" cy="38" r="24"/><path d="M58 86 Q90 68 122 86 L146 160 M58 86 L34 160 M64 90 L64 180 L48 260 M116 90 L116 180 L132 260 M64 180 L116 180"/></svg>
+        {game.phase === 'calibrating' && <svg className={styles.silhouette} viewBox="0 0 180 280" aria-hidden="true"><circle cx="90" cy="38" r="24"/><path d="M58 86 Q90 68 122 86 L146 160 M58 86 L34 160 M64 90 L64 180 L48 260 M116 90 L116 180 L132 260 M64 180 L116 180"/></svg>}
         <h1 className={styles.calibText}>{game.phase === 'calibrating' ? 'Find your place in the tale' : game.combatPhase === 'team_turn' ? 'Your turn to make magic' : 'Watch the next move'}</h1>
-        <p className={styles.pttHint}>Camera tracking is awaiting the vision module. This outline is a guide.</p>
-        {mock && <button className="ouam-button" style={{ pointerEvents: 'auto', marginTop: 20 }} onClick={() => useGameStore.getState().setPhase('encounter', 'team_turn')}>Preview casting</button>}
+        <p className={styles.pttHint}>{game.phase === 'calibrating' ? 'Stand where your whole body can be seen. Camera tracking is not connected yet.' : 'Two spellbearers. One shared fate. Choose your magic together.'}</p>
+        {mock && game.phase === 'calibrating' && <button className="ouam-button" style={{ pointerEvents: 'auto', marginTop: 20 }} onClick={() => useGameStore.getState().setPhase('encounter', 'team_turn')}>Preview casting</button>}
       </div>
     </section>
     <aside className={styles.rail} aria-label="Spell controls">
-      <p className={styles.meterTitle}>Your spellbook</p>
-      <div className={styles.housing} data-charged={spell.fistCharged} data-locked={spell.locked}>
-        <div className={styles.pointer}/><div className={styles.rotor} style={{ transform: `rotate(${-spell.slot * 120}deg)`, background: '#34493f' }}/>
-        <div className={styles.hub}/>
-        {ELEMENTS_P0.map((element, index) => <button key={element} aria-pressed={spell.element === element} className={spell.element === element ? styles.sigilOn : styles.sigil} disabled={spell.hardwareDrives || recording || busy} style={{ background: ELEMENT_COLORS[element], transform: `rotate(${(index - spell.slot) * 120}deg) translateY(-90px) rotate(${-(index - spell.slot) * 120}deg)` }} onClick={() => spell.choose(index as 0 | 1 | 2)}>{element}</button>)}
-        <button className={spell.locked ? styles.lockOn : styles.lock} onClick={spell.toggleLock} aria-pressed={spell.locked}>{spell.locked ? 'Locked' : 'Lock'}</button>
+      <div className={styles.spellChoices}>
+        <p className={styles.meterTitle}>Choose your magic</p>
+        <div className={styles.choiceList}>
+          {ELEMENTS_P0.map((element, index) => <button key={element} aria-pressed={spell.element === element} className={styles.spellChoice} data-element={element} disabled={spell.hardwareDrives || recording || busy} onClick={() => spell.choose(index as 0 | 1 | 2)}><span aria-hidden="true">{spell.element === element ? '▸' : '◇'}</span><span>{element}</span><kbd>{index + 1}</kbd></button>)}
+        </div>
+        <button className={styles.choiceLock} onClick={spell.toggleLock} aria-pressed={spell.locked}>{spell.locked ? 'Unlock element' : 'Lock element'}</button>
       </div>
-      <h2 className={styles.elementName}>{spell.element}</h2>
-      <div className={styles.slip}><p className={styles.phrase}>“{spell.phrase}”</p></div>
-      <p className={styles.wheelHint}>Turn your glove dial to choose an element. Match your teammate’s element and cast together.</p>
+      <div className={styles.incantation}>
+        <p className={styles.meterTitle}>Your incantation · {spell.element}</p>
+        <p className={styles.phrase}>“{spell.phrase}”</p>
+        <p className={styles.wheelHint}>Choose with your glove dial or the choices here. Cast the same element together for Twin Cast.</p>
+      </div>
+      <div className={styles.spellActions}>
       <button className="ouam-button" disabled={!canSpeak || busy} aria-label="Hold to speak incantation" onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); setHeld(true); }} onPointerUp={() => setHeld(false)} onPointerCancel={() => setHeld(false)} onLostPointerCapture={() => setHeld(false)} onKeyDown={e => { if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); setHeld(true); } }} onKeyUp={() => setHeld(false)} onBlur={() => setHeld(false)}>{recording ? '● Listening…' : busy ? 'Reading your words…' : 'Hold to speak'}</button>
       <p className={styles.pttHint}>{!armed ? 'Arm your glove to cast.' : !canSpeak ? 'Cast during your team’s turn, inside the outline.' : 'Hold your glove’s finger button or Spacebar to speak.'}</p>
       <p className={styles.transcript} role="status">{message}</p>
       <div className={styles.castActions}>{(['swipe', 'thrust'] as const).map(gesture => <button className="ouam-button" key={gesture} disabled={!ready || !canSpeak || (!!hardware && !hardware.fistCharged)} onClick={() => cast(gesture)}>Cast · {gesture}</button>)}</div>
+      </div>
     </aside>
     <TelegraphOverlay />
     {(game.tooLoud || (hardware?.noiseLevel ?? 0) > NOISE_LOUD_THRESHOLD) && <p className={styles.loud} role="status">Room too loud — move the microphone closer</p>}
-    <footer className={styles.caption}><span className={styles.speaking}/><p className={styles.captionText} role="status">{game.narratorCaption || 'Two friends. Two enchanted gloves. A story only you can tell.'}</p></footer>
+    <footer className={styles.caption}><span className={styles.speaker}>The storyteller</span><p className={styles.captionText} role="status">{game.narratorCaption || 'Two friends. Two enchanted gloves. A story only you can tell.'}</p></footer>
   </main>;
 }
