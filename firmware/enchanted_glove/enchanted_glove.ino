@@ -25,8 +25,9 @@
  *   {"cmd":"arm","open":true|false}
  *   {"cmd":"servo","open":true|false}          no servo is wired: shown on the LCD
  *   {"cmd":"hello"}                            UDP: subscribe this sender to frames
+ *   {"cmd":"i2c"}                              scan Wire + Wire1, reply with address lists
  *
- * No external libraries: the accelerometer and the LCD are raw Wire registers.
+ * LCD: Seeed Grove - LCD RGB Backlight (rgb_lcd). Accelerometer is raw Wire registers.
  * loop() never calls delay(); notes, the LCD, and Wi-Fi all advance from millis().
  *
  * Accelerometer mount: flat on the back of the hand, Grove cable toward the wrist.
@@ -36,6 +37,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <rgb_lcd.h>
 #include <WiFiS3.h>
 #include <WiFiUdp.h>
 #include <math.h>
@@ -90,9 +92,7 @@ const int8_t LATERAL_SIGN = 1;
 const uint8_t THRUST_AXIS = 1;
 const int8_t THRUST_SIGN = 1;
 
-const uint8_t LCD_ADDR = 0x3E;
-const uint8_t RGB_ADDR_V4 = 0x62;  // PCA9633
-const uint8_t RGB_ADDR_V5 = 0x30;
+const uint8_t I2C_SCAN_MAX = 32;
 const uint32_t LCD_REFRESH_MS = 100;  // ~10 Hz keeps the shared I2C bus free for the accelerometer
 const uint32_t LCD_MSG_MS = 4000;
 const uint32_t SWIPE_FLASH_MS = 600;
@@ -190,9 +190,8 @@ const char *latchedSwipe = "none";
 uint32_t gestureHoldUntil = 0;
 uint32_t swipeFlashUntil = 0;
 
+rgb_lcd lcd;
 bool lcdReady = false;
-uint8_t rgbAddr = 0;
-uint32_t nextLcdProbeMs = 100;  // the LCD controller needs ~50 ms after power-up
 uint32_t lastLcdMs = 0;
 char lcdShown[2][17];
 int16_t rgbShown[3] = {-1, -1, -1};
@@ -368,6 +367,9 @@ void resetI2c() {
   Wire.end();
   Wire.begin();
   Wire.setClock(100000);
+  Wire1.end();
+  Wire1.begin();
+  Wire1.setClock(100000);
 }
 
 void noteI2cFail() {
@@ -376,9 +378,38 @@ void noteI2cFail() {
   resetI2c();
 }
 
-bool i2cAck(uint8_t addr) {
-  Wire.beginTransmission(addr);
-  return Wire.endTransmission() == 0;
+bool i2cAckBus(TwoWire &bus, uint8_t addr) {
+  bus.beginTransmission(addr);
+  return bus.endTransmission() == 0;
+}
+
+bool i2cAck(uint8_t addr) { return i2cAckBus(Wire, addr); }
+
+uint8_t scanI2cBus(TwoWire &bus, uint8_t *out, uint8_t maxOut) {
+  uint8_t n = 0;
+  for (uint8_t addr = 0x08; addr < 0x78 && n < maxOut; addr++) {
+    if (i2cAckBus(bus, addr)) out[n++] = addr;
+  }
+  return n;
+}
+
+bool pendingBootI2cScan = true;
+
+void reportI2cScan() {
+  uint8_t w[I2C_SCAN_MAX], w1[I2C_SCAN_MAX];
+  uint8_t nw = scanI2cBus(Wire, w, I2C_SCAN_MAX);
+  uint8_t nw1 = scanI2cBus(Wire1, w1, I2C_SCAN_MAX);
+  Serial.print(F("{\"event\":\"i2c\",\"wire\":["));
+  for (uint8_t i = 0; i < nw; i++) {
+    if (i) Serial.print(',');
+    Serial.print(w[i]);
+  }
+  Serial.print(F("],\"wire1\":["));
+  for (uint8_t i = 0; i < nw1; i++) {
+    if (i) Serial.print(',');
+    Serial.print(w1[i]);
+  }
+  Serial.println(F("]}"));
 }
 
 bool writeReg(uint8_t addr, uint8_t reg, uint8_t val) {
@@ -568,56 +599,11 @@ const char *swipeLabel() {
   return latchedSwipe[0] == 'l' ? "LEFT" : "RIGHT";
 }
 
-// --- 16x2 LCD (AIP31068L text + PCA9633 / v5 RGB) ---------------------------
+// --- 16x2 Grove RGB LCD (Seeed rgb_lcd: one char per I2C write) --------------
 
-bool lcdCommand(uint8_t cmd) {
-  Wire.beginTransmission(LCD_ADDR);
-  Wire.write(0x80);  // control byte: command
-  Wire.write(cmd);
-  return Wire.endTransmission() == 0;
-}
-
-bool lcdWriteRow(uint8_t row, const char *text) {
-  if (!lcdCommand(row == 0 ? 0x80 : 0xC0)) return false;  // DDRAM address 0x00 / 0x40
-  Wire.beginTransmission(LCD_ADDR);
-  Wire.write(0x40);  // control byte: the rest of the transfer is character data
-  Wire.write((const uint8_t *)text, 16);
-  return Wire.endTransmission() == 0;
-}
-
-bool lcdSetRgb(uint8_t r, uint8_t g, uint8_t b) {
-  if (rgbAddr == RGB_ADDR_V5) return writeReg(rgbAddr, 0x06, r) && writeReg(rgbAddr, 0x07, g) && writeReg(rgbAddr, 0x08, b);
-  return writeReg(rgbAddr, 0x04, r) && writeReg(rgbAddr, 0x03, g) && writeReg(rgbAddr, 0x02, b);
-}
-
-void probeLcd(uint32_t now) {
-  if (before(now, nextLcdProbeMs)) return;
-  nextLcdProbeMs = now + 2000;
-  if (!i2cAck(LCD_ADDR)) return;
-  // HD44780 init: function set 2-line x3 with settle time (about 10 ms, once per
-  // detection), then display on, clear, and left-to-right entry.
-  for (uint8_t i = 0; i < 3; i++) {
-    if (!lcdCommand(0x28)) return;
-    delayMicroseconds(i == 0 ? 4500 : 150);
-  }
-  if (!lcdCommand(0x28) || !lcdCommand(0x0C) || !lcdCommand(0x01)) return;
-  delayMicroseconds(2000);
-  if (!lcdCommand(0x06)) return;
-
-  rgbAddr = 0;
-  if (i2cAck(RGB_ADDR_V4)) {
-    // MODE1 normal, LEDOUT = PWM + group control, MODE2 = group blink (always on).
-    if (writeReg(RGB_ADDR_V4, 0x00, 0x00) && writeReg(RGB_ADDR_V4, 0x08, 0xFF) && writeReg(RGB_ADDR_V4, 0x01, 0x20)) {
-      rgbAddr = RGB_ADDR_V4;
-    }
-  } else if (i2cAck(RGB_ADDR_V5)) {
-    writeReg(RGB_ADDR_V5, 0x00, 0x07);  // reset
-    delayMicroseconds(200);
-    if (writeReg(RGB_ADDR_V5, 0x04, 0x15)) rgbAddr = RGB_ADDR_V5;  // all channels always on
-  }
-  memset(lcdShown, 0, sizeof(lcdShown));
-  rgbShown[0] = rgbShown[1] = rgbShown[2] = -1;
-  lcdReady = true;
+void lcdPrintRow(uint8_t row, const char *text) {
+  lcd.setCursor(0, row);
+  lcd.print(text);
 }
 
 void composeLcd(uint32_t now, char *l1, char *l2, uint8_t *rgb) {
@@ -647,27 +633,29 @@ void composeLcd(uint32_t now, char *l1, char *l2, uint8_t *rgb) {
   }
 }
 
-void serviceLcd(uint32_t now) {
-  if (!lcdReady) {
-    probeLcd(now);
-    return;
-  }
-  if ((uint32_t)(now - lastLcdMs) < LCD_REFRESH_MS) return;
-  lastLcdMs = now;
+void pushLcdFrame(uint32_t now) {
   char lines[2][17];
   uint8_t rgb[3];
   composeLcd(now, lines[0], lines[1], rgb);
-  bool ok = true;
-  for (uint8_t row = 0; row < 2 && ok; row++) {
-    if (strcmp(lines[row], lcdShown[row]) == 0) continue;
-    ok = lcdWriteRow(row, lines[row]);
-    if (ok) memcpy(lcdShown[row], lines[row], 17);
+  for (uint8_t row = 0; row < 2; row++) {
+    if (strcmp(lines[row], lcdShown[row]) != 0) {
+      lcdPrintRow(row, lines[row]);
+      memcpy(lcdShown[row], lines[row], 17);
+    }
   }
-  if (ok && rgbAddr && (rgb[0] != rgbShown[0] || rgb[1] != rgbShown[1] || rgb[2] != rgbShown[2])) {
-    ok = lcdSetRgb(rgb[0], rgb[1], rgb[2]);
-    for (uint8_t i = 0; ok && i < 3; i++) rgbShown[i] = rgb[i];
+  if (rgb[0] != rgbShown[0] || rgb[1] != rgbShown[1] || rgb[2] != rgbShown[2]) {
+    lcd.setRGB(rgb[0], rgb[1], rgb[2]);
+    rgbShown[0] = rgb[0];
+    rgbShown[1] = rgb[1];
+    rgbShown[2] = rgb[2];
   }
-  if (!ok) lcdReady = false;  // unplugged: re-probe every 2 s
+}
+
+void serviceLcd(uint32_t now) {
+  if (!lcdReady) return;
+  if ((uint32_t)(now - lastLcdMs) < LCD_REFRESH_MS) return;
+  lastLcdMs = now;
+  pushLcdFrame(now);
 }
 
 // --- Inbound JSON (no ArduinoJson) ------------------------------------------
@@ -797,6 +785,8 @@ void handleLine(const char *line) {
     if (extractBool(line, "open", &open)) setArmed(open);
   } else if (strcmp(cmd, "servo") == 0) {
     if (extractBool(line, "open", &open)) showNotice(open ? "STORYBOOK OPENS" : "STORYBOOK SHUT", now);
+  } else if (strcmp(cmd, "i2c") == 0) {
+    reportI2cScan();
   }
   // "hello" needs no work: any UDP packet subscribes its sender.
 }
@@ -921,7 +911,15 @@ void setup() {
 
   Wire.begin();
   Wire.setClock(100000);
+  Wire1.begin();
+  Wire1.setClock(100000);
   Serial.begin(SERIAL_BAUD);  // no wait: frames are only written while a host is attached
+
+  lcd.begin(16, 2, LCD_5x8DOTS, Wire);
+  lcdReady = true;
+  memset(lcdShown, 0, sizeof(lcdShown));
+  rgbShown[0] = rgbShown[1] = rgbShown[2] = -1;
+  pushLcdFrame(millis());
 
   if (WIFI_SSID[0]) startWifi(WIFI_SSID, WIFI_PASS, millis());
   lastFrameMs = millis();
@@ -929,6 +927,10 @@ void setup() {
 
 void loop() {
   uint32_t now = millis();
+  if (pendingBootI2cScan && Serial) {
+    pendingBootI2cScan = false;
+    reportI2cScan();
+  }
   updateButtons(now);
   pollSerial();
   pollUdp(now);
