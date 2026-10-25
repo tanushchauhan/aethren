@@ -4,8 +4,7 @@
  *
  * Phase timeline (unscaled ms; every duration is multiplied by `timeScale`):
  *   lobby      -> host `game:start` (no auto-advance; the room waits for its players)
- *   opening    -> both picks + 2.5 s confirm, host `game:start`, or 60 s timeout (auto-picks)
- *   (generation, still `opening`) -> `ai.generateWorld`, capped at 25 s (then the cached world)
+ *   lobby      -> host `game:start` loads the bundled demo world straight into the intro
  *   intro      -> 300 ms per intro word + 1.5 s, clamped 5..20 s
  *   calibration-> every connected human sends `calibration:done` (+1 s), or 15 s
  *   round      -> telegraph (2 s / attack speed) -> defense (1..2 s, +0.5 s after Frost)
@@ -15,10 +14,8 @@
  */
 import { randomUUID } from 'node:crypto';
 import {
-  BOSS_AGENT_DEADLINE_MS,
   COMBAT,
   DISCONNECT_PAUSE_MS,
-  MERCY_POWER,
   NOISE_TOO_LOUD_THRESHOLD,
   P0_ELEMENTS,
   P0_PLAYER_COUNT,
@@ -26,7 +23,6 @@ import {
   TAUNT_MAX_CHARS,
   TEAM_HEARTS_P0,
   TWIN_CAST_WINDOW_MS,
-  WARD_HP_RATIO,
 } from '@once-upon/shared';
 import type {
   AttackType,
@@ -39,21 +35,15 @@ import type {
   HardwareCommand,
   HardwareEvent,
   JoinableRole,
-  MemoryCard,
-  NarratorLine,
-  OpeningSlot,
   P0ElementType,
   PoseFrame,
   QuestDifficulty,
-  QuestStatus,
   RoundResolution,
   ServerToClientEvents,
-  TranscribeResponse,
-  TwinCastProgress,
-  WorldImage,
   WorldSchema,
 } from '@once-upon/shared';
-import type { AiService, BossPlanner, BossPlannerInput, GameServer, NarrationEvent } from '../contracts';
+import type { GameServer, NarrationEvent } from '../contracts';
+import { demoWorld } from '../content';
 import { BOT_NAME, botCastDelayMs, botDodge, botGesture, botPickElement, botPower, type Rng } from './bot';
 import { PhaseTimer, TimerGroup, type Clock } from './clock';
 import {
@@ -61,10 +51,8 @@ import {
   clampDefenseWindow,
   clampPower,
   dodgeDirection,
-  enemyAttacks,
   enemyMaxHp,
   isP0Element,
-  sanitizePlan,
   scriptedPlan,
   spellEffect,
   telegraphHint,
@@ -74,7 +62,7 @@ import {
   type Enemy,
   type PlanContext,
 } from './combat';
-import { NARRATE_TIMEOUT_MS, fallbackLine } from './narration';
+import { fallbackLine } from './narration';
 import {
   MAX_SEATS,
   claimSeat,
@@ -86,21 +74,14 @@ import {
   type ClaimResult,
   type Seat,
 } from './rooms';
-import { storybookRoom, toStorybookState } from './storybook';
 import { TwinCastTracker } from './twin-cast';
 
 /** Engine timings that `ROUND_TIMINGS_MS` does not cover. Unscaled ms. */
 export const ENGINE_TIMINGS_MS = {
-  openingTimeout: 60_000,
-  picksConfirm: 2_500,
-  openingRetry: 5_000,
-  generationTimeout: 25_000,
   introBase: 1_500,
   introPerWord: 300,
   introMin: 5_000,
   introMax: 20_000,
-  /** Storybook rooms: the story intro waits for its narration to finish (or Continue), up to this long. */
-  introNarrationHold: 90_000,
   calibrationTimeout: 15_000,
   calibrationAllDone: 1_000,
   enemyEntrance: 5_000,
@@ -117,20 +98,15 @@ export const ENGINE_TIMINGS_MS = {
   minResumeTeamTurn: 3_000,
 } as const;
 
-/** A passed incantation can be cast within this long (server time, not scaled). */
-export const INCANTATION_FRESH_MS = 15_000;
 /** Client server-time stamps further than this from the server clock are replaced (not scaled). */
 export const TIMESTAMP_TOLERANCE_MS = 3_000;
 export const DODGE_HISTORY_LENGTH = 6;
 export const RECENT_ELEMENTS_LENGTH = 8;
 
 const GESTURES: readonly GestureType[] = ['swipe_left', 'swipe_right', 'swipe', 'thrust'];
-const IMAGE_KINDS: readonly WorldImage['kind'][] = ['cover', 'monster', 'boss'];
 
 export interface EngineRuntime {
   io: GameServer;
-  ai: AiService;
-  boss: BossPlanner;
   clock: Clock;
   rng: Rng;
   timeScale: number;
@@ -142,17 +118,7 @@ export interface GameRoomInit {
   hostName: string;
   hostRole: JoinableRole;
   difficulty: QuestDifficulty;
-  encounterCardId?: string;
   playerNames?: string[];
-  quickStart?: boolean;
-}
-
-interface PendingPlan {
-  roundIndex: number;
-  enemyIndex: number;
-  /** Enemy HP the planner saw, to tell a stale "no ward" from a deliberate one. */
-  inputHp: number;
-  value: BossPlan | null | undefined;
 }
 
 interface ActiveAttack {
@@ -198,19 +164,6 @@ function newResolution(roundIndex: number, now: number): RoundResolution {
   };
 }
 
-function isWorld(value: unknown): value is WorldSchema {
-  const w = value as WorldSchema | null;
-  return Boolean(
-    w &&
-      typeof w === 'object' &&
-      w.incantations &&
-      typeof w.incantations === 'object' &&
-      Array.isArray(w.encounters) &&
-      w.boss &&
-      typeof w.boss === 'object',
-  );
-}
-
 export class GameRoom {
   readonly state: GameState;
   readonly seats: Seat[] = [];
@@ -226,19 +179,7 @@ export class GameRoom {
   private readonly bg: TimerGroup;
   private stash: { resume: (() => void) | null; after: (() => void)[] } | null = null;
   private disposed = false;
-  private generating = false;
-  /** Storybook clients: last narrator caption and Twin Cast progress (not in `GameState`). */
-  private lastCaption = '';
-  private twinCastCount = 0;
-  readonly quickStart: boolean;
-  /** Set when a storybook client sits down: it reports when the intro narration has finished. */
-  holdIntroForNarration = false;
-  /** Storybook: every card a player kept, newest last. The client keeps several; the engine uses one. */
-  private keptCards: string[] = [];
-  private genFallback: (() => void) | null = null;
-  private imagesStarted = false;
   private servoOpened = false;
-  private openingDeadline = 0;
   private enemyIndex = -1;
   private wardRaisedThisPhase = false;
   private wardRounds = 0;
@@ -246,7 +187,6 @@ export class GameRoom {
   private roundWindowMs: number = ROUND_TIMINGS_MS.defense;
   private recentElements: P0ElementType[] = [];
   private nextRound = 0;
-  private plan: PendingPlan | null = null;
   private currentPlan: BossPlan | null = null;
   private attack: ActiveAttack | null = null;
   private turn: TurnState | null = null;
@@ -272,18 +212,7 @@ export class GameRoom {
       this.seats.push(newSeat(clean, i === 0 ? otherRole : 'partner'));
     });
 
-    const cards = this.safeCards();
-    this.quickStart = Boolean(init.quickStart);
-    const world = init.quickStart ? rt.ai.getCachedWorld() : null;
-    const picks = init.quickStart
-      ? { ...rt.ai.getCachedPicks() }
-      : {
-          encounterCardId:
-            init.encounterCardId && (cards.length === 0 || cards.some((c) => c.id === init.encounterCardId))
-              ? init.encounterCardId
-              : null,
-          bossCardId: null,
-        };
+    const world = demoWorld();
 
     this.state = {
       roomCode: init.roomCode,
@@ -300,9 +229,6 @@ export class GameRoom {
       enemyMaxHp: 0,
       roundIndex: 0,
       serverTimestampMs: rt.clock.now(),
-      memoryCards: cards,
-      picks,
-      images: {},
       paused: false,
       lastResolution: null,
     };
@@ -325,28 +251,6 @@ export class GameRoom {
     if (this.disposed) return;
     type Target = { emit: (ev: string, data: unknown) => boolean };
     (this.rt.io.to(this.state.roomCode) as unknown as Target).emit(event, payload);
-    // Storybook clients get the same events, with room state in their own shape.
-    if (event === 'narrator:line') this.lastCaption = (payload as NarratorLine).text;
-    if (event === 'combat:twin_cast_progress') this.twinCastCount = (payload as TwinCastProgress).castByPlayerIds.length;
-    const storybookTarget = this.rt.io.to(storybookRoom(this.state.roomCode)) as unknown as Target;
-    storybookTarget.emit(event, event === 'room:state' ? this.storybookSnapshot() : payload);
-    // The caption lives in storybook room state, so a new line refreshes it.
-    if (event === 'narrator:line') storybookTarget.emit('room:state', this.storybookSnapshot());
-  }
-
-  /** True while world generation runs (the room is still in `opening`). */
-  get isGenerating(): boolean {
-    return this.generating;
-  }
-
-  storybookSnapshot() {
-    return toStorybookState(this.snapshot(), {
-      generating: this.generating,
-      quickStart: this.quickStart,
-      caption: this.lastCaption,
-      twinCastCount: this.twinCastCount,
-      keptCardIds: this.keptCards,
-    });
   }
 
   snapshot(): GameState {
@@ -362,7 +266,6 @@ export class GameRoom {
 
   private setPhase(phase: GamePhase, durationMs: number | null, next?: () => void): void {
     this.state.phase = phase;
-    if (phase === 'team_turn') this.twinCastCount = 0;
     this.state.phaseEndsServerMs = durationMs === null ? undefined : this.now() + durationMs;
     if (durationMs !== null && next) this.phaseTimer.set(durationMs, () => this.guard(next));
     else this.phaseTimer.clear();
@@ -399,15 +302,6 @@ export class GameRoom {
     return playerId ? this.seats.find((s) => s.player.id === playerId) : undefined;
   }
 
-  private safeCards(): MemoryCard[] {
-    try {
-      const cards = this.rt.ai.listMemoryCards();
-      return Array.isArray(cards) ? cards : [];
-    } catch {
-      return [];
-    }
-  }
-
   private sanitizeTs(ts: unknown): number {
     const now = this.now();
     return typeof ts === 'number' && Number.isFinite(ts) && Math.abs(ts - now) <= TIMESTAMP_TOLERANCE_MS ? ts : now;
@@ -417,25 +311,9 @@ export class GameRoom {
     this.emit('narrator:line', { id: randomUUID(), speaker, text });
   }
 
-  /** Asks `ai.narrate` for a line, falling back to an engine line after `NARRATE_TIMEOUT_MS`. */
+  /** Says the engine's prewritten line for a combat moment. */
   private narrate(kind: NarrationEvent['kind'], context: Record<string, unknown> = {}): void {
-    const fallback = fallbackLine(kind, context);
-    let done = false;
-    const finish = (text: string | null) => {
-      if (done || this.disposed) return;
-      done = true;
-      this.bg.cancel(timeout);
-      this.say(text && text.trim() !== '' ? text.trim() : fallback);
-    };
-    const timeout = this.bg.after(this.scale(NARRATE_TIMEOUT_MS), () => finish(null));
-    try {
-      Promise.resolve(this.rt.ai.narrate({ kind, context })).then(
-        (t) => finish(typeof t === 'string' ? t : null),
-        () => finish(null),
-      );
-    } catch {
-      finish(null);
-    }
+    this.say(fallbackLine(kind, context));
   }
 
   private hardware(command: HardwareCommand): void {
@@ -504,11 +382,6 @@ export class GameRoom {
       this.pause('Waiting for players to reconnect');
       return;
     }
-    if (this.state.phase === 'opening') {
-      // Picks need no full table; empty seats become bots when the story starts.
-      if (this.stash) this.resume();
-      return;
-    }
     const waiting = humans.filter((s) => s.everClaimed && !s.player.connected);
     for (const s of waiting) {
       if (s.disconnectTimer) continue;
@@ -565,7 +438,6 @@ export class GameRoom {
     this.state.pausedReason = undefined;
     if (stash) {
       this.rt.log(`[engine ${this.state.roomCode}] resumed in ${this.state.phase}`);
-      if (this.genFallback) this.bg.after(this.scale(ENGINE_TIMINGS_MS.generationTimeout), this.genFallback);
       try {
         stash.resume?.();
         for (const fn of stash.after) fn();
@@ -574,12 +446,6 @@ export class GameRoom {
       }
     }
     this.broadcast();
-  }
-
-  /** Runs `fn` now, or when the room resumes. */
-  private whenActive(fn: () => void): void {
-    if (this.stash) this.stash.after.push(fn);
-    else this.guard(fn);
   }
 
   private resumeTeamTurn(ms: number, fn: () => void): void {
@@ -618,55 +484,7 @@ export class GameRoom {
 
   start(playerId: string | undefined): void {
     if (!this.isHost(playerId) || this.stash) return;
-    if (this.state.phase === 'lobby') {
-      if (this.state.world) this.beginIntro(this.state.world);
-      else this.enterOpening();
-    } else if (this.state.phase === 'opening' && this.picksComplete() && !this.generating) {
-      this.startGeneration();
-    }
-  }
-
-  /** Storybook keep: remembers the card and makes it the encounter, unless it is the crowned boss. */
-  storybookKeep(cardId: unknown): void {
-    if (typeof cardId !== 'string') return;
-    this.keptCards = [...this.keptCards.filter((id) => id !== cardId), cardId];
-    if (this.state.picks?.bossCardId === cardId) this.broadcast();
-    else this.pickCard(cardId, 'encounter');
-  }
-
-  /** Storybook crown: sets the boss; if that was the encounter, the newest other kept card takes over. */
-  storybookCrown(cardId: unknown): void {
-    this.pickCard(cardId, 'boss');
-    const picks = this.state.picks;
-    if (!picks || picks.encounterCardId) return;
-    const fallback = [...this.keptCards].reverse().find((id) => id !== picks.bossCardId);
-    if (fallback) this.pickCard(fallback, 'encounter');
-  }
-
-  pickCard(cardId: unknown, slot: unknown): void {
-    if (this.state.phase !== 'lobby' && this.state.phase !== 'opening') return;
-    if (this.generating || typeof cardId !== 'string' || (slot !== 'encounter' && slot !== 'boss')) return;
-    const cards = this.state.memoryCards ?? [];
-    if (cards.length > 0 && !cards.some((c) => c.id === cardId)) return;
-    const picks = this.state.picks ?? { encounterCardId: null, bossCardId: null };
-    const s = slot as OpeningSlot;
-    if (s === 'encounter') {
-      if (picks.bossCardId === cardId) picks.bossCardId = null;
-      picks.encounterCardId = cardId;
-    } else {
-      if (picks.encounterCardId === cardId) picks.encounterCardId = null;
-      picks.bossCardId = cardId;
-    }
-    this.state.picks = picks;
-    if (this.state.phase === 'opening' && !this.stash) {
-      if (this.picksComplete()) {
-        this.reschedule(this.scale(ENGINE_TIMINGS_MS.picksConfirm), () => this.startGeneration());
-      } else {
-        const left = Math.max(this.openingDeadline - this.now(), this.scale(ENGINE_TIMINGS_MS.openingRetry));
-        this.reschedule(left, () => this.autoPickAndGenerate());
-      }
-    }
-    this.broadcast();
+    if (this.state.phase === 'lobby' && this.state.world) this.beginIntro(this.state.world);
   }
 
   calibrationDone(playerId: string | undefined): void {
@@ -719,24 +537,6 @@ export class GameRoom {
     if (changed) this.broadcast();
   }
 
-  recordIncantation(playerId: string, element: P0ElementType, result: TranscribeResponse): void {
-    const seat = this.seat(playerId);
-    if (!seat || !isP0Element(element) || !result || typeof result !== 'object') return;
-    if (!result.passed && !result.mercy) return;
-    const power =
-      typeof result.power === 'number' && Number.isFinite(result.power)
-        ? clampPower(result.power)
-        : result.mercy
-          ? MERCY_POWER
-          : 1;
-    seat.incantations.set(element, {
-      power,
-      transcript: typeof result.transcript === 'string' ? result.transcript : '',
-      mercy: Boolean(result.mercy),
-      at: this.now(),
-    });
-  }
-
   /** A `player:dodge_result` for the attack in flight. Returns true when accepted. */
   dodgeReport(playerId: string | undefined, payload: Partial<DodgeResultPayload>): boolean {
     const a = this.attack;
@@ -756,7 +556,7 @@ export class GameRoom {
     return true;
   }
 
-  /** A `player:cast`. Only the team turn accepts casts, and only after a passed incantation. */
+  /** A `player:cast`. Only the team turn accepts casts. */
   cast(playerId: string | undefined, payload: Partial<CastPayload>): CastOutcome {
     const turn = this.turn;
     const seat = this.seat(playerId);
@@ -764,26 +564,12 @@ export class GameRoom {
     const id = seat.player.id;
     if (!seat.player.canCast || turn.casts.has(id) || !isP0Element(payload.element)) return 'dropped';
     const element = payload.element;
-    const now = this.now();
-
-    const rec = seat.incantations.get(element);
-    if (!rec || now - rec.at > INCANTATION_FRESH_MS) {
-      if (!turn.fizzled.has(id)) {
-        turn.fizzled.add(id);
-        if (seat.humanRole === 'spellbearer' && !seat.isBot) this.hardware({ type: 'buzz', pattern: 'fizzle' });
-        this.narrate('fizzle', { playerName: seat.player.name, element, enemyName: this.enemyName() });
-        this.broadcast();
-      }
-      return 'fizzled';
-    }
-    seat.incantations.delete(element);
-
-    const power = Math.round(clampPower(clampPower(payload.power) * rec.power) * 100) / 100;
+    const power = Math.round(clampPower(payload.power) * 100) / 100;
     const accepted: CastPayload = {
       playerId: id,
       element,
       gesture: payload.gesture && GESTURES.includes(payload.gesture) ? payload.gesture : 'swipe',
-      transcript: rec.transcript || (typeof payload.transcript === 'string' ? payload.transcript : ''),
+      transcript: typeof payload.transcript === 'string' ? payload.transcript : '',
       power,
       serverTimestampMs: this.sanitizeTs(payload.serverTimestampMs),
     };
@@ -827,7 +613,7 @@ export class GameRoom {
       entry.appliedDamage = blocked ? 0 : this.damageEnemy(single.damage);
       entry.appliedHeal = this.healTeam(single.heal);
       if (this.state.wardActive) this.botsJoinTwinCast(element, id);
-      const expiresIn = update.progress.expiresServerMs + this.scale(ENGINE_TIMINGS_MS.twinExpiryGrace) - now;
+      const expiresIn = update.progress.expiresServerMs + this.scale(ENGINE_TIMINGS_MS.twinExpiryGrace) - this.now();
       this.after(Math.max(0, expiresIn), () => {
         if (this.turn !== turn) return;
         for (const p of turn.tracker.expire(this.now())) this.emit('combat:twin_cast_progress', p);
@@ -840,101 +626,15 @@ export class GameRoom {
     return 'accepted';
   }
 
-  // -------------------------------------------------------------------------
-  // Opening, generation, intro, calibration
-  // -------------------------------------------------------------------------
-
-  private picksComplete(): boolean {
-    const p = this.state.picks;
-    return Boolean(p?.encounterCardId && p.bossCardId);
-  }
-
-  private enterOpening(): void {
-    const cards = this.safeCards();
-    if (cards.length > 0) this.state.memoryCards = cards;
-    this.state.picks = this.state.picks ?? { encounterCardId: null, bossCardId: null };
-    const timeout = this.scale(ENGINE_TIMINGS_MS.openingTimeout);
-    this.openingDeadline = this.now() + timeout;
-    this.setPhase('opening', timeout, () => this.autoPickAndGenerate());
-    if (this.picksComplete()) this.reschedule(this.scale(ENGINE_TIMINGS_MS.picksConfirm), () => this.startGeneration());
-    this.emit('memory:cards', this.state.memoryCards ?? []);
-    this.updatePause();
-    this.broadcast();
-  }
-
-  private autoPickAndGenerate(): void {
-    const cards = this.state.memoryCards ?? [];
-    const picks = this.state.picks ?? { encounterCardId: null, bossCardId: null };
-    const free = () => cards.find((c) => c.id !== picks.encounterCardId && c.id !== picks.bossCardId)?.id ?? null;
-    if (!picks.encounterCardId) picks.encounterCardId = free();
-    if (!picks.bossCardId) picks.bossCardId = free();
-    this.state.picks = picks;
-    this.startGeneration();
-  }
-
-  private startGeneration(): void {
-    if (this.generating || this.state.phase !== 'opening') return;
-    this.generating = true;
-    this.phaseTimer.clear();
-    this.state.phaseEndsServerMs = undefined;
-    const cards = this.state.memoryCards ?? [];
-    const picks = this.state.picks;
-    const find = (id: string | null | undefined) => cards.find((c) => c.id === id) ?? null;
-    const input = {
-      cards,
-      encounterCard: find(picks?.encounterCardId),
-      bossCard: find(picks?.bossCardId),
-      playerNames: this.seats.map((s) => s.humanName),
-      difficulty: this.difficulty,
-    };
-    this.rt.log(`[engine ${this.state.roomCode}] generating world`);
-    let done = false;
-    const finish = (world: unknown) => {
-      if (done || this.disposed) return;
-      done = true;
-      this.genFallback = null;
-      const valid = isWorld(world) ? world : this.rt.ai.getCachedWorld();
-      this.whenActive(() => this.beginIntro(valid));
-    };
-    this.genFallback = () => finish(null);
-    this.bg.after(this.scale(ENGINE_TIMINGS_MS.generationTimeout), () => finish(null));
-    try {
-      Promise.resolve(this.rt.ai.generateWorld(input)).then(finish, () => finish(null));
-    } catch {
-      finish(null);
-    }
-    this.broadcast();
-  }
-
-  private startImages(world: WorldSchema): void {
-    if (this.imagesStarted) return;
-    this.imagesStarted = true;
-    const onImage = (img: WorldImage) => {
-      if (this.disposed || !img || typeof img.url !== 'string' || !IMAGE_KINDS.includes(img.kind)) return;
-      this.state.images = { ...(this.state.images ?? {}), [img.kind]: img.url };
-      this.emit('world:image', { kind: img.kind, url: img.url });
-      this.broadcast();
-    };
-    try {
-      Promise.resolve(this.rt.ai.generateImages(world, onImage)).catch(() => undefined);
-    } catch {
-      // Images are decoration; the run continues with placeholder art.
-    }
-  }
-
   private beginIntro(world: WorldSchema): void {
-    this.generating = false;
     this.state.world = world;
     this.fillEmptySeatsWithBots();
-    this.startImages(world);
     this.prepareEnemy(0);
     const words = (world.intro ?? '').split(/\s+/).filter(Boolean).length;
-    const ms = this.holdIntroForNarration
-      ? ENGINE_TIMINGS_MS.introNarrationHold
-      : Math.min(
-          ENGINE_TIMINGS_MS.introMax,
-          Math.max(ENGINE_TIMINGS_MS.introMin, ENGINE_TIMINGS_MS.introBase + words * ENGINE_TIMINGS_MS.introPerWord),
-        );
+    const ms = Math.min(
+      ENGINE_TIMINGS_MS.introMax,
+      Math.max(ENGINE_TIMINGS_MS.introMin, ENGINE_TIMINGS_MS.introBase + words * ENGINE_TIMINGS_MS.introPerWord),
+    );
     this.setPhase('intro', this.scale(ms), () => this.enterCalibration());
     this.hardware({ type: 'servo', servoOpen: false });
     this.updatePause();
@@ -994,7 +694,6 @@ export class GameRoom {
     this.wardRaisedThisPhase = false;
     this.wardRounds = 0;
     this.frostBonusNext = false;
-    this.requestPlan(this.nextRound);
     return true;
   }
 
@@ -1025,62 +724,9 @@ export class GameRoom {
     };
   }
 
-  /** Builds the planner input from tracked history. Exposed for tests. */
-  plannerInput(roundIndex: number): BossPlannerInput | null {
-    const enemy = this.state.currentEncounter;
-    if (!enemy) return null;
-    return {
-      roomCode: this.state.roomCode,
-      enemy: { ...enemy, attacks: enemyAttacks(enemy) },
-      isBoss: this.state.fightingBoss,
-      enemyHp: this.state.enemyHp,
-      enemyMaxHp: this.state.enemyMaxHp,
-      wardActive: this.state.wardActive,
-      wardRaisedThisPhase: this.wardRaisedThisPhase,
-      hearts: this.state.hearts,
-      maxHearts: this.state.maxHearts,
-      difficulty: this.difficulty,
-      players: this.seats.map((s) => ({ id: s.player.id, name: s.player.name, role: s.player.role })),
-      dodgeHistory: Object.fromEntries(this.seats.map((s) => [s.player.id, [...s.dodgeHistory]])),
-      recentElements: [...this.recentElements],
-      roundIndex,
-    };
-  }
-
-  /** Starts planning a round early so the plan is ready by its telegraph. */
-  private requestPlan(roundIndex: number): void {
-    const input = this.plannerInput(roundIndex);
-    if (!input) return;
-    const entry: PendingPlan = { roundIndex, enemyIndex: this.enemyIndex, inputHp: input.enemyHp, value: undefined };
-    this.plan = entry;
-    const deadline = this.scale(BOSS_AGENT_DEADLINE_MS);
-    let planned: Promise<BossPlan | null>;
-    try {
-      planned = Promise.resolve(this.rt.boss.planNextRound(input, deadline)).catch(() => null);
-    } catch {
-      planned = Promise.resolve(null);
-    }
-    const guard = new Promise<null>((resolve) => this.bg.after(deadline + this.scale(250), () => resolve(null)));
-    void Promise.race([planned, guard]).then((plan) => {
-      if (this.plan === entry) entry.value = plan;
-    });
-  }
-
+  /** The enemy's scripted attack cycle for a round. */
   private takePlan(roundIndex: number): BossPlan {
-    const ctx = this.planContext(roundIndex);
-    const entry = this.plan;
-    this.plan = null;
-    if (entry && entry.roundIndex === roundIndex && entry.enemyIndex === this.enemyIndex && entry.value) {
-      const plan = sanitizePlan(entry.value, ctx);
-      // The planner saw HP before this round's casts; raise a ward it could not know was due.
-      const stale = entry.inputHp > ctx.enemyMaxHp * WARD_HP_RATIO;
-      if (!plan.raiseWard && stale && wardEligible(ctx)) plan.raiseWard = true;
-      return plan;
-    }
-    if (entry && entry.value === undefined) {
-      this.rt.log(`[engine ${this.state.roomCode}] boss plan for round ${roundIndex} not ready; scripted fallback`);
-    }
-    return scriptedPlan(ctx);
+    return scriptedPlan(this.planContext(roundIndex));
   }
 
   // -------------------------------------------------------------------------
@@ -1103,7 +749,7 @@ export class GameRoom {
     if (!replay) {
       if (this.state.wardActive && ++this.wardRounds === 2) {
         const botHint = this.seats.some((s) => s.isBot) ? ' Your bot partner will copy your spell.' : '';
-        this.say(`The ward blocks every solo strike! Both choose the same element, speak its incantation, then cast within three seconds.${botHint}`, 'narrator');
+        this.say(`The ward blocks every solo strike! Both choose the same element, then cast within three seconds.${botHint}`, 'narrator');
       }
       if (plan.raiseWard && wardEligible(this.planContext(roundIndex))) {
         this.state.wardActive = true;
@@ -1219,11 +865,6 @@ export class GameRoom {
         lost += loss;
         hitName ??= seat.player.name;
       }
-      const recent = seat.lastDodgeAction && seat.lastDodgeAction.at >= a.startedAt ? seat.lastDodgeAction.direction : null;
-      seat.dodgeHistory = [
-        ...seat.dodgeHistory,
-        { roundIndex: res.roundIndex, attackType: a.attackType, dodged, parried, direction: dodged ? recent : null },
-      ].slice(-DODGE_HISTORY_LENGTH);
     }
     if (lost > 0) this.hardware({ type: 'buzz', pattern: 'hit' });
     const facts = { enemyName: this.enemyName(), attackType: a.attackType };
@@ -1249,7 +890,6 @@ export class GameRoom {
     if (this.res) this.res.sittingOut = sittingOut;
     const duration = this.scale(ROUND_TIMINGS_MS.teamTurn);
     this.setPhase('team_turn', duration, () => this.enterResolve());
-    this.requestPlan(this.nextRound);
     this.broadcast();
     if (!this.seats.some((s) => s.player.canCast && (s.isBot || s.player.connected))) {
       this.reschedule(this.scale(ENGINE_TIMINGS_MS.emptyTeamTurn), () => this.enterResolve());
@@ -1288,7 +928,6 @@ export class GameRoom {
     const el = element ?? botPickElement(this.rt.rng, { hearts: this.state.hearts, maxHearts: this.state.maxHearts });
     const phrase = this.state.world?.incantations[el] ?? el;
     const now = this.now();
-    seat.incantations.set(el, { power: 1, transcript: phrase, mercy: false, at: now });
     this.cast(seat.player.id, {
       playerId: seat.player.id,
       element: el,
@@ -1366,7 +1005,6 @@ export class GameRoom {
     this.phaseTimer.clear();
     this.attack = null;
     this.turn = null;
-    this.plan = null;
     this.state.wardActive = false;
     this.state.wardSpell = null;
     for (const s of this.seats) {
@@ -1390,20 +1028,6 @@ export class GameRoom {
   // -------------------------------------------------------------------------
   // Read models
   // -------------------------------------------------------------------------
-
-  questStatus(): QuestStatus {
-    const s = this.state;
-    return {
-      roomCode: s.roomCode,
-      phase: s.phase,
-      hearts: s.hearts,
-      maxHearts: s.maxHearts,
-      enemyName: s.currentEncounter?.name ?? null,
-      enemyHp: s.enemyHp,
-      enemyMaxHp: s.enemyMaxHp,
-      wardActive: s.wardActive,
-    };
-  }
 
   get isDisposed(): boolean {
     return this.disposed;

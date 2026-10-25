@@ -3,8 +3,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { ROOM_CODE_LENGTH } from '@once-upon/shared';
-import type { JoinableRole, P0ElementType, PlayerRole, PlayerState } from '@once-upon/shared';
-import type { DodgeHistoryEntry } from '../contracts';
+import type { JoinableRole, PlayerRole, PlayerState } from '@once-upon/shared';
 import type { TimerHandle } from './clock';
 
 /** No I, L or O: letters that are easy to confuse with each other or with digits. */
@@ -42,13 +41,6 @@ function sameName(a: string, b: string): boolean {
 /** `PlayerState` plus glove fields the contract does not carry yet (see report). */
 export type EnginePlayerState = PlayerState;
 
-export interface IncantationRecord {
-  power: number;
-  transcript: string;
-  mercy: boolean;
-  at: number;
-}
-
 export interface Seat {
   player: EnginePlayerState;
   /** Name a human reclaims this seat with (the display name stays the same for bots). */
@@ -66,8 +58,6 @@ export interface Seat {
   /** Server time of the glove's last parry press (`hardware:event`). */
   lastParryAt: number;
   disconnectTimer: TimerHandle | null;
-  incantations: Map<P0ElementType, IncantationRecord>;
-  dodgeHistory: DodgeHistoryEntry[];
 }
 
 export function toJoinableRole(role: unknown): JoinableRole {
@@ -96,8 +86,6 @@ export function newSeat(name: string, role: JoinableRole): Seat {
     lastDodgeAction: null,
     lastParryAt: 0,
     disconnectTimer: null,
-    incantations: new Map(),
-    dodgeHistory: [],
   };
 }
 

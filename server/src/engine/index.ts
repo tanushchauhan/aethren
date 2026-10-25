@@ -14,17 +14,12 @@
  * - `clock.ts`     injectable clock and timer groups
  */
 import type {
-  ElementType,
   GameState,
   JoinableRole,
-  P0ElementType,
   PlayerRole,
   QuestDifficulty,
-  QuestStatus,
   RoomJoinAck,
-  TranscribeResponse,
 } from '@once-upon/shared';
-import { config } from '../config';
 import type {
   CreateRoomOptions,
   CreateRoomResult,
@@ -35,7 +30,6 @@ import type {
 import { systemClock, type Clock } from './clock';
 import { GameRoom, type EngineRuntime } from './phases';
 import { generateCode, normalizeCode, toJoinableRole } from './rooms';
-import { storybookRoom } from './storybook';
 
 export interface EngineOptions {
   clock?: Clock;
@@ -76,8 +70,6 @@ export function createRoomService(deps: EngineDeps): EngineRoomService {
 export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Engine {
   const rt: EngineRuntime = {
     io: deps.io,
-    ai: deps.ai,
-    boss: deps.boss,
     clock: options.clock ?? systemClock,
     rng: options.rng ?? Math.random,
     timeScale: options.timeScale ?? envTimeScale(),
@@ -118,12 +110,10 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
       hostName: opts.hostName,
       hostRole: toJoinableRole(opts.hostRole),
       difficulty: opts.difficulty ?? 'normal',
-      encounterCardId: typeof opts.encounterCardId === 'string' ? opts.encounterCardId : undefined,
       playerNames: (opts.playerNames ?? []).filter((n): n is string => typeof n === 'string'),
-      quickStart: Boolean(opts.quickStart),
     });
     rooms.set(roomCode, room);
-    rt.log(`[engine ${roomCode}] created (${opts.quickStart ? 'quick start' : opts.difficulty ?? 'normal'})`);
+    rt.log(`[engine ${roomCode}] created (${opts.difficulty ?? 'normal'})`);
     return { roomCode, hostPlayerId: room.hostPlayerId };
   }
 
@@ -133,7 +123,6 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
     socket.data.playerId = undefined;
     if (!roomCode) return;
     void socket.leave(roomCode);
-    void socket.leave(storybookRoom(roomCode));
     if (playerId) getRoom(roomCode)?.detach(playerId, socket.id);
   }
 
@@ -153,20 +142,13 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
           old.data.roomCode = undefined;
           old.data.playerId = undefined;
           void old.leave(code);
-          void old.leave(storybookRoom(code));
         }
       }
     }
     socket.data.roomCode = code;
     socket.data.playerId = seat.player.id;
-    // Storybook clients learn their seat first, then get state in their own shape.
-    if (socket.data.storybook) {
-      socket.emit('room:joined', { playerId: seat.player.id });
-      room.holdIntroForNarration = true;
-    }
-    void socket.join(socket.data.storybook ? storybookRoom(code) : code);
+    void socket.join(code);
     room.broadcast();
-    if (room.state.phase === 'opening') socket.emit('memory:cards', room.state.memoryCards ?? []);
     return { ok: true, roomCode: code, playerId: seat.player.id, state: room.snapshot() };
   }
 
@@ -185,18 +167,9 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
   function registerSocketHandlers(socket: GameSocket): void {
     sockets.set(socket.id, socket);
     const currentRoom = () => getRoom(socket.data.roomCode);
-    /**
-     * Shared-contract clients pass an ack. Storybook clients (`client/src/net`) do not: mark
-     * the socket and answer with `room:error` instead, since `room:joined` follows a success.
-     */
-    const replyTo = (ack: unknown): ((res: RoomJoinAck) => void) => {
-      if (typeof ack === 'function') return ack as (res: RoomJoinAck) => void;
-      socket.data.storybook = true;
-      return (res) => {
-        if (!res.ok) socket.emit('room:error', { message: res.error });
-      };
-    };
-
+    /** Clients pass an ack; a missing one is ignored rather than crashing the handler. */
+    const replyTo = (ack: unknown): ((res: RoomJoinAck) => void) =>
+      typeof ack === 'function' ? (ack as (res: RoomJoinAck) => void) : () => undefined;
     socket.on(
       'clock:ping',
       safe((payload) => {
@@ -230,28 +203,10 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
     );
 
     socket.on(
-      'room:quick_start',
-      safe(async (payload, rawAck) => {
-        const ack = replyTo(rawAck);
-        if (!payload?.playerName) return ack({ ok: false, error: 'playerName is required' });
-        try {
-          const { roomCode } = await createRoom({
-            hostName: payload.playerName,
-            hostRole: toJoinableRole(payload.role),
-            quickStart: true,
-          });
-          ack(seatSocket(socket, rooms.get(roomCode)!, payload.playerName, toJoinableRole(payload.role)));
-        } catch (err) {
-          ack({ ok: false, error: (err as Error).message });
-        }
-      }),
-    );
-
-    socket.on(
       'room:join',
       safe((payload, rawAck) => {
         const ack = replyTo(rawAck);
-        const code = typeof payload?.roomCode === 'string' ? payload.roomCode : payload?.code;
+        const code = payload?.roomCode;
         const room = typeof code === 'string' ? getRoom(code) : undefined;
         if (!room) return ack({ ok: false, error: 'Room not found' });
         if (!payload.playerName) return ack({ ok: false, error: 'playerName is required' });
@@ -267,11 +222,7 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
         if (!room || !playerId || !frame || typeof frame !== 'object') return;
         room.pose(playerId, frame);
         const code = room.state.roomCode;
-        socket.to([code, storybookRoom(code)]).emit('player:pose', { ...frame, playerId });
-        // Storybook clients have no calibration event: standing in the zone counts.
-        if (socket.data.storybook && frame.inZone === true && room.state.phase === 'calibration') {
-          room.calibrationDone(playerId);
-        }
+        socket.to(code).emit('player:pose', { ...frame, playerId });
       }),
     );
 
@@ -293,49 +244,6 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
       'hardware:event',
       safe((event) => {
         currentRoom()?.hardwareEvent(socket.data.playerId, event);
-      }),
-    );
-
-    socket.on(
-      'opening:pick_card',
-      safe((payload) => {
-        currentRoom()?.pickCard(payload?.cardId, payload?.slot);
-      }),
-    );
-
-    socket.on(
-      'opening:select_card',
-      safe((payload) => {
-        currentRoom()?.storybookKeep(payload?.cardId);
-      }),
-    );
-
-    socket.on(
-      'opening:lock_boss',
-      safe((payload) => {
-        currentRoom()?.storybookCrown(payload?.cardId);
-      }),
-    );
-
-    socket.on(
-      'room:advance',
-      safe((payload) => {
-        const room = currentRoom();
-        const playerId = socket.data.playerId;
-        const wanted = payload?.phase;
-        if (!room || !playerId || typeof wanted !== 'string') return;
-        // The engine owns every transition; a request only maps onto an existing action.
-        const phase = room.state.phase;
-        if (phase === 'lobby' && (wanted === 'opening' || wanted === 'intro' || wanted === 'calibrating')) {
-          room.start(playerId);
-        } else if (phase === 'opening' && (wanted === 'intro' || wanted === 'generating')) {
-          room.start(playerId);
-        } else if (phase === 'intro' && wanted === 'calibrating') {
-          // Sent when the intro narration ends or a player presses Continue.
-          room.continueIntro();
-        } else if (phase === 'calibration' && (wanted === 'encounter' || wanted === 'boss')) {
-          room.calibrationDone(playerId);
-        }
       }),
     );
 
@@ -367,17 +275,6 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
     getState: (code): GameState | null => {
       const room = getRoom(code);
       return room ? structuredClone(room.snapshot()) : null;
-    },
-    getQuestStatus: (code): QuestStatus | null => getRoom(code)?.questStatus() ?? null,
-    getIncantation: (code, element: ElementType) => getRoom(code)?.state.world?.incantations?.[element] ?? null,
-    buildJoinLink: (code, playerName) => {
-      const url = new URL(config.publicBaseUrl);
-      url.searchParams.set('room', normalizeCode(code));
-      if (playerName) url.searchParams.set('name', playerName);
-      return url.toString();
-    },
-    recordIncantation: (code, playerId, element: P0ElementType, result: TranscribeResponse) => {
-      getRoom(code)?.recordIncantation(playerId, element, result);
     },
     registerSocketHandlers,
     dispose: () => {

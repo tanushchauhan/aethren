@@ -1,18 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { COMBAT, DEFENSE_WINDOW_MS, TAUNT_MAX_CHARS } from '@once-upon/shared';
+import { COMBAT } from '@once-upon/shared';
 import type { BossSchema, EncounterSchema } from '@once-upon/shared';
 import {
   clampPower,
   enemyAttacks,
   enemyMaxHp,
-  sanitizePlan,
-  scriptedPlan,
   spellEffect,
   telegraphMs,
   wardEligible,
   type PlanContext,
 } from './combat';
-import { testWorld } from './test-helpers';
+import { demoWorld as testWorld } from '../content';
 
 const world = testWorld();
 const encounter = world.encounters[0] as EncounterSchema;
@@ -90,46 +88,3 @@ describe('ward rules', () => {
   });
 });
 
-describe('plan clamping', () => {
-  it('clamps every field of a bad plan', () => {
-    const plan = sanitizePlan(
-      {
-        attackType: 'stare',
-        targetPlayerIds: ['ghost', 'p2', 'p2'],
-        defenseWindowMs: 5000,
-        raiseWard: true,
-        taunt: 'x'.repeat(300),
-        effects: ['servo_open', 'hit', 'explode' as never, 'hit'],
-        source: 'agent',
-      },
-      ctx(),
-    );
-    expect(plan.attackType).toBe('high_swing'); // scripted fallback for round 0
-    expect(plan.targetPlayerIds).toEqual(['p2']);
-    expect(plan.defenseWindowMs).toBe(DEFENSE_WINDOW_MS.max);
-    expect(plan.raiseWard).toBe(false); // boss at full HP
-    expect(plan.taunt!.length).toBeLessThanOrEqual(TAUNT_MAX_CHARS);
-    expect(plan.effects).toEqual(['servo_open', 'hit']);
-    expect(plan.source).toBe('agent');
-  });
-
-  it('falls back to real targets and the minimum window', () => {
-    const plan = sanitizePlan({ attackType: 'projectile', targetPlayerIds: ['nobody'], defenseWindowMs: 10 }, ctx({ roundIndex: 1 }));
-    expect(plan.attackType).toBe('projectile');
-    expect(plan.targetPlayerIds).toEqual(['p2']);
-    expect(plan.defenseWindowMs).toBe(DEFENSE_WINDOW_MS.min);
-  });
-
-  it('allows raise_ward only when eligible', () => {
-    expect(sanitizePlan({ raiseWard: true }, ctx({ enemyHp: 70 })).raiseWard).toBe(true);
-    expect(sanitizePlan({ raiseWard: true }, ctx({ enemyHp: 70, isBoss: false, enemy: encounter })).raiseWard).toBe(false);
-    expect(sanitizePlan(null, ctx()).source).toBe('scripted');
-  });
-
-  it('scripted plan cycles attacks and targets and raises an eligible ward', () => {
-    expect(scriptedPlan(ctx({ roundIndex: 0 })).attackType).toBe('high_swing');
-    expect(scriptedPlan(ctx({ roundIndex: 1 })).attackType).toBe('projectile');
-    expect(scriptedPlan(ctx({ roundIndex: 1 })).targetPlayerIds).toEqual(['p2']);
-    expect(scriptedPlan(ctx({ enemyHp: 10 })).raiseWard).toBe(true);
-  });
-});

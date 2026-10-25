@@ -1,4 +1,4 @@
-import { DEFAULT_SERVER_URL } from '../../net/contract';
+const DEFAULT_SERVER_URL = 'http://localhost:3001';
 
 export function serverUrl(): string {
   const configured = import.meta.env.VITE_SERVER_URL;

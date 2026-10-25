@@ -171,7 +171,7 @@ export const COMBAT = {
 } as const;
 
 /**
- * Code-owned stats per encounter template. Muse only picks the template; these set how it fights.
+ * Code-owned stats per encounter template. These set how each template fights.
  * `attackSpeed` scales the telegraph duration (above 1 is a faster wind-up).
  * `defaultAttacks` is the scripted cycle when the boss agent is unavailable.
  */
@@ -198,12 +198,3 @@ export const DIFFICULTY_HP_MULTIPLIER: Record<QuestDifficulty, number> = {
   normal: 1,
   hard: 1.3,
 };
-
-/**
- * The boss agent must answer within this long of being asked, well before the next telegraph.
- * Past it, the scripted cycle plans the round.
- */
-export const BOSS_AGENT_DEADLINE_MS = 4000;
-
-/** Default per-call timeout for Muse requests when `AI_TIMEOUT_MS` is unset. */
-export const AI_DEFAULT_TIMEOUT_MS = 12_000;

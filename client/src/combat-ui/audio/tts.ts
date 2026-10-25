@@ -2,11 +2,8 @@ import { readActiveNarrator, type VoiceOption } from '../../audio-lab/voiceCatal
 import { serverUrl } from './serverUrl';
 
 /**
- * Narration for every combat screen.
- * Laptop A should use the Google Home Mini as its Bluetooth speaker.
- * Only the Spellbearer client invokes playback; the Partner sees captions. This module never calls Muse or
- * ElevenLabs and holds no API keys. It only asks our server at /api/tts, or, when a narrator was chosen on
- * /debug/audio, the Vite dev server's /api/tts with that engine and voice.
+ * Narration playback for the audio lab. It holds no API keys. It asks the Vite dev server's /api/tts
+ * (the engine and voice chosen on /debug/audio) and falls back to browser speech.
  */
 
 /** How long to wait for the server's voice before speaking with the browser instead. */

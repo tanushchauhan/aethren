@@ -22,4 +22,4 @@ Commit `af40c2e` preserves the complete project before cleanup, including retire
 
 
 ## Combat and glove (in progress)
-The round-based combat (telegraph, dodge, parry, team turn, Twin Cast, shared hearts), the glove controller and the debug labs are restored and being adapted to this story. See [combat-design.md](combat-design.md). Run combat at `/combat` and the labs at `/debug`.
+The round-based combat (telegraph, dodge, parry, team turn, Twin Cast, shared hearts), the glove controller and the debug labs are restored and being adapted to this story. See [combat-design.md](combat-design.md). The server engine runs the rounds (cast needs no spoken incantation) and the labs at `/debug` drive it. The combat UI will be rebuilt inside the story.

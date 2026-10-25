@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import type { ClientToServerEvents, ServerToClientEvents, GameState, RoomJoinAck, P0ElementType, TelegraphPayload, TranscribeResponse, HardwareCommand, NarratorLine } from '@once-upon/shared';
+import type { ClientToServerEvents, ServerToClientEvents, GameState, RoomJoinAck, P0ElementType, TelegraphPayload, HardwareCommand, NarratorLine } from '@once-upon/shared';
 
 export type Log = (event: string, payload: unknown, seat?: string) => void;
 export function useSeat(label: string, log: Log, narrate: (line: NarratorLine) => void) {
@@ -13,7 +13,6 @@ export function useSeat(label: string, log: Log, narrate: (line: NarratorLine) =
   const [auto, setAuto] = useState(false);
   const [inZone, setInZone] = useState(true);
   const [telegraph, setTelegraph] = useState<TelegraphPayload | null>(null);
-  const [verdict, setVerdict] = useState<TranscribeResponse | null>(null);
   const [hardware, setHardware] = useState<HardwareCommand | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -21,7 +20,6 @@ export function useSeat(label: string, log: Log, narrate: (line: NarratorLine) =
   const latest = useRef({ state, playerId, element, auto, inZone });
   latest.current = { state, playerId, element, auto, inZone };
   const autoRounds = useRef(new Set<string>());
-  const castElement = useRef(element);
   const role = label === 'A' ? 'spellbearer' : 'partner';
 
   useEffect(() => {
@@ -45,15 +43,14 @@ export function useSeat(label: string, log: Log, narrate: (line: NarratorLine) =
     return () => { clearInterval(timer); s.disconnect(); };
   }, [label, log, narrate]);
 
-  async function enter(mode: 'quick' | 'create' | 'join', code = '') {
+  async function enter(mode: 'create' | 'join', code = '') {
     const s = socket.current!;
-    setError(''); setBusy(true); autoRounds.current.clear(); setVerdict(null);
+    setError(''); setBusy(true); autoRounds.current.clear();
     try {
       s.connect();
       const result = await new Promise<RoomJoinAck>((resolve, reject) => {
         const ack = (err: Error | null, value: RoomJoinAck) => err ? reject(new Error('Server did not respond. Check port 3001.')) : resolve(value);
         if (mode === 'join') s.timeout(10000).emit('room:join', { roomCode: code, playerName: name, role }, ack);
-        else if (mode === 'quick') s.timeout(10000).emit('room:quick_start', { playerName: name, role }, ack);
         else s.timeout(10000).emit('room:create', { playerName: name, role }, ack);
       });
       if (!result.ok) throw new Error(result.error);
@@ -75,26 +72,7 @@ export function useSeat(label: string, log: Log, narrate: (line: NarratorLine) =
     socket.current?.emit('calibration:done', { baseline: { shoulderY: .3, hipY: .6, shoulderWidth: .2, centerX: .5, calibratedAt: Date.now() + offset } });
     pose(true);
   }
-  async function transcribe(audio?: Blob, override?: string): Promise<TranscribeResponse | null> {
-    const current = latest.current;
-    if (!current.state || !current.playerId) return null;
-    const chosen = current.element;
-    setBusy(true); setError('');
-    try {
-      const form = new FormData();
-      form.set('roomCode', current.state.roomCode); form.set('playerId', current.playerId); form.set('element', chosen);
-      if (audio) form.set('audio', audio, 'incantation.wav');
-      else form.set('transcriptOverride', override ?? current.state.world?.incantations[chosen] ?? '');
-      const response = await fetch('/api/transcribe', { method: 'POST', body: form });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`);
-      setVerdict(result); castElement.current = chosen;
-      log(audio ? 'real ASR result' : 'simulated words result', result, label);
-      return result;
-    } catch (e) { setError(String(e)); return null; }
-    finally { setBusy(false); }
-  }
-  function cast(power = 1, chosen = castElement.current) {
+  function cast(power = 1, chosen = element) {
     socket.current?.emit('player:cast', { playerId: latest.current.playerId, element: chosen, gesture: 'thrust', transcript: '', power, serverTimestampMs: Date.now() + offset });
   }
   useEffect(() => {
@@ -106,18 +84,15 @@ export function useSeat(label: string, log: Log, narrate: (line: NarratorLine) =
       const key = `${state.roomCode}:${state.roundIndex}`;
       if (!autoRounds.current.has(key)) {
         autoRounds.current.add(key);
-        void transcribe().then((result) => {
-          if (result?.passed && latest.current.state?.phase === 'team_turn') cast(1.2);
-        });
+        cast(1.2);
       }
     }
   }, [auto, connected, state?.phase, state?.roundIndex, state?.paused, telegraph?.attackId]);
 
   return { label, name, setName, connected, state, playerId, element, setElement, auto, setAuto, inZone, pose, telegraph,
-    verdict, hardware, error, setError, busy, offset, enter, calibrate, defend, transcribe, cast,
+    hardware, error, setError, busy, offset, enter, calibrate, defend, cast,
     start: () => socket.current?.emit('game:start'),
     disconnect: () => socket.current?.disconnect(),
-    pick: (cardId: string, slot: 'encounter' | 'boss') => socket.current?.emit('opening:pick_card', { cardId, slot }),
     glove: (armed: boolean, fistCharged: boolean, noiseLevel: number) => socket.current?.emit('hardware:event', {
       dialSlot: ['ember', 'frost', 'bloom'].indexOf(element), armed, fistCharged, noiseLevel, buttonPressed: false, parryTriggered: false, colorToken: null,
     }),

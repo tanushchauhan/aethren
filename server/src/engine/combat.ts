@@ -9,13 +9,11 @@ import {
   ENEMY_TEMPLATES,
   P0_ELEMENTS,
   ROUND_TIMINGS_MS,
-  TAUNT_MAX_CHARS,
   TIER_MULTIPLIERS,
   WARD_HP_RATIO,
 } from '@once-upon/shared';
 import type {
   AttackType,
-  BossEffectName,
   BossPlan,
   BossSchema,
   ElementType,
@@ -53,8 +51,6 @@ export const MAX_POWER = 2;
 export const TELEGRAPH_MS = { min: 1200, max: 3000 } as const;
 
 const TEMPLATES = Object.keys(ENEMY_TEMPLATES) as EncounterTemplate[];
-const BOSS_EFFECTS: readonly BossEffectName[] = ['tick', 'cast', 'fizzle', 'hit', 'servo_open'];
-const MAX_EFFECTS_PER_ROUND = 3;
 
 export function isP0Element(value: unknown): value is P0ElementType {
   return typeof value === 'string' && (P0_ELEMENTS as readonly string[]).includes(value);
@@ -154,7 +150,7 @@ export interface PlanContext extends WardContext {
   roundIndex: number;
 }
 
-/** Engine-side scripted cycle, used when the planner is late, throws or returns garbage. */
+/** The scripted attack cycle that plans each round. */
 export function scriptedPlan(ctx: PlanContext): BossPlan {
   const attacks = enemyAttacks(ctx.enemy);
   const attackType = attacks[ctx.roundIndex % attacks.length] ?? 'low_sweep';
@@ -167,44 +163,6 @@ export function scriptedPlan(ctx: PlanContext): BossPlan {
     taunt: null,
     effects: [],
     source: 'scripted',
-  };
-}
-
-/**
- * Re-checks a plan against the rules, whatever the planner promised:
- * attack in the enemy's (P0) attacks, real targets, window inside `DEFENSE_WINDOW_MS`,
- * ward only when eligible, taunt at most `TAUNT_MAX_CHARS`, effects from the fixed list.
- */
-export function sanitizePlan(plan: Partial<BossPlan> | null | undefined, ctx: PlanContext): BossPlan {
-  const fallback = scriptedPlan(ctx);
-  if (!plan || typeof plan !== 'object') return fallback;
-
-  const attacks = enemyAttacks(ctx.enemy);
-  const attackType =
-    plan.attackType && attacks.includes(plan.attackType) ? plan.attackType : fallback.attackType;
-
-  const valid = new Set(ctx.playerIds);
-  const targets = [
-    ...new Set((Array.isArray(plan.targetPlayerIds) ? plan.targetPlayerIds : []).filter((id) => valid.has(id))),
-  ];
-
-  const taunt =
-    typeof plan.taunt === 'string' && plan.taunt.trim() !== ''
-      ? truncate(plan.taunt.trim(), TAUNT_MAX_CHARS)
-      : null;
-
-  const effects = [
-    ...new Set((Array.isArray(plan.effects) ? plan.effects : []).filter((e) => BOSS_EFFECTS.includes(e))),
-  ].slice(0, MAX_EFFECTS_PER_ROUND);
-
-  return {
-    attackType,
-    targetPlayerIds: targets.length > 0 ? targets : fallback.targetPlayerIds,
-    defenseWindowMs: clampDefenseWindow(plan.defenseWindowMs),
-    raiseWard: Boolean(plan.raiseWard) && wardEligible(ctx),
-    taunt,
-    effects,
-    source: plan.source === 'agent' ? 'agent' : 'scripted',
   };
 }
 

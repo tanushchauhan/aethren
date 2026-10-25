@@ -4,7 +4,7 @@ import { LandingScreen } from './ui/LandingScreen';
 import { ScriptedIntroduction } from './ui/ScriptedIntroduction';
 import { GameMusic } from './ui/GameMusic';
 import { useStoryStore } from './net/storyStore';
-import { isCombatPath, isGamePath, isTestLabPath } from './debugRoutes';
+import { isGamePath, isTestLabPath } from './debugRoutes';
 import './ui/visual-novel.css';
 
 class ScreenBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -23,8 +23,7 @@ function StoryApp() {
   </GameViewport>;
 }
 
-// Combat, labs and the server dashboard are lazy so the story bundle stays small.
-const CombatApp = lazy(() => import('./CombatApp'));
+// Labs and the server dashboard are lazy so the story bundle stays small.
 const LabsApp = lazy(() => import('./LabsApp'));
 const TestLab = lazy(() => import('./test-lab/TestLab'));
 
@@ -37,9 +36,6 @@ export default function App() {
   }, []);
   if (isTestLabPath(path)) {
     return <ScreenBoundary><Suspense fallback={<p>Opening the test lab…</p>}><TestLab /></Suspense></ScreenBoundary>;
-  }
-  if (isCombatPath(path)) {
-    return <ScreenBoundary><Suspense fallback={<p>Opening combat…</p>}><CombatApp /></Suspense></ScreenBoundary>;
   }
   // /debug/*, the legacy lab URLs, and any other unknown path open the labs; only / is the story.
   if (!isGamePath(path)) {

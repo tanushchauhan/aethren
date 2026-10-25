@@ -1,7 +1,6 @@
 /**
  * Shared contract for Once Upon a Memory.
  * Locked in Phase 0 so client, server, and firmware agents share one shape.
- * Muse JSON may use snake_case (`art_prompt`); map it onto these camelCase fields at the boundary.
  */
 
 /** Every element across tiers. P0 ships the first three. */
@@ -19,7 +18,7 @@ export type AttackType = 'low_sweep' | 'high_swing' | 'projectile' | 'ground_wav
  */
 export type GestureType = 'swipe_left' | 'swipe_right' | 'swipe' | 'thrust';
 
-/** Fixed encounter templates. Code owns hit points and behavior; Muse only picks one. */
+/** Fixed encounter templates. Code owns hit points and behavior. */
 export type EncounterTemplate = 'charger' | 'caster' | 'swarm' | 'guardian';
 
 /** Collaborative spell that can break a ward. P0 has Twin Cast only. */
@@ -37,7 +36,6 @@ export type QuestDifficulty = 'easy' | 'normal' | 'hard';
  */
 export type GamePhase =
   | 'lobby'
-  | 'opening'
   | 'calibration'
   | 'intro'
   | 'telegraph'
@@ -159,17 +157,6 @@ export interface HardwareCommand {
   servoOpen?: boolean;
 }
 
-/** A moment Muse Spark extracted from the consented group chat. */
-export interface MemoryCard {
-  id: string;
-  quote: string;
-  date: string;
-  people: string[];
-  mood: string;
-  /** Display color (CSS color or token name) chosen by Muse. */
-  color: string;
-}
-
 export interface EncounterSchema {
   memory: string;
   name: string;
@@ -230,12 +217,6 @@ export interface GameState {
   enemyMaxHp: number;
   roundIndex: number;
   serverTimestampMs: number;
-  /** Cards offered in the opening. Absent until the chat upload (or cached fixtures) load. */
-  memoryCards?: MemoryCard[];
-  /** Opening picks. `null` until a player keeps a card for that slot. */
-  picks?: { encounterCardId: string | null; bossCardId: string | null };
-  /** Image URLs by kind, filled in as Muse Image resolves. Show placeholder art until present. */
-  images?: Partial<Record<WorldImage['kind'], string>>;
   /** True while the room waits on a disconnected player (see `DISCONNECT_PAUSE_MS`). */
   paused?: boolean;
   /** Human-readable pause reason, e.g. "Dev disconnected". */
@@ -327,13 +308,6 @@ export interface NarratorLine {
   ttsUrl?: string;
 }
 
-/** A Muse Image result streamed to the room as soon as it resolves. */
-export interface WorldImage {
-  kind: 'cover' | 'monster' | 'boss';
-  /** HTTP(S) URL or `data:` URL. */
-  url: string;
-}
-
 /** Seat a laptop asks for. Bots are server-only, so clients never request `bot`. */
 export type JoinableRole = Exclude<PlayerRole, 'bot'>;
 
@@ -345,43 +319,14 @@ export interface RoomCreateRequest {
 
 export interface RoomJoinRequest {
   roomCode?: string;
-  /** Storybook client spelling of `roomCode`; either is accepted. */
-  code?: string;
   playerName: string;
   role: JoinableRole;
 }
 
-/**
- * Storybook client (`client/src/net`) compatibility. A socket that creates or joins a room
- * without an ack is treated as a storybook client: the server sends it `room:joined` and a
- * storybook-shaped `room:state` (see `server/src/engine/storybook.ts`).
- */
-export interface RoomAdvancePayload {
-  /** The storybook phase the client wants next, e.g. `opening`, `intro` or `encounter`. */
-  phase: string;
-}
-
-export interface OpeningCardPayload {
-  cardId: string;
-}
-
-export interface RoomQuickStartRequest {
-  playerName: string;
-  role: JoinableRole;
-}
-
-/** Ack for `room:create`, `room:join`, and `room:quick_start`. Keep `playerId` for later events. */
+/** Ack for `room:create` and `room:join`. Keep `playerId` for later events. */
 export type RoomJoinAck =
   | { ok: true; roomCode: string; playerId: string; state: GameState }
   | { ok: false; error: string };
-
-/** Memory card slot a player fills in the opening. */
-export type OpeningSlot = 'encounter' | 'boss';
-
-export interface OpeningPickPayload {
-  cardId: string;
-  slot: OpeningSlot;
-}
 
 export interface CalibrationDonePayload {
   baseline: CalibrationBaseline;
@@ -404,11 +349,7 @@ export interface ServerToClientEvents {
   'combat:resolve': (resolution: RoundResolution) => void;
   'combat:twin_cast_progress': (progress: TwinCastProgress) => void;
   'narrator:line': (line: NarratorLine) => void;
-  'world:image': (image: WorldImage) => void;
-  'memory:cards': (cards: MemoryCard[]) => void;
   'room:error': (payload: RoomErrorPayload) => void;
-  /** Storybook clients only: sent to the joining socket before its first room snapshot. */
-  'room:joined': (payload: { playerId: string }) => void;
 }
 
 export interface ClientToServerEvents {
@@ -417,110 +358,19 @@ export interface ClientToServerEvents {
   'player:dodge_result': (payload: DodgeResultPayload) => void;
   'player:cast': (payload: CastPayload) => void;
   'hardware:event': (event: HardwareEvent) => void;
-  /** Storybook clients omit the ack at runtime; they get `room:joined` / `room:error` instead. */
   'room:create': (payload: RoomCreateRequest, ack: (res: RoomJoinAck) => void) => void;
   'room:join': (payload: RoomJoinRequest, ack: (res: RoomJoinAck) => void) => void;
-  /** Creates a room with the cached demo world and saved opening picks. */
-  'room:quick_start': (payload: RoomQuickStartRequest, ack: (res: RoomJoinAck) => void) => void;
-  'opening:pick_card': (payload: OpeningPickPayload) => void;
   'calibration:done': (payload: CalibrationDonePayload) => void;
-  /** Host only. Advances lobby -> opening, and after both picks starts world generation. */
+  /** Host only. Starts the run: lobby -> intro. */
   'game:start': () => void;
-  /** Storybook: requests the next phase; the server maps it onto `game:start` / `calibration:done`. */
-  'room:advance': (payload: RoomAdvancePayload) => void;
-  /** Storybook: keeps a card for the encounter (`opening:pick_card` slot `encounter`). */
-  'opening:select_card': (payload: OpeningCardPayload) => void;
-  /** Storybook: crowns a card as the boss (`opening:pick_card` slot `boss`). */
-  'opening:lock_boss': (payload: OpeningCardPayload) => void;
 }
 
 // ---------------------------------------------------------------------------
-// REST contract (server routes and client callers)
+// Boss plan
 // ---------------------------------------------------------------------------
 
-/** `POST /api/chat-upload` (multipart, `file` field with the Instagram JSON export). */
-export interface ChatUploadResponse {
-  cards: MemoryCard[];
-}
-
-/** `POST /api/transcribe` multipart text fields, sent alongside an `audio` file field. */
-export interface TranscribeRequestFields {
-  roomCode: string;
-  playerId: string;
-  element: P0ElementType;
-  /** Development transcript injection; production requires MCP bearer authentication. */
-  transcriptOverride?: string;
-}
-
-export interface TranscribeResponse {
-  transcript: string;
-  /** The incantation phrase the transcript was matched against. */
-  expected: string;
-  /** Share of expected words found, 0..1. */
-  matchRatio: number;
-  passed: boolean;
-  /** True when the pass came from the mercy rule rather than the match. */
-  mercy: boolean;
-  /** Attempt number for this player and element in the current turn (1-based). */
-  attempt: number;
-  /** Power multiplier from the incantation alone (e.g. `MERCY_POWER` on mercy). */
-  power: number;
-}
-
-/**
- * `POST /api/tts` JSON body. The response is either `audio/mpeg` bytes, or JSON
- * {@link TtsFallbackResponse} telling the client to speak with `speechSynthesis`.
- * Check the response `Content-Type` to tell them apart.
- */
-export interface TtsRequest {
-  text: string;
-  speaker: 'narrator' | 'boss';
-}
-
-export interface TtsFallbackResponse {
-  fallback: 'speech_synthesis';
-  text: string;
-}
-
-/** `POST /api/quest-chat`: the in-app quest box that runs the Quest Master tools. */
-export interface QuestChatRequest {
-  prompt: string;
-  hostName?: string;
-}
-
-export interface QuestChatResponse {
-  reply: string;
-  roomCode?: string;
-  joinLink?: string;
-  toolCalls: { name: string; args: unknown; result: unknown }[];
-}
-
-/** What `get_quest_status` returns over MCP and the quest box. */
-export interface QuestStatus {
-  roomCode: string;
-  phase: GamePhase;
-  hearts: number;
-  maxHearts: number;
-  enemyName: string | null;
-  enemyHp: number;
-  enemyMaxHp: number;
-  wardActive: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Boss agent
-// ---------------------------------------------------------------------------
-
-/** Effects the boss may trigger: a buzzer pattern or the storybook servo. */
+/** Effects the boss may trigger: a buzzer pattern or the storybook servo prop. */
 export type BossEffectName = BuzzPattern | 'servo_open';
-
-/** One validated tool call from the boss agent. Limits are enforced in server code. */
-export type BossToolCall =
-  | { name: 'choose_attack'; args: { pattern: AttackType; targets: string[] } }
-  | { name: 'adjust_timing'; args: { ms: number } }
-  | { name: 'raise_ward'; args: Record<string, never> }
-  | { name: 'taunt'; args: { line: string } }
-  | { name: 'trigger_effect'; args: { name: BossEffectName } };
 
 /** The boss's plan for the next round, after validation and clamping. */
 export interface BossPlan {
@@ -532,6 +382,5 @@ export interface BossPlan {
   /** At most `TAUNT_MAX_CHARS` characters. */
   taunt: string | null;
   effects: BossEffectName[];
-  /** `agent` when Muse Spark planned it; `scripted` when the fallback did. */
-  source: 'agent' | 'scripted';
+  source: 'scripted';
 }

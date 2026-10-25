@@ -3,7 +3,7 @@
  * after `DISCONNECT_PAUSE_MS`, or an empty P0 seat when a run starts with one human.
  */
 import { P0_ELEMENTS } from '@once-upon/shared';
-import type { AttackType, GestureType, P0ElementType, TranscribeResponse } from '@once-upon/shared';
+import type { AttackType, GestureType, P0ElementType } from '@once-upon/shared';
 
 export const BOT_DODGE_CHANCE = 0.7;
 /** Of the bot's successful defenses against a projectile, this share are parries (Spellbearer seat only). */
@@ -39,19 +39,6 @@ export function botGesture(rng: Rng): GestureType {
 /** Gesture power in the glove's usual range (about 0.9..1.2). */
 export function botPower(rng: Rng): number {
   return Math.round((0.9 + rng() * 0.3) * 100) / 100;
-}
-
-/** A believable passed incantation: the world's phrase, spoken correctly. */
-export function botIncantation(phrase: string): TranscribeResponse {
-  return {
-    transcript: phrase,
-    expected: phrase,
-    matchRatio: 1,
-    passed: true,
-    mercy: false,
-    attempt: 1,
-    power: 1,
-  };
 }
 
 /** Delay (unscaled ms) before a bot casts in a team turn. */

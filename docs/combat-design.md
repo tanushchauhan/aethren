@@ -1,3 +1,5 @@
+> Legacy design from the Meta track. The Muse parts (chat memories, world building, boss agent, voice incantations) were removed. The round loop, spells, Twin Cast, hearts and glove controls still apply.
+
 # Once Upon a Memory: HackTX Meta + Hardware Game Design
 
 > Current art direction and Muse asset handoff: [Meta Muse asset-generation instructions](muse-asset-generation.md). Use this guide for the visual-novel presentation and generated artwork.

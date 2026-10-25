@@ -4,8 +4,6 @@
  */
 
 export const GAME_PATH = '/';
-/** The combat flow (rooms, glove, webcam) while it is being stitched into the authored story. */
-export const COMBAT_PATH = '/combat';
 export const DEBUG_PATH = '/debug';
 export const DEBUG_VISION_PATH = '/debug/vision';
 export const DEBUG_HARDWARE_PATH = '/debug/hardware';
@@ -40,10 +38,6 @@ export function canonicalPath(pathname: string): string {
 
 export function isGamePath(pathname: string): boolean {
   return canonicalPath(pathname) === GAME_PATH;
-}
-
-export function isCombatPath(pathname: string): boolean {
-  return canonicalPath(pathname) === COMBAT_PATH;
 }
 
 export function isDebugPath(pathname: string): boolean {
