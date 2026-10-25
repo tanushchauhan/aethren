@@ -137,14 +137,14 @@ export interface WardContext {
   wardRaisedThisPhase: boolean;
 }
 
-/** Ward may rise: boss only, below `WARD_HP_RATIO` of max HP, once per boss fight. */
+/** Ward may rise: boss only, at or below `WARD_HP_RATIO` of max HP, once per boss fight. */
 export function wardEligible(ctx: WardContext): boolean {
   return (
     ctx.isBoss &&
     !ctx.wardActive &&
     !ctx.wardRaisedThisPhase &&
     ctx.enemyHp > 0 &&
-    ctx.enemyHp < ctx.enemyMaxHp * WARD_HP_RATIO
+    ctx.enemyHp <= ctx.enemyMaxHp * WARD_HP_RATIO
   );
 }
 

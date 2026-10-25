@@ -947,7 +947,7 @@ export class GameRoom {
     const enemy = this.state.currentEncounter!;
     this.say(fallbackLine('boss_entrance', { enemyName: enemy.name }));
     const line = enemy.lines?.find((l) => typeof l === 'string' && l.trim() !== '');
-    if (line) this.say(truncate(line.trim(), TAUNT_MAX_CHARS), 'boss');
+    if (line) this.say(truncate(line.trim(), TAUNT_MAX_CHARS));
   }
 
   private planContext(roundIndex: number): PlanContext {
@@ -1011,7 +1011,7 @@ export class GameRoom {
     if (entry && entry.roundIndex === roundIndex && entry.enemyIndex === this.enemyIndex && entry.value) {
       const plan = sanitizePlan(entry.value, ctx);
       // The planner saw HP before this round's casts; raise a ward it could not know was due.
-      const stale = entry.inputHp >= ctx.enemyMaxHp * WARD_HP_RATIO;
+      const stale = entry.inputHp > ctx.enemyMaxHp * WARD_HP_RATIO;
       if (!plan.raiseWard && stale && wardEligible(ctx)) plan.raiseWard = true;
       return plan;
     }

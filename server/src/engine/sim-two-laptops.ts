@@ -5,8 +5,8 @@
  *   pnpm --filter @once-upon/server exec tsx src/engine/sim-two-laptops.ts [--verbose]
  *
  * Phases run at `ENGINE_TIME_SCALE` (default 0.2 here, so a run takes well under a minute).
- * Maya records incantations through `ctx.rooms.recordIncantation`; Dev posts a fake clip to
- * `/api/transcribe` (falling back to `recordIncantation` if the route does not pass him).
+ * Maya records incantations through `ctx.rooms.recordIncantation`; Dev posts to `/api/transcribe`
+ * with `transcriptOverride` (dev-only), falling back to `recordIncantation` if the route refuses.
  * Dev fizzles once and sits out once on purpose, Maya parries projectiles, and behind the boss
  * ward both cast Ember together for a Twin Cast. Dodges use a seeded PRNG, so runs repeat.
  */
@@ -133,13 +133,13 @@ async function main(): Promise<void> {
   sa.on('world:image', (img) => log('server', `image ${img.kind} ready`));
 
   // ---- each laptop's own behavior ----
-  const transcribe = async (l: Laptop, element: P0ElementType): Promise<boolean> => {
+  const transcribe = async (l: Laptop, element: P0ElementType, spoken: string): Promise<boolean> => {
     try {
       const form = new FormData();
       form.set('roomCode', code);
       form.set('playerId', l.playerId);
       form.set('element', element);
-      form.set('audio', new Blob([new Uint8Array(1024)], { type: 'audio/webm' }), 'clip.webm');
+      form.set('transcriptOverride', spoken);
       const res = await fetch(`${url}/api/transcribe`, { method: 'POST', body: form });
       if (!res.ok) return false;
       const body = (await res.json()) as TranscribeResponse;
@@ -151,7 +151,10 @@ async function main(): Promise<void> {
 
   const speak = async (l: Laptop, element: P0ElementType): Promise<void> => {
     const phrase = server.ctx.rooms.getIncantation(code, element) ?? element;
-    if (l.name === 'Dev' && (await transcribe(l, element))) return;
+    if (l.name === 'Dev') {
+      if (await transcribe(l, element, phrase)) return;
+      log('Dev', '/api/transcribe did not pass; recording directly');
+    }
     server.ctx.rooms.recordIncantation(code, l.playerId, element, {
       transcript: phrase,
       expected: phrase,

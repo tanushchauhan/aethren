@@ -80,9 +80,10 @@ describe('enemy stats', () => {
 });
 
 describe('ward rules', () => {
-  it('only the boss, only below half HP, only once', () => {
-    expect(wardEligible(ctx({ enemyHp: 79 }))).toBe(true);
-    expect(wardEligible(ctx({ enemyHp: 80 }))).toBe(false);
+  it('only the boss, only at or below half HP, only once', () => {
+    expect(wardEligible(ctx({ enemyHp: 80 }))).toBe(true); // at or below half
+    expect(wardEligible(ctx({ enemyHp: 81 }))).toBe(false);
+    expect(wardEligible(ctx({ enemyHp: 0 }))).toBe(false);
     expect(wardEligible(ctx({ enemyHp: 79, isBoss: false }))).toBe(false);
     expect(wardEligible(ctx({ enemyHp: 79, wardRaisedThisPhase: true }))).toBe(false);
     expect(wardEligible(ctx({ enemyHp: 79, wardActive: true }))).toBe(false);
