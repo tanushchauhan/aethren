@@ -9,19 +9,21 @@ describe('shared player state', () => {
   });
   it('makes stance and health determine retaliation eligibility', () => {
     const { setStance, setHealth } = playerStore.getState();
-    setStance(0);
+    setStance('staggered');
     expect(selectCanRetaliate(playerStore.getState())).toBe(false);
-    setStance(1);
+    setStance('guarding');
     expect(selectCanRetaliate(playerStore.getState())).toBe(true);
+    setStance('casting');
+    expect(selectCanRetaliate(playerStore.getState())).toBe(false);
     setHealth(0);
     expect(selectCanRetaliate(playerStore.getState())).toBe(false);
   });
   it('clamps resources and ignores invalid input from adapters', () => {
     const { setHealth, setMagicPower, setStance } = playerStore.getState();
-    setHealth(-20); setMagicPower(100); setStance(-5);
-    expect(playerStore.getState()).toMatchObject({ health: 0, magicPower: 12, stance: 0 });
-    setHealth(Infinity); setMagicPower(NaN); setStance(101);
-    expect(playerStore.getState()).toMatchObject({ health: 0, magicPower: 12, stance: 100 });
+    setHealth(-20); setMagicPower(100); setStance('staggered');
+    expect(playerStore.getState()).toMatchObject({ health: 0, magicPower: 12, stance: 'staggered' });
+    setHealth(Infinity); setMagicPower(NaN); setStance('balanced');
+    expect(playerStore.getState()).toMatchObject({ health: 0, magicPower: 12, stance: 'balanced' });
   });
   it('notifies non-React modules and records attack requests without applying effects', () => {
     const events: number[] = [];
@@ -29,13 +31,13 @@ describe('shared player state', () => {
       if (state.lastAttackRequest !== previous.lastAttackRequest && state.lastAttackRequest) events.push(state.lastAttackRequest.id);
     });
     const first = playerStore.getState().requestAttack();
-    playerStore.getState().setStance(0);
+    playerStore.getState().setStance('staggered');
     const second = playerStore.getState().requestAttack('glove');
     expect(first).toMatchObject({ id: 1, source: 'diagnostic', canRetaliate: true });
     expect(second).toMatchObject({ id: 2, source: 'glove', canRetaliate: false });
-    expect(first?.snapshot.stance).toBe(100);
+    expect(first?.snapshot.stance).toBe('balanced');
     expect(events).toEqual([1, 2]);
-    expect(playerStore.getState()).toMatchObject({ health: 100, magicPower: 6, stance: 0 });
+    expect(playerStore.getState()).toMatchObject({ health: 100, magicPower: 6, stance: 'staggered' });
     unsubscribe();
   });
   it('blocks requests when incapacitated and resets cleanly for a new adventure', () => {
