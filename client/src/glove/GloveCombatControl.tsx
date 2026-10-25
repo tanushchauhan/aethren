@@ -80,6 +80,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   const spell = SPELLS[WHEEL[slot]!];
   const element = spell.element;
   const myTurn = live && battle.activeId === 'player' && !battle.pending;
+  const lessonOpen = useWolfTutorial((s) => s.activeStep !== null);
   const attacking = live && !!battle.enemyTurn && battle.activeId !== 'player';
   const boss = battle.encounterId === 'knight';
 
@@ -291,15 +292,13 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   const wanted = wedgeCenter(slot);
   pointerRotation.current += ((wanted - pointerRotation.current + 540) % 360) - 180;
   const profile = glove ? gloveProfile(glove) : null;
-  const wheelShown = myTurn;
+  // A lesson card owns the screen while it is up; its own demo shows the controls, so the wheel stays out of its way.
+  const wheelShown = myTurn && !lessonOpen;
   const dodging = flash?.mode === 'dodge', parrying = flash?.mode === 'parry';
   const targetLine = spell.target === 'self' ? 'Self' : (target?.name ?? 'none');
   const canAfford = magic >= spell.cost;
 
-  const tutorialStep = useWolfTutorial((s) => s.activeStep);
-  const wheelTutorialActive = wheelShown && tutorialStep !== null && tutorialStep !== 'parry';
-
-  return <aside className="glove-combat" data-element={element} data-phase={wheelShown ? 'wheel' : 'banner'} data-tutorial={wheelTutorialActive || undefined} style={{ '--el': ELEMENT_COLOR[element] } as CSSProperties} aria-label="Spell wheel">
+  return <aside className="glove-combat" data-element={element} data-phase={wheelShown ? 'wheel' : 'banner'} style={{ '--el': ELEMENT_COLOR[element] } as CSSProperties} aria-label="Spell wheel">
     <section className="spell-wheel" aria-hidden={!wheelShown} aria-label="Radial spell wheel">
       <div className="spell-wheel-dial">
         <svg viewBox="0 0 360 360" role="group" aria-label="Spells">

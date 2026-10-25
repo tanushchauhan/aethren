@@ -31,7 +31,7 @@ const STEP_CONFIG: Record<TutorialStep, {
 }> = {
   dial: {
     step: 1,
-    badge: 'GLOVE TRAINING · STEP 1 OF 5',
+    badge: 'GLOVE TRAINING',
     title: 'Spin the Spell Wheel',
     lines: [
       'Your Spell Wheel holds 12 spells across 3 elements: Fire, Frost, and Storm.',
@@ -45,7 +45,7 @@ const STEP_CONFIG: Record<TutorialStep, {
   },
   element: {
     step: 2,
-    badge: 'GLOVE TRAINING · STEP 2 OF 5',
+    badge: 'GLOVE TRAINING',
     title: 'Jump Elements & Rest',
     lines: [
       'Tap [B2] to leap straight to the next Element sector (Fire → Frost → Storm).',
@@ -59,7 +59,7 @@ const STEP_CONFIG: Record<TutorialStep, {
   },
   target: {
     step: 3,
-    badge: 'GLOVE TRAINING · STEP 3 OF 5',
+    badge: 'GLOVE TRAINING',
     title: 'Lock Onto Your Target',
     lines: [
       'Three wolves stand before you in the clearing.',
@@ -73,7 +73,7 @@ const STEP_CONFIG: Record<TutorialStep, {
   },
   cast: {
     step: 4,
-    badge: 'GLOVE TRAINING · STEP 4 OF 5',
+    badge: 'GLOVE TRAINING',
     title: 'Unleash Your Spell',
     lines: [
       'Press [B1] to cast — or SWING your glove forward to unleash the spell with up to 1.45× bonus kinetic power!',

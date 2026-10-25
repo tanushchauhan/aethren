@@ -1,5 +1,4 @@
 .glove-combat { --el: #7f978c; --dock: 118px; --wheel-scale: 1; position: absolute; z-index: 20; inset: 0; pointer-events: none; color: #e6dfbd; font: 18px/1.2 'Pixelify Sans', monospace; }
-.glove-combat[data-tutorial='true'] { z-index: 48; }
 @media (max-height: 800px) { .glove-combat { --wheel-scale: .84; } }
 @media (max-height: 640px) { .glove-combat { --wheel-scale: .66; } }
 
