@@ -19,28 +19,28 @@ export const RITUAL_LABELS: Record<
   B1: {
     short: 'B1',
     label: 'Press B1',
-    timingCue: 'Press [B1] in ★ PERFECT',
+    timingCue: 'Press B1 in ★ PERFECT',
     kind: 'glove',
     keyHint: '1',
   },
   B2: {
     short: 'B2',
     label: 'Tap B2',
-    timingCue: 'Tap [B2] in ★ PERFECT',
+    timingCue: 'Tap B2 in ★ PERFECT',
     kind: 'glove',
     keyHint: '2',
   },
   T: {
     short: 'T',
     label: 'Touch T',
-    timingCue: 'Tap [T] in ★ PERFECT',
+    timingCue: 'Tap T in ★ PERFECT',
     kind: 'glove',
     keyHint: '3',
   },
   swing: {
     short: 'Swing',
-    label: 'Swing Glove',
-    timingCue: 'Swing Glove in ★ PERFECT',
+    label: 'Swing',
+    timingCue: 'Swing in ★ PERFECT',
     kind: 'glove',
     keyHint: 'Space',
   },
@@ -53,8 +53,8 @@ export const RITUAL_LABELS: Record<
   },
   duck: {
     short: '↓ Duck',
-    label: 'Duck Low',
-    timingCue: 'Duck Low in ★ PERFECT',
+    label: 'Duck',
+    timingCue: 'Duck in ★ PERFECT',
     kind: 'pose',
     keyHint: 'S',
   },
@@ -68,7 +68,9 @@ export const PERFECT_WINDOW_END = 0.76;
 export const GOOD_WINDOW_START = 0.12;
 export const GOOD_WINDOW_END = 0.90;
 
-export type TimingGrade = 'perfect' | 'good' | 'sloppy';
+/** `missed` means the step's timing bar ran out before the player acted; the ritual still moves on. */
+export type TimingGrade = 'perfect' | 'good' | 'sloppy' | 'missed';
+export const MISSED_STEP_MULTIPLIER = 0.5;
 
 /** Evaluates how well-timed a ritual input was based on normalized step progress (0..1). */
 export function gradeStepTiming(progress: number): { grade: TimingGrade; label: string; multiplier: number } {
@@ -91,11 +93,11 @@ export function combineRitualMultiplier(grades: readonly TimingGrade[]): {
   summary: string;
 } {
   if (!grades.length) return { multiplier: 1, summary: 'Standard Cast' };
-  const weights: Record<TimingGrade, number> = { perfect: 1.45, good: 1.15, sloppy: 0.75 };
+  const weights: Record<TimingGrade, number> = { perfect: 1.45, good: 1.15, sloppy: 0.75, missed: MISSED_STEP_MULTIPLIER };
   const avg = grades.reduce((sum, g) => sum + weights[g], 0) / grades.length;
   const multiplier = Math.round(avg * 100) / 100;
   const allPerfect = grades.every((g) => g === 'perfect');
-  const anySloppy = grades.some((g) => g === 'sloppy');
+  const anySloppy = grades.some((g) => g === 'sloppy' || g === 'missed');
   const summary = allPerfect
     ? `★ PERFECT WEAVE (×${multiplier.toFixed(2)} Power!)`
     : anySloppy && multiplier < 1
@@ -149,14 +151,14 @@ export const SPELLS: Record<SpellId, Spell> = {
     id: 'ember-bolt', name: 'Ember Bolt', element: 'fire', cost: 2, target: 'enemy', damage: 14, color: '#ff9653',
     starter: true,
     ritual: ['raise', 'B1', 'swing'],
-    hint: '↑ Arm, [B1], then [Swing].',
+    hint: '↑ Arm, B1, then Swing.',
     counterHint: 'Shatters Chilled or Frozen foes (+50% dmg).',
     description: '14 damage. Quick and cheap. Shatters Chilled/Frozen (+50%).',
   },
   'fire-lance': {
     id: 'fire-lance', name: 'Fire Lance', element: 'fire', cost: 4, target: 'enemy', damage: 32, pierce: true, color: '#ff8a3d',
     ritual: ['raise', 'B1', 'B2', 'swing'],
-    hint: '4 steps: ↑ Arm → [B1] → [B2] → [Swing].',
+    hint: '4 steps: ↑ Arm → B1 → B2 → Swing.',
     counterHint: 'Pierces Pack Leader & Gatekeeper armor; +50% vs Chilled/Frozen.',
     description: '32 damage that ignores armor.',
   },
@@ -164,14 +166,14 @@ export const SPELLS: Record<SpellId, Spell> = {
     id: 'immolate', name: 'Immolate', element: 'fire', cost: 3, target: 'enemy', damage: 8, color: '#ff7a2e',
     applies: { id: 'burning', turns: 3, amount: 6 },
     ritual: ['duck', 'B2', 'swing'],
-    hint: '↓ Duck, [B2], then [Swing].',
+    hint: '↓ Duck, B2, then Swing.',
     counterHint: 'Applies Burning (ignores armor, primes Storm Conductive).',
     description: '8 damage, then Burning: 6 damage at the start of its next 3 turns.',
   },
   meteor: {
     id: 'meteor', name: 'Meteor', element: 'fire', cost: 7, target: 'enemy', damage: 34, splash: 16, color: '#ff6a2a',
     ritual: ['raise', 'duck', 'B1', 'B2', 'swing'],
-    hint: '5 steps: ↑ Arm → ↓ Duck → [B1] → [B2] → [Swing].',
+    hint: '5 steps: ↑ Arm → ↓ Duck → B1 → B2 → Swing.',
     counterHint: 'Undodgeable pack devastation. Shatters Chilled packs.',
     description: '34 damage to the target and 16 to every other wolf. Long charge.',
   },
@@ -180,7 +182,7 @@ export const SPELLS: Record<SpellId, Spell> = {
     applies: { id: 'chilled', turns: 1 },
     starter: true,
     ritual: ['duck', 'T', 'swing'],
-    hint: '↓ Duck, [T], then [Swing].',
+    hint: '↓ Duck, T, then Swing.',
     counterHint: 'Chills target (−30% dmg, blocks Jaw & Grab, primes Fire Shatter).',
     description: '10 damage and Chilled: its next attack does 30% less.',
   },
@@ -188,7 +190,7 @@ export const SPELLS: Record<SpellId, Spell> = {
     id: 'ice-shield', name: 'Ice Shield', element: 'frost', cost: 3, target: 'self', damage: 0, color: '#aeeaff',
     shield: { amount: 18, turns: 2 },
     ritual: ['raise', 'T', 'B1'],
-    hint: '↑ Arm, [T], then [B1].',
+    hint: '↑ Arm, T, then B1.',
     counterHint: 'Counters heavy attacks, Bleeding, and Gatekeeper Scorn curses.',
     description: 'Absorbs the next 18 damage for 2 turns.',
   },
@@ -196,7 +198,7 @@ export const SPELLS: Record<SpellId, Spell> = {
     id: 'frost-prison', name: 'Frost Prison', element: 'frost', cost: 5, target: 'enemy', damage: 0, color: '#c4f4ff',
     applies: { id: 'frozen', turns: 2 },
     ritual: ['raise', 'duck', 'T', 'B1', 'swing'],
-    hint: '5 steps: ↑ Arm → ↓ Duck → [T] → [B1] → [Swing].',
+    hint: '5 steps: ↑ Arm → ↓ Duck → T → B1 → Swing.',
     counterHint: 'Freezes 2 turns, strips Roused, and primes Fire Shatter (+50%).',
     description: 'Frozen: strips Roused and the wolf skips its next 2 turns.',
   },
@@ -204,7 +206,7 @@ export const SPELLS: Record<SpellId, Spell> = {
     id: 'frost-nova', name: 'Frost Nova', element: 'frost', cost: 4, target: 'enemy', damage: 12, area: true, color: '#7fd8ff',
     applies: { id: 'chilled', turns: 1 },
     ritual: ['duck', 'T', 'B2', 'swing'],
-    hint: '4 steps: ↓ Duck → [T] → [B2] → [Swing].',
+    hint: '4 steps: ↓ Duck → T → B2 → Swing.',
     counterHint: 'Undodgeable; Chills the entire pack to set up Meteor or Chain Lightning.',
     description: '12 damage to every wolf and Chills them all.',
   },
@@ -212,14 +214,14 @@ export const SPELLS: Record<SpellId, Spell> = {
     id: 'storm-spark', name: 'Storm Spark', element: 'storm', cost: 1, target: 'enemy', damage: 7, color: '#cfacff',
     starter: true,
     ritual: ['raise', 'B2', 'B1'],
-    hint: '↑ Arm, [B2], then [B1].',
+    hint: '↑ Arm, B2, then B1.',
     counterHint: 'Conducts on Burning/Chilled foes (+4 dmg & refunds 1 MP).',
     description: '7 damage. Nearly instant and conducts on Burning/Chilled.',
   },
   'chain-lightning': {
     id: 'chain-lightning', name: 'Chain Lightning', element: 'storm', cost: 4, target: 'enemy', damage: 16, chain: [10, 6], color: '#c49bff',
     ritual: ['raise', 'B2', 'T', 'swing'],
-    hint: '4 steps: ↑ Arm → [B2] → [T] → [Swing].',
+    hint: '4 steps: ↑ Arm → B2 → T → Swing.',
     counterHint: 'Undodgeable arc across all 3 wolves; Conducts on Burning/Chilled.',
     description: '16 damage, then jumps to the next wolf for 10 and the last for 6.',
   },
@@ -227,7 +229,7 @@ export const SPELLS: Record<SpellId, Spell> = {
     id: 'static-shock', name: 'Static Shock', element: 'storm', cost: 3, target: 'enemy', damage: 8, drain: true, color: '#b48cff',
     applies: { id: 'drained', turns: 1 },
     ritual: ['duck', 'T', 'B1'],
-    hint: '↓ Duck, [T], then [B1].',
+    hint: '↓ Duck, T, then B1.',
     counterHint: 'HARD COUNTER: strips Roused (+5 bonus dmg) and drains all Energy!',
     description: '8 damage, strips Roused, and Drained: empties energy so it must Rest.',
   },
@@ -235,7 +237,7 @@ export const SPELLS: Record<SpellId, Spell> = {
     id: 'overcharge', name: 'Overcharge', element: 'storm', cost: 2, target: 'self', damage: 0, color: '#d6b8ff',
     overcharge: { multiplier: 1.5, turns: 2 },
     ritual: ['raise', 'B2', 'swing'],
-    hint: '↑ Arm, [B2], then [Swing].',
+    hint: '↑ Arm, B2, then Swing.',
     counterHint: 'Next attack spell deals ×1.5 damage; Storm spells refund 1 MP.',
     description: 'Your next damaging spell hits 50% harder. A Storm spell also refunds 1 MP.',
   },

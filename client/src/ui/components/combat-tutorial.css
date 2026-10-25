@@ -77,10 +77,10 @@
   margin: 6px 0; padding: 0; list-style: none;
 }
 .ct-keys li { display: flex; align-items: center; gap: 10px; font-size: clamp(18px, 2vw, 22px); color: #d5e4df; }
-.ct-keys kbd {
+.ct-keys .ct-glove {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 34px; height: 32px; padding: 0 12px; box-sizing: border-box;
-  color: #ffe5ad; background: #0b1922; border: 1.5px solid #c9b883; border-bottom: 3px solid #9f8c63; border-radius: 4px;
+  color: #ffe5ad; background: #0b1922; border: 1.5px solid #c9b883;
   font: 700 clamp(16px, 1.8vw, 20px)/1 'Pixelify Sans', monospace;
 }
 .ct-actions {

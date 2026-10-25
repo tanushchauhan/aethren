@@ -13,6 +13,7 @@ import {
   combineRitualMultiplier,
   gradeStepTiming,
   matchRitualPrefix,
+  MISSED_STEP_MULTIPLIER,
   PERFECT_WINDOW_END,
   PERFECT_WINDOW_START,
   RITUAL_LABELS,
@@ -29,6 +30,7 @@ import { dialSlot, type GloveInputEvent } from './gloveInput';
 import { useGloveMode } from './gloveMode';
 import { gloveProfile } from './gloveProfile';
 import { readDial, useOptionalGloveSession, type GloveSession } from './GloveSession';
+import { castUiRevealDelayMs } from '../ui/combatIntro';
 import './glove-combat.css';
 
 const ELEMENTS: SpellElement[] = ['fire', 'frost', 'storm'];
@@ -45,15 +47,14 @@ const ARM_DELAY_MS = 650;
 const RESEND_DEFENSE_MS = 500;
 const POSE_HOLD_FOR_STEP_MS = 140;
 /** Total time allowed for the player's turn before it automatically passes. */
-const TURN_DURATION_MS = 22000;
-
-const ALL_RITUAL_STEPS: RitualStep[] = ['raise', 'duck', 'B1', 'B2', 'T', 'swing'];
-
+const TURN_DURATION_MS = 80000;
 /** The wolf the next cast will hit, or null when it is not your turn or the spell targets you. Read by the stage. */
 export const useWheelSelection = create<{ targetId: string | null }>(() => ({ targetId: null }));
 
-// Wheel geometry in a 360 x 360 viewBox. Wedge 0 starts at 12 o'clock and the wheel runs clockwise.
-const CENTER = 180, R_IN = 106, R_OUT = 164, R_ARC_IN = 168, R_ARC_OUT = 175, WEDGE_DEG = 360 / SLOTS;
+// Wheel geometry in a 360 x 360 viewBox (SVG font sizes in the CSS are in these units, not screen pixels).
+// Wedge 0 starts at 12 o'clock and the wheel runs clockwise. The hub covers everything inside R_IN.
+const CENTER = 180, R_IN = 76, R_OUT = 174, R_ARC_IN = 176, R_ARC_OUT = 180, WEDGE_DEG = 360 / SLOTS;
+const R_LABEL = 130, R_GEM = 92, LABEL_LINE = 12;
 const polar = (radius: number, deg: number) => {
   const rad = (deg * Math.PI) / 180;
   return [CENTER + radius * Math.cos(rad), CENTER + radius * Math.sin(rad)] as const;
@@ -75,6 +76,7 @@ interface ActiveRitualState {
   grades: TimingGrade[];
   /** Label of the most recent step's timing judgment. */
   lastFeedback: string | null;
+  lastGrade: TimingGrade | null;
   /** Timestamp (`performance.now()`) when the current step's timing bar started. */
   stepStartedAt: number;
 }
@@ -109,10 +111,17 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   const [turnRemainingMs, setTurnRemainingMs] = useState(TURN_DURATION_MS);
   const [bannerNotice, setBannerNotice] = useState<string | null>(null);
   const [flash, setFlash] = useState<{ id: number; mode: 'dodge' | 'parry' } | null>(null);
+  const [castOpen, setCastOpen] = useState(false);
+  const [introReady, setIntroReady] = useState(false);
+  const reduced = useReducedMotion();
 
   const slotRef = useRef<number | null>(0);
   const ritualRef = useRef<ActiveRitualState | null>(null);
   ritualRef.current = ritual;
+  const castOpenRef = useRef(false);
+  castOpenRef.current = castOpen;
+  const introReadyRef = useRef(false);
+  introReadyRef.current = introReady;
   const heldB2 = useRef(false);
   const armedAt = useRef(0);
   const lastDefense = useRef({ mode: '', at: 0 });
@@ -157,11 +166,17 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   const beginRitualMode = (forSpell: Spell = SPELLS[WHEEL[slotRef.current ?? slot]!]) => {
     const state = useSpellBattle.getState();
     if (state.status !== 'active' || state.activeId !== me || state.pending) return;
-    const tutStep = useWolfTutorial.getState().activeStep;
-    if (tutStep && tutStep !== 'cast') return;
+    const tutorial = useWolfTutorial.getState();
+    if (tutorial.activeStep && tutorial.activeStep !== 'cast') return;
+    if (!tutorial.castUnlocked(state.encounterId)) return;
+    if (!introReadyRef.current) return;
+    if (!castOpenRef.current) {
+      setCastOpen(true);
+      return;
+    }
     if (heroStore(me).getState().magicPower < forSpell.cost) {
       buzz('fizzle');
-      setBannerNotice(`Not enough MP for ${ state.discoveredSpells.includes(forSpell.id) ? forSpell.name : 'this rune' } (${forSpell.cost} MP). Rest or Pass Turn!`);
+      setBannerNotice(`Not enough MP for ${ state.discoveredSpells.includes(forSpell.id) ? forSpell.name : 'this rune' } (${forSpell.cost} MP). Hold B2 to Rest.`);
       return;
     }
     const foundIndex = WHEEL.indexOf(forSpell.id);
@@ -175,14 +190,17 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       steps: [],
       grades: [],
       lastFeedback: null,
+      lastGrade: null,
       stepStartedAt: now,
     };
     ritualRef.current = nextState;
     setRitual(nextState);
     setStepProgress(0);
     setBannerNotice(null);
+    const browsingLesson = tutorial.activeStep !== null && tutorial.activeStep !== 'ritual';
     useWolfTutorial.getState().notifyAction('cast');
-    useWolfTutorial.getState().triggerFirstRitualTutorial();
+    // Spell Maneuvers is only for the first real weave after the opening lessons, never while browsing.
+    if (!browsingLesson) useWolfTutorial.getState().triggerFirstRitualTutorial();
     buzz('tick');
   };
 
@@ -292,7 +310,36 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       steps: nextSteps,
       grades: nextGrades,
       lastFeedback: `${timing.label} (×${timing.multiplier.toFixed(2)})`,
+      lastGrade: timing.grade,
       stepStartedAt: now,
+    };
+    ritualRef.current = updated;
+    setRitual(updated);
+    setStepProgress(0);
+  };
+
+  /** The step's timing bar ran out: mark it missed and move on instead of breaking the ritual. */
+  const missRitualStep = () => {
+    const currentRitual = ritualRef.current;
+    if (!currentRitual) return;
+    const currentSpell = SPELLS[currentRitual.spellId];
+    const expected = currentSpell.ritual[currentRitual.steps.length];
+    if (!expected) return;
+    buzz('fizzle');
+    const nextSteps = [...currentRitual.steps, expected];
+    const nextGrades: TimingGrade[] = [...currentRitual.grades, 'missed'];
+    if (nextSteps.length === currentSpell.ritual.length) {
+      const { multiplier, summary } = combineRitualMultiplier(nextGrades);
+      executeSpellCast(currentSpell, multiplier, summary);
+      return;
+    }
+    const updated: ActiveRitualState = {
+      ...currentRitual,
+      steps: nextSteps,
+      grades: nextGrades,
+      lastFeedback: `✗ MISSED (×${MISSED_STEP_MULTIPLIER.toFixed(2)})`,
+      lastGrade: 'missed',
+      stepStartedAt: performance.now(),
     };
     ritualRef.current = updated;
     setRitual(updated);
@@ -354,7 +401,11 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
     const enemyTurn = !!state.enemyTurn && state.activeId !== me;
     const mine = state.activeId === me && !state.pending;
     if (event.type === 'gesture') swung(event.power);
-    else if (event.type === 'dial' && !ritualRef.current) moveTo(dialSlot(event.value, SLOTS, slotRef.current), true);
+    else if (event.type === 'dial' && !ritualRef.current) {
+      if (!introReadyRef.current) return;
+      if (!castOpenRef.current) setCastOpen(true);
+      moveTo(dialSlot(event.value, SLOTS, slotRef.current), true);
+    }
     else if (event.type === 'down' && event.button === 'B2') {
       heldB2.current = false;
       if (enemyTurn) defend('parry', 'Glove Ward', 1600);
@@ -377,6 +428,11 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
         useWolfTutorial.getState().notifyAction('ritual');
         return;
       }
+      if (!introReadyRef.current) return;
+      if (!castOpenRef.current) {
+        setCastOpen(true);
+        return;
+      }
       if (ritualRef.current) pushRitualStep('B1');
       else beginRitualMode();
     }
@@ -397,6 +453,11 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       event.preventDefault();
       return;
     }
+    if (key === 'Escape' && mine && castOpenRef.current && !ritualRef.current) {
+      setCastOpen(false);
+      event.preventDefault();
+      return;
+    }
     const tutStep = useWolfTutorial.getState().activeStep;
     if (tutStep === 'ritual' && (key === 'Enter' || key === ' ') && !onButton && !event.repeat) {
       useWolfTutorial.getState().notifyAction('ritual');
@@ -404,6 +465,8 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       return;
     }
     if ((key === 'ArrowLeft' || key === 'ArrowRight') && !ritualRef.current) {
+      if (!introReadyRef.current) return;
+      if (!castOpenRef.current) setCastOpen(true);
       moveTo((slotRef.current ?? slot) + (key === 'ArrowRight' ? 1 : -1));
       event.preventDefault();
     } else if (key === 't' || (key === 'Tab' && !event.shiftKey && !onButton)) {
@@ -432,25 +495,53 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
     } else if (mine && !event.repeat && key === 'p') {
       passTurn();
     } else if (key === 'Enter' && !onButton && mine && !event.repeat) {
-      if (!ritualRef.current) beginRitualMode();
+      if (!introReadyRef.current) return;
+      if (!castOpenRef.current) setCastOpen(true);
+      else if (!ritualRef.current) beginRitualMode();
       event.preventDefault();
     } else if (key === 'r' && !event.repeat) rest();
     else if (key === 'e' && !event.repeat && !enemyTurn && !ritualRef.current) nextElement();
   };
 
-  const latest = useRef({ onGlove, onKey, defend, swung, pushRitualStep, passTurn, cancelRitual });
-  latest.current = { onGlove, onKey, defend, swung, pushRitualStep, passTurn, cancelRitual };
+  const latest = useRef({ onGlove, onKey, defend, swung, pushRitualStep, missRitualStep, passTurn, cancelRitual });
+  latest.current = { onGlove, onKey, defend, swung, pushRitualStep, missRitualStep, passTurn, cancelRitual };
+
+  useEffect(() => {
+    if (!myTurn) {
+      setCastOpen(false);
+      setIntroReady(false);
+      return;
+    }
+    const enemies = combatants.filter((actor) => actor.side === 'enemy' && useSpellBattle.getState().opponents[actor.id]).length;
+    const delay = castUiRevealDelayMs(enemies, !!reduced, battle.turnNumber === 1);
+    if (delay <= 0) {
+      setIntroReady(true);
+      setCastOpen(true);
+      return;
+    }
+    setCastOpen(false);
+    setIntroReady(false);
+    const timer = window.setTimeout(() => {
+      setIntroReady(true);
+      setCastOpen(true);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [myTurn, battle.turnNumber, reduced]);
 
   // Turn timer & step timing loop: updates the top turn clock and the active ritual step progress bar.
-  // Pauses completely whenever any tutorial overlay (`lessonOpen`) is on screen!
+  // Waits until the cast UI has opened once this turn, and pauses while a tutorial is on screen.
   useEffect(() => {
     if (!myTurn) {
       cancelRitual();
+      turnDeadlineRef.current = 0;
       setTurnRemainingMs(TURN_DURATION_MS);
       return;
     }
-    turnDeadlineRef.current = performance.now() + TURN_DURATION_MS;
-    setTurnRemainingMs(TURN_DURATION_MS);
+    if (!introReady) return;
+    if (!turnDeadlineRef.current) {
+      turnDeadlineRef.current = performance.now() + TURN_DURATION_MS;
+      setTurnRemainingMs(TURN_DURATION_MS);
+    }
     let raf = 0;
     let lastTick = performance.now();
     const tick = (now: number) => {
@@ -477,17 +568,14 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
         const stepElapsed = now - active.stepStartedAt;
         const p = Math.min(1, Math.max(0, stepElapsed / RITUAL_STEP_DURATION_MS));
         setStepProgress(p);
-        if (stepElapsed >= RITUAL_STEP_DURATION_MS) {
-          buzzRef.current('fizzle');
-          latest.current.cancelRitual('⏳ Step timed out! Start the ritual again.');
-        }
+        if (stepElapsed >= RITUAL_STEP_DURATION_MS) latest.current.missRitualStep();
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myTurn, battle.turnNumber]);
+  }, [myTurn, battle.turnNumber, introReady]);
 
   // Feed CV body poses (Raise Arm / Duck) into the active spell-weaving ritual when in Ritual Mode!
   useEffect(() => {
@@ -544,7 +632,6 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
     return () => window.clearTimeout(second);
   }, [battle.activeId, live]);
 
-  const reduced = useReducedMotion();
   const pending = battle.pending;
   useEffect(() => {
     if (!pending) return;
@@ -610,7 +697,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   const wanted = wedgeCenter(slot);
   pointerRotation.current += ((wanted - pointerRotation.current + 540) % 360) - 180;
   const profile = glove ? gloveProfile(glove) : null;
-  const phase = !myTurn || lessonOpen ? 'banner' : ritual ? 'ritual' : 'wheel';
+  const phase = !myTurn || lessonOpen ? 'banner' : !castOpen ? 'hidden' : ritual ? 'ritual' : 'wheel';
   const dodging = flash?.mode === 'dodge', parrying = flash?.mode === 'parry';
   const targetLine = spell.target === 'self' ? 'Self' : (target?.name ?? 'none');
   const canAfford = magic >= spell.cost;
@@ -627,23 +714,28 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
 
   return <aside className="glove-combat" data-element={element} data-phase={phase} style={{ '--el': ELEMENT_COLOR[element] } as CSSProperties} aria-label="Spell wheel">
     {/* TOP TURN TIMER BAR: counts down your turn and automatically passes when it hits 0.0s */}
-    {myTurn && (
-      <header className="player-turn-timer" data-urgent={turnRemainingMs < 6000} role="timer" aria-label="Turn time remaining">
+    {myTurn && introReady && (
+      <header className="player-turn-timer" data-urgent={turnRemainingMs < 10000} role="timer" aria-label="Turn time remaining">
         <div className="turn-timer-row">
           <span className="turn-timer-label">
             {lessonOpen ? '⏸ PAUSED · ' : '⏳ Your Turn · '}<b>{turnSeconds}s</b>
           </span>
           <span className="turn-timer-sub">
-            {ritual ? `Weaving ${isDiscovered ? spell.name : 'Unknown Rune'}…` : 'Select a rune or perform a pose to begin weaving'}
+            {ritual ? `Weaving ${isDiscovered ? spell.name : 'Unknown Rune'}…` : 'Dial · B1 weave · Hold B2 rest'}
           </span>
-          <button type="button" className="turn-pass-btn" onClick={passTurn}>
-            Pass Turn <kbd>P</kbd>
-          </button>
+          {castOpen && !ritual && !lessonOpen && (
+            <button type="button" className="turn-cast-toggle" onClick={() => setCastOpen(false)}>Hide Cast</button>
+          )}
+          <button type="button" className="turn-pass-btn" onClick={passTurn}>Pass Turn</button>
         </div>
         <div className="turn-timer-track">
           <span className="turn-timer-fill" style={{ width: `${turnFraction * 100}%` }} />
         </div>
       </header>
+    )}
+
+    {myTurn && introReady && !castOpen && !lessonOpen && (
+      <button type="button" className="cast-open-btn" onClick={() => setCastOpen(true)}>Open Cast</button>
     )}
 
     {/* RADIAL SPELL WHEEL (hidden as soon as you start casting/weaving a spell!) */}
@@ -656,22 +748,22 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
             const wedge = SPELLS[id], color = ELEMENT_COLOR[wedge.element], active = index === slot, affordable = magic >= wedge.cost;
             const known = battle.discoveredSpells.includes(id);
             const hinted = battle.hintedSpellId === id && !known;
-            const [tx, ty] = polar(131, wedgeCenter(index)), [bx, by] = polar(169, wedgeCenter(index));
+            const [tx, ty] = polar(R_LABEL, wedgeCenter(index)), [bx, by] = polar(R_GEM, wedgeCenter(index));
             const labelText = known ? wedge.name : hinted ? '? Hint' : '???';
             const words = labelText.split(' ');
             const lines = words.length > 1 ? [words[0]!, words.slice(1).join(' ')] : [labelText];
             return <g key={id} className="wheel-wedge" data-active={active} data-affordable={affordable} data-locked={!known} data-hinted={hinted}
               role="button" aria-label={known ? `${wedge.name}, ${wedge.cost} MP` : `Unknown ${wedge.element} spell, ${wedge.cost} MP`} aria-pressed={active}
-              onClick={() => (active ? beginRitualMode(wedge) : moveTo(index))}>
+              onClick={() => moveTo(index)}>
               <path d={sector(R_IN, R_OUT, wedgeStart(index) + 1.4, wedgeStart(index + 1) - 1.4)} style={{ '--wedge': color } as CSSProperties} />
-              <text x={tx} y={ty - (lines.length - 1) * 7} textAnchor="middle" dominantBaseline="middle">
-                {lines.map((line, i) => <tspan key={i} x={tx} dy={i === 0 ? 0 : 14}>{line}</tspan>)}
+              <text x={tx} y={ty - ((lines.length - 1) * LABEL_LINE) / 2} textAnchor="middle" dominantBaseline="middle">
+                {lines.map((line, i) => <tspan key={i} x={tx} dy={i === 0 ? 0 : LABEL_LINE}>{line}</tspan>)}
               </text>
-              <circle className="wheel-cost-gem" cx={bx} cy={by} r={9} />
+              <circle className="wheel-cost-gem" cx={bx} cy={by} r={8} />
               <text className="wheel-cost" x={bx} y={by + 0.5} textAnchor="middle" dominantBaseline="middle">{wedge.cost}</text>
             </g>;
           })}
-          <polygon className="wheel-pointer" points={`${CENTER + R_IN - 1},${CENTER} ${CENTER + R_IN - 15},${CENTER - 8} ${CENTER + R_IN - 15},${CENTER + 8}`}
+          <polygon className="wheel-pointer" points={`${CENTER + R_ARC_OUT + 1},${CENTER} ${CENTER + R_ARC_OUT + 13},${CENTER - 7} ${CENTER + R_ARC_OUT + 13},${CENTER + 7}`}
             style={{ transform: `rotate(${pointerRotation.current}deg)` }} />
         </svg>
         <div className="wheel-hub" role="status">
@@ -682,19 +774,20 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
           </span>
           <p className="wheel-hub-detail">
             {!canAfford
-              ? 'Not enough Magic Power. Rest (+3 MP) or Pass Turn.'
+              ? 'Not enough MP. Hold B2 to Rest (+3 MP).'
               : isDiscovered
                 ? `${spell.description} ${spell.counterHint}`
                 : `Whisper: ${spell.hint}`}
           </p>
-          <span className="wheel-hub-target"><kbd>T</kbd> Target: <b>{targetLine}</b></span>
+          <span className="wheel-hub-rest" data-low={!canAfford}>Hold B2 · Rest +3 MP</span>
+          <span className="wheel-hub-target">Target: <b>{targetLine}</b></span>
           <button
             type="button"
             className="wheel-begin-btn"
             disabled={!canAfford}
             onClick={() => beginRitualMode(spell)}
           >
-            {isDiscovered ? 'Begin Ritual' : 'Attempt Discovery'} <kbd>Enter</kbd>
+            {isDiscovered ? 'B1 · Cast' : 'B1 · Discover'}
           </button>
         </div>
       </div>
@@ -702,9 +795,11 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       {bannerNotice && <div className="wheel-notice" role="status">{bannerNotice}</div>}
 
       <footer className="wheel-prompts">
-        <span><kbd>⟳ Dial</kbd> / <kbd>←</kbd><kbd>→</kbd> Choose</span>
-        <span><kbd>B1</kbd> / <kbd>Enter</kbd> Open Ritual</span>
-        <span><kbd>T</kbd> Target · <kbd>R</kbd> Rest (+3 MP)</span>
+        <span><b>Dial</b> Spell</span>
+        <span><b>B1</b> Cast</span>
+        <span><b>B2</b> Element</span>
+        <span className="wheel-rest-hint"><b>Hold B2</b> Rest +3 MP</span>
+        <span><b>T</b> Target</span>
         {hintedSpell && !battle.discoveredSpells.includes(hintedSpell.id) && (
           <button type="button" className="ritual-hint-btn" onClick={() => {
             const next = battle.cycleHint();
@@ -713,30 +808,25 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
               if (idx >= 0) moveTo(idx);
             }
           }}>
-            💡 Next Hint <kbd>H</kbd>
+            💡 Next Hint
           </button>
         )}
         {profile && <small className="wheel-glove">{profile.label}</small>}
       </footer>
     </section>
 
-    {/* ON-SCREEN RITUAL COMMAND STAGE: hides the wheel and displays kbd combo + concise timing bar */}
+    {/* ON-SCREEN RITUAL COMMAND STAGE: hides the wheel and shows the move sequence + timing bar */}
     {ritual && myTurn && (
       <section className="ritual-stage-overlay" role="region" aria-label="Spell ritual commands">
         <header className="ritual-stage-header">
-          <div>
-            <span className="ritual-stage-element">{ELEMENT_CREST[element]} {element.toUpperCase()} MANEUVER</span>
-            <h3 className="ritual-stage-title">
-              {isDiscovered ? spell.name : '??? · Unknown Rune'} <small>({spell.cost} MP → {targetLine})</small>
-            </h3>
+          <div className="ritual-stage-heading">
+            <span className="ritual-stage-element">{ELEMENT_CREST[element]} {element.toUpperCase()} · {spell.cost} MP → {targetLine}</span>
+            <h3 className="ritual-stage-title">{isDiscovered ? spell.name : '??? Unknown Rune'}</h3>
           </div>
-          {ritual.lastFeedback && <span className="ritual-last-grade">{ritual.lastFeedback}</span>}
-          <button type="button" className="ritual-cancel-btn" onClick={() => cancelRitual('Ritual cancelled.')}>
-            Wheel <kbd>Esc</kbd>
-          </button>
+          {ritual.lastFeedback && <span className="ritual-last-grade" data-grade={ritual.lastGrade ?? undefined}>{ritual.lastFeedback}</span>}
+          <button type="button" className="ritual-cancel-btn" onClick={() => cancelRitual('Ritual cancelled.')}>✕</button>
         </header>
 
-        {/* Sequence of required movements & glove inputs as kbd keycaps */}
         <ol className="ritual-command-cards" aria-label="Required movements and inputs">
           {spell.ritual.map((step, idx) => {
             const done = idx < ritual.steps.length;
@@ -752,29 +842,23 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
                 data-kind={info.kind}
                 data-grade={grade}
               >
-                <span className="ritual-card-step">#{idx + 1} · {info.kind === 'pose' ? 'POSE' : 'GLOVE'}</span>
-                <div className="ritual-kbd-row">
-                  <kbd className="ritual-main-kbd">{reveal ? info.short : '?'}</kbd>
-                  {reveal && <kbd className="ritual-sub-kbd">{info.keyHint}</kbd>}
-                </div>
-                <strong className="ritual-card-action">{reveal ? info.label : '??? Hint'}</strong>
+                <span className="ritual-card-step">{idx + 1} · {info.kind === 'pose' ? 'Pose' : 'Glove'}</span>
+                <strong className="ritual-card-glyph">{reveal ? info.short : '?'}</strong>
                 <span className="ritual-card-sub">
                   {done
-                    ? grade === 'perfect' ? '★ ×1.45' : grade === 'good' ? '✓ ×1.15' : '×0.75'
-                    : current ? 'DO NOW' : 'NEXT'}
+                    ? grade === 'perfect' ? '★ ×1.45' : grade === 'good' ? '✓ ×1.15' : grade === 'missed' ? '✗ Missed' : '×0.75'
+                    : current ? 'Now' : 'Next'}
                 </span>
               </li>
             );
           })}
         </ol>
 
-        {/* Concise Timing Window Bar */}
         {currentStepInfo && (
           <div className="ritual-timing-box" data-sweet={inSweetSpot}>
             <div className="ritual-timing-instructions">
               <span>
-                Hit <kbd>{isDiscovered || isHinted || currentStepIndex === 0 ? currentStepInfo.short : '?'}</kbd>{' '}
-                {(isDiscovered || isHinted || currentStepIndex === 0) && <kbd>{currentStepInfo.keyHint}</kbd>} in <b>★ PERFECT</b>
+                <b>{isDiscovered || isHinted || currentStepIndex === 0 ? currentStepInfo.label : '???'}</b> in ★ PERFECT
               </span>
               <span className="ritual-step-clock"><b>{stepRemainingSec}s</b></span>
             </div>
@@ -789,28 +873,6 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
             {!isDiscovered && <p className="ritual-timing-explain">Hint: <b>{spell.hint}</b></p>}
           </div>
         )}
-
-        {/* Interactive Pose + Glove Step kbd Buttons */}
-        <div className="ritual-step-buttons">
-          {ALL_RITUAL_STEPS.map((step) => {
-            const info = RITUAL_LABELS[step];
-            const isExpected = isDiscovered && currentExpectedStep === step;
-            return (
-              <button
-                key={step}
-                type="button"
-                className="ritual-step-btn"
-                data-kind={info.kind}
-                data-expected={isExpected}
-                onClick={() => pushRitualStep(step, step === 'swing' ? 1.25 : 1)}
-                title={`${info.label} (Key: ${info.keyHint})`}
-              >
-                <kbd>{info.short}</kbd>
-                <small>{info.keyHint}</small>
-              </button>
-            );
-          })}
-        </div>
       </section>
     )}
 
@@ -818,7 +880,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       {dodging && <strong className="defense-flash" data-mode="dodge">⚡ DODGED!</strong>}
       {parrying && !dodging && <strong className="defense-flash" data-mode="parry">🛡 PARRYING (GLOVE WARD)!</strong>}
       {attacking
-        ? <p className="defense-prompt">⚔ {boss ? 'GATEKEEPER ATTACKING!' : 'WOLF ATTACKING!'} Dodge with CV or Shake Glove / <kbd>T</kbd> / <kbd>B2</kbd> to PARRY!</p>
+        ? <p className="defense-prompt">⚔ {boss ? 'GATEKEEPER ATTACKING!' : 'WOLF ATTACKING!'} Dodge, or shake the glove to PARRY!</p>
         : <p className="defense-prompt" data-calm="true">{battle.pending ? `✦ Casting ${battle.pending.spell.name}…` : battle.activeId === me ? 'Your turn…' : isHero(battle.activeId) ? `${battle.heroNames[battle.activeId]}’s turn…` : boss ? 'The Gatekeeper raises his axe…' : 'The wolves are moving…'}</p>}
       <small className="defense-meta">Turn {battle.turnNumber} · MP {magic}/{maxMagic} · Spells {battle.discoveredSpells.length}/{SLOTS}</small>
     </section>

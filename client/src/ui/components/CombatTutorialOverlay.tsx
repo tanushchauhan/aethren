@@ -1,5 +1,8 @@
+import type { CSSProperties } from 'react';
 import { useWolfTutorial, type TutorialStep } from '../../combat/wolfTutorial';
 import './combat-tutorial.css';
+
+const LESSON_ORDER: TutorialStep[] = ['dial', 'element', 'target', 'cast', 'ritual', 'parry'];
 
 export type CombatTutorialKind = TutorialStep;
 
@@ -22,7 +25,6 @@ export interface CombatTutorialOverlayProps {
 }
 
 const STEP_CONFIG: Record<TutorialStep, {
-  step: number;
   title: string;
   badge: string;
   lines: string[];
@@ -30,88 +32,79 @@ const STEP_CONFIG: Record<TutorialStep, {
   keys: CombatTutorialKey[];
 }> = {
   dial: {
-    step: 1,
-    badge: '⏸ GAME PAUSED · GLOVE TRAINING',
+    badge: 'PAUSED · GLOVE',
     title: 'Spin the Spell Wheel',
     lines: [
-      '12 spells across Fire, Frost & Storm.',
-      'Twist the Glove Dial to select a spell.',
+      '12 spells: Fire, Frost, Storm.',
+      'Turn Dial to choose. Hold B2 to Rest.',
     ],
-    requirement: '◆ Turn [Dial] or press ← / →',
+    requirement: '◆ Turn Dial',
     keys: [
-      { label: 'Dial', action: 'Select spell' },
-      { label: '← / →', action: 'Keyboard' },
+      { label: 'Dial', action: 'Choose spell' },
     ],
   },
   element: {
-    step: 2,
-    badge: '⏸ GAME PAUSED · GLOVE TRAINING',
+    badge: 'PAUSED · GLOVE',
     title: 'Jump Elements & Rest',
     lines: [
-      'Tap [B2] to switch element sectors.',
-      'Hold [B2] to Rest (+3 MP & Stance).',
+      'Tap B2 to jump element.',
+      'Hold B2 to Rest (+3 MP).',
     ],
-    requirement: '◆ Tap [B2] or press E',
+    requirement: '◆ Tap B2',
     keys: [
       { label: 'B2', action: 'Next element' },
-      { label: 'Hold B2', action: 'Rest (+3 MP)' },
+      { label: 'Hold B2', action: 'Rest' },
     ],
   },
   target: {
-    step: 3,
-    badge: '⏸ GAME PAUSED · GLOVE TRAINING',
-    title: 'Lock Onto Your Target',
+    badge: 'PAUSED · GLOVE',
+    title: 'Lock a Target',
     lines: [
-      'Tap [T] Touch Pad to switch wolves.',
-      'Check each wolf’s next move above its bar.',
+      'Tap T to switch wolves.',
+      'Next move shows above their bar.',
     ],
-    requirement: '◆ Tap [T] or press T / Tab',
+    requirement: '◆ Tap T',
     keys: [
       { label: 'T', action: 'Switch target' },
-      { label: 'Tab', action: 'Keyboard' },
     ],
   },
   cast: {
-    step: 4,
-    badge: '⏸ GAME PAUSED · GLOVE TRAINING',
-    title: 'Begin Casting a Spell',
+    badge: 'PAUSED · GLOVE',
+    title: 'Begin a Spell',
     lines: [
-      'Press [B1] / [Enter] to open the Spell Maneuver stage.',
-      'Simple spells take 3 steps; stronger spells take 4–5 steps.',
+      'Press B1 to weave the selected spell.',
+      'Short spells: 3 moves. Heavy: 4–5.',
     ],
-    requirement: '◆ Press [B1] / [Enter] or click Begin Ritual',
+    requirement: '◆ Press B1',
     keys: [
-      { label: 'B1 / Enter', action: 'Open Spell Maneuver' },
-      { label: 'Click Wedge', action: 'Or click active spell' },
+      { label: 'B1', action: 'Start weave' },
     ],
   },
   ritual: {
-    step: 5,
-    badge: '⏸ GAME PAUSED · FIRST SPELL CAST!',
-    title: 'Spell Maneuvers & Timing',
+    badge: 'PAUSED · FIRST WEAVE',
+    title: 'Spell Maneuvers',
     lines: [
-      'Do each <kbd> step in order (↑ Arm / ↓ Duck + Glove buttons).',
-      'Act when the white cursor hits ★ PERFECT for 1.45× spell power!',
-      'Stronger spells require 4–5 steps; unlock ??? runes via hints.',
+      'Hit each move in order: pose, then glove.',
+      'Act in ★ PERFECT for 1.45× power.',
+      'Time out: step turns red, weave goes on.',
     ],
-    requirement: '◆ Click Start Casting → (or press Space / Enter) to begin!',
+    requirement: '◆ Do the highlighted move',
     keys: [
-      { label: '↑ Arm (W) / ↓ Duck (S)', action: 'Body Poses (Camera or Keys)' },
-      { label: '1: B1 · 2: B2 · 3: T · Space: Swing', action: 'Glove Inputs' },
+      { label: '↑ Arm · ↓ Duck', action: 'Pose' },
+      { label: 'B1 · B2 · T · Swing', action: 'Glove' },
     ],
   },
   parry: {
-    step: 6,
-    badge: '⏸ FREEZE FRAME · WOLF ATTACK!',
-    title: 'Parry or Dodge Now!',
+    badge: 'FREEZE · WOLF ATTACK',
+    title: 'Parry or Dodge',
     lines: [
-      'Wolf lunge frozen right before impact!',
-      'Shake Glove or tap [T] / [B2] to Parry (−50% DMG, reflect 6).',
+      'Lunge frozen before impact.',
+      'Shake glove or tap T / B2 to Parry.',
     ],
-    requirement: '◆ Shake Glove or press [T] / [B2] NOW!',
+    requirement: '◆ Shake glove or tap T / B2',
     keys: [
-      { label: 'Shake / T / B2', action: 'Parry & reflect 6 DMG' },
-      { label: 'Camera', action: 'Duck or lean to Dodge' },
+      { label: 'Shake · T · B2', action: 'Parry' },
+      { label: 'Duck', action: 'Dodge' },
     ],
   },
 };
@@ -169,7 +162,7 @@ function TutorialDemo({ kind }: { kind: CombatTutorialKind }) {
   if (kind === 'element') {
     return (
       <div className="ct-demo ct-demo-menu" aria-hidden="true">
-        <div className="ct-demo-tag">LIVE DEMO · TAP [B2] ELEMENT · HOLD [B2] REST</div>
+        <div className="ct-demo-tag">LIVE DEMO · TAP B2 ELEMENT · HOLD B2 REST</div>
         <svg viewBox="0 0 380 140" className="ct-svg">
           {/* B2 Button Tap Animation */}
           <g transform="translate(82, 68)">
@@ -208,7 +201,7 @@ function TutorialDemo({ kind }: { kind: CombatTutorialKind }) {
   if (kind === 'target') {
     return (
       <div className="ct-demo ct-demo-target" aria-hidden="true">
-        <div className="ct-demo-tag">LIVE DEMO · TAP [T] TOUCH PAD → SWITCH WOLF</div>
+        <div className="ct-demo-tag">LIVE DEMO · TAP T → SWITCH WOLF</div>
         <svg viewBox="0 0 380 140" className="ct-svg">
           {/* Touch Sensor Pad */}
           <g transform="translate(68, 74)">
@@ -247,7 +240,7 @@ function TutorialDemo({ kind }: { kind: CombatTutorialKind }) {
       <div className="ct-demo ct-demo-ritual" aria-hidden="true">
         <div className="ct-demo-tag">LIVE DEMO · POSE + GLOVE COMBO IN ★ SWEET SPOT</div>
         <svg viewBox="0 0 380 140" className="ct-svg">
-          {/* 3 kbd combo steps */}
+          {/* 3 glove combo steps */}
           {[
             { x: 75, key: '↑ Arm', sub: '1 · POSE', color: '#7fd8ff' },
             { x: 190, key: 'B1', sub: '2 · GLOVE', color: '#ffe5ad' },
@@ -274,12 +267,12 @@ function TutorialDemo({ kind }: { kind: CombatTutorialKind }) {
   if (kind === 'cast') {
     return (
       <div className="ct-demo ct-demo-cast" aria-hidden="true">
-        <div className="ct-demo-tag">LIVE DEMO · PRESS [B1] OR SWING GLOVE TO CAST</div>
+        <div className="ct-demo-tag">LIVE DEMO · PRESS B1 OR SWING TO CAST</div>
         <svg viewBox="0 0 380 140" className="ct-svg">
           {/* Glove Swing + B1 button on left */}
           <g transform="translate(78, 76)" className="ct-anim-glove-swing">
             <rect x="-34" y="-22" width="68" height="44" rx="8" fill="#132832" stroke="#ff8a3d" strokeWidth="2.5" />
-            <text y="-2" textAnchor="middle" fill="#ffe5ad" fontSize="14">B1 / SWING</text>
+            <text y="-2" textAnchor="middle" fill="#ffe5ad" fontSize="14">B1 · SWING</text>
             <text y="14" textAnchor="middle" fill="#ff8a3d" fontSize="11">1.45× POWER</text>
           </g>
 
@@ -304,7 +297,7 @@ function TutorialDemo({ kind }: { kind: CombatTutorialKind }) {
   // Parry (Freeze-frame mid-attack demo)
   return (
     <div className="ct-demo ct-demo-parry" aria-hidden="true">
-      <div className="ct-demo-tag">⏸ MID-ATTACK FREEZE · SHAKE GLOVE OR PRESS [T] / [B2]</div>
+      <div className="ct-demo-tag">MID-ATTACK FREEZE · SHAKE GLOVE OR TAP T / B2</div>
       <svg viewBox="0 0 380 140" className="ct-svg">
         {/* Lunging Wolf Claws on Left */}
         <g transform="translate(86, 76)" className="ct-anim-wolf-lunge">
@@ -325,7 +318,7 @@ function TutorialDemo({ kind }: { kind: CombatTutorialKind }) {
         <g transform="translate(304, 76)" className="ct-anim-glove-shake">
           <rect x="-38" y="-24" width="76" height="48" rx="8" fill="#142834" stroke="#ffe5ad" strokeWidth="2.5" />
           <text y="-3" textAnchor="middle" fill="#ffe5ad" fontSize="13">SHAKE GLOVE</text>
-          <text y="14" textAnchor="middle" fill="#7fd8ff" fontSize="12">or TAP [T] / [B2]</text>
+          <text y="14" textAnchor="middle" fill="#7fd8ff" fontSize="12">or TAP T / B2</text>
         </g>
       </svg>
     </div>
@@ -341,8 +334,8 @@ export function CombatTutorialOverlay(props?: Partial<CombatTutorialOverlayProps
   const title = props?.title ?? cfg.title;
   const lines = props?.lines ?? cfg.lines;
   const keys = props?.keys ?? cfg.keys;
-  const step = props?.step ?? cfg.step;
-  const totalSteps = props?.totalSteps ?? 6;
+  const step = props?.step ?? LESSON_ORDER.indexOf(kind) + 1;
+  const totalSteps = props?.totalSteps ?? LESSON_ORDER.length;
   const handleContinue = props?.onContinue ?? (() => notifyAction(kind));
   const handleSkip = props?.onSkip ?? skipStep;
   const handleSkipAll = props?.onSkipAll ?? skipAll;
@@ -361,7 +354,7 @@ export function CombatTutorialOverlay(props?: Partial<CombatTutorialOverlayProps
         <TutorialDemo kind={kind} />
         <ul className="ct-lines">
           {lines.map((line, i) => (
-            <li key={i} style={{ '--i': i } as React.CSSProperties}>{line}</li>
+            <li key={i} style={{ '--i': i } as CSSProperties}>{line}</li>
           ))}
         </ul>
         <p className="ct-requirement" role="status">{cfg.requirement}</p>
@@ -369,7 +362,7 @@ export function CombatTutorialOverlay(props?: Partial<CombatTutorialOverlayProps
           <ul className="ct-keys">
             {keys.map(k => (
               <li key={k.label}>
-                <kbd>{k.label}</kbd>
+                <span className="ct-glove">{k.label}</span>
                 <span>{k.action}</span>
               </li>
             ))}
@@ -377,7 +370,7 @@ export function CombatTutorialOverlay(props?: Partial<CombatTutorialOverlayProps
         )}
         <div className="ct-actions">
           <button type="button" className="ct-continue" onClick={handleContinue}>
-            {props?.continueLabel ?? (kind === 'parry' ? 'Parry Now (T / B2)' : kind === 'ritual' ? 'Start Casting →' : 'Next Lesson →')}
+            {props?.continueLabel ?? (kind === 'parry' ? 'Parry Now' : kind === 'ritual' ? 'Got it →' : 'Next Lesson →')}
           </button>
           <button type="button" className="ct-skip" onClick={handleSkip}>Skip Step</button>
           <button type="button" className="ct-skip-all-btn" onClick={handleSkipAll}>Full Skip Tutorial ⏭</button>

@@ -68,9 +68,9 @@ export function PlayerStatusPanel() {
       </button>
     </div>}
     <footer className="player-panel-footer">
-      <button type="button" className="diagnostic-end-turn" disabled={!!battle.pending || battle.activeId !== me || battle.status !== 'active'} onClick={() => battle.endTurn()}>End turn <kbd className="glove-hint-badge">Auto</kbd></button>
+      <button type="button" className="diagnostic-end-turn" disabled={!!battle.pending || battle.activeId !== me || battle.status !== 'active'} onClick={() => battle.endTurn()}>End turn</button>
       <button type="button" className="player-rest" title="Recover 45 stance and 3 Magic Power, then end your turn."
-        disabled={!!battle.pending || battle.activeId !== me || battle.status !== 'active'} onClick={() => battle.rest()}>Rest <kbd className="glove-hint-badge">Hold B2</kbd></button>
+        disabled={!!battle.pending || battle.activeId !== me || battle.status !== 'active'} onClick={() => battle.rest()}>Rest · Hold B2</button>
       {diagnostics && <><p role="status" aria-live="polite">{!targets.length ? 'The clearing is safe.' : player.magicPower < spell.cost && !battle.pending ? 'Not enough Magic Power — rest or end your turn to recover it.' : battle.message}</p>
       <button type="button" disabled={!!battle.pending || battle.activeId !== me} onClick={() => heroStore(me).getState().setMagicPower(player.maxMagicPower)}>Refill magic</button>
       <button type="button" onClick={() => battle.diagnosticKillAll()}>Instant kill all</button>

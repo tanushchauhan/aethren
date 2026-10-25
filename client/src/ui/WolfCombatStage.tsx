@@ -25,6 +25,7 @@ import { GloveCombatControl, useWheelSelection } from '../glove/GloveCombatContr
 import { RainOverlay } from './components/RainOverlay';
 import './wolf-combat-stage.css';
 import { useBattleMusic } from './useBattleMusic';
+import { ENEMY_INTRO_FADE_DELAY_S, ENEMY_INTRO_FADE_DURATION_S, ENEMY_INTRO_FADE_STAGGER_S, castUiRevealDelayMs } from './combatIntro';
 
 /** Turn-order portraits for the heroes, who are not in the roster the way the opponents are. */
 const HERO_SPRITES: Record<HeroId, string> = { player: '/art/spellbearer-male.png', ally: '/art/spellbearer-female.png' };
@@ -103,10 +104,12 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue, onFightAlone
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { heading.current?.focus(); }, []);
   useEffect(() => {
-    if (status === 'active' && activeId === 'player' && !pending) {
-      useWolfTutorial.getState().startTurnTutorial(encounterId, turnNumber);
-    }
-  }, [status, activeId, pending, encounterId, turnNumber]);
+    if (status !== 'active' || activeId !== 'player' || pending) return;
+    const enemies = combatants.filter(actor => actor.side === 'enemy' && opponents[actor.id]).length;
+    const delay = castUiRevealDelayMs(enemies, !!reduced, turnNumber === 1);
+    const timer = window.setTimeout(() => useWolfTutorial.getState().startTurnTutorial(encounterId, turnNumber), delay);
+    return () => clearTimeout(timer);
+  }, [status, activeId, pending, encounterId, turnNumber, reduced, opponents]);
   const defenseMatching = useDefense(s => s.matching);
   useEffect(() => {
     if (defenseMatching === 'dodged' || defenseMatching === 'blocked') {
@@ -138,7 +141,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue, onFightAlone
         const knock = i === 0 ? -1 : 1, stop = HIT_TIMING.hitStop / HIT_TIMING.react;
         return <motion.div key={wolf.id} id={`opponent-${wolf.id}`} className="wolf-slot" style={{ zIndex: acting ? 3 : 1 }} aria-hidden={stats.defeated || undefined}
           initial={reduced ? false : { opacity: 0 }} animate={{ opacity: stats.defeated ? 0 : 1 }}
-          transition={{ delay: reduced ? 0 : stats.defeated ? HIT_TIMING.react * .8 : 2.5 + i * .3, duration: reduced ? 0 : stats.defeated ? .6 : 2.8 }}>
+          transition={{ delay: reduced ? 0 : stats.defeated ? HIT_TIMING.react * .8 : ENEMY_INTRO_FADE_DELAY_S + i * ENEMY_INTRO_FADE_STAGGER_S, duration: reduced ? 0 : stats.defeated ? .6 : ENEMY_INTRO_FADE_DURATION_S }}>
           <motion.div key={reaction?.id ?? 0} initial={false}
             animate={struck ? { x: [0, 0, 20 * knock, -7 * knock, 2 * knock, 0], y: [0, 0, -16, 5, 0, 0], scale: [1, 1.07, .9, 1.03, 1, 1] }
               : { x: forward && !reduced ? `${boss ? 0 : (1 - i) * 113.043}%` : !reduced && reaction ? [0, i === 2 ? 45 : -45, 0] : 0, y: forward && !reduced ? 40 : 0, scale: !reduced && forward ? 1.15 : 1 }}
@@ -165,7 +168,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue, onFightAlone
               })()}
             </div>
             <div className="wolf-turn-ring" aria-hidden="true" />
-            {targetedId === wolf.id && !stats.defeated && status === 'active' && <span className="wolf-target-badge" role="status">◆ Targeted · <kbd>T</kbd> Switch</span>}
+            {targetedId === wolf.id && !stats.defeated && status === 'active' && <span className="wolf-target-badge" role="status">◆ Targeted · T switch</span>}
             {acting && enemyMove.phase === 'playing' ? <WolfMoveAnimation key={enemyMove.id} move={moves[enemyMove.moveId]} sprite={wolf.sprite} muted={muted} reduced={!!reduced}
               onProgress={progress => useDefense.getState().setProgress(enemyMove.id, progress)}
               onImpact={() => useSpellBattle.getState().enemyStep('impact', enemyMove.id)} onComplete={() => useSpellBattle.getState().enemyStep('return', enemyMove.id)} /> : <img className={`wolf-sprite${reaction?.kind === 'hurt' ? ' wolf-hurt' : ''}`} src={wolf.sprite} alt={wolf.name} draggable={false} />}
@@ -212,7 +215,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue, onFightAlone
     {status === 'lost' && <section className="encounter-victory" role="alert">
       <p>Encounter lost</p><h2>{boss ? 'The gate remains sealed' : 'The vale claims another'}</h2><span>{coop ? 'Both heroes have fallen.' : 'Your health has fallen to zero.'}</span>
       {guest ? <span>Waiting for {heroNames.player} to try again…</span>
-        : <button autoFocus data-glove-b1="Retry" onClick={() => { if (coop) resetHeroes(); else playerStore.getState().reset(); useSpellBattle.getState().reset(); }}>Try again <kbd className="glove-key">B1</kbd></button>}
+        : <button autoFocus data-glove-b1="Retry" onClick={() => { if (coop) resetHeroes(); else playerStore.getState().reset(); useSpellBattle.getState().reset(); }}>Try again · B1</button>}
     </section>}
     {fieldTurns > 0 && status === 'active' && <div className="scorn-field-label" role="status">Scorn Inferno · {fieldTurns} turns</div>}
     <aside className="combat-queue" aria-label="Turn order">
@@ -229,7 +232,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue, onFightAlone
       active={activeId === partner} away={partner === 'ally' ? allyAway : coopLink.status === 'partner-left'} />}
     {guest && coopLink.status === 'partner-left' && status === 'active' && <section className="encounter-victory" role="alert">
       <p>Co-op</p><h2>{heroNames.player} disconnected</h2><span>Their screen was running this fight, so it cannot go on without them.</span>
-      <button autoFocus data-glove-b1="Alone" onClick={onFightAlone}>Fight alone <kbd className="glove-key">B1</kbd></button>
+      <button autoFocus data-glove-b1="Alone" onClick={onFightAlone}>Fight alone · B1</button>
     </section>}
     <GloveCombatControl />
     {status === 'active' && <CombatCamera />}
@@ -237,7 +240,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue, onFightAlone
     {status === 'won' && <motion.section className="encounter-victory" aria-labelledby="victory-title" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: reduced ? .1 : .8 }}>
       <p>Encounter won</p><h2 id="victory-title">{boss ? 'The Scorn is broken' : 'The vale falls silent'}</h2>
       <span>{boss ? 'The kingdom awaits beyond the gate.' : 'The path beyond the clearing is open.'}</span>
-      <button ref={victoryButton} data-glove-b1="Continue" disabled={leaving} onClick={() => setLeaving(true)}>Continue <kbd className="glove-key">B1</kbd> <span aria-hidden="true">➜</span></button>
+      <button ref={victoryButton} data-glove-b1="Continue" disabled={leaving} onClick={() => setLeaving(true)}>Continue · B1 <span aria-hidden="true">➜</span></button>
     </motion.section>}
     <button className="intro-sound" aria-pressed={muted} onClick={onToggleSound}>{muted ? 'Sound off' : 'Sound on'}</button>
   </motion.main>;

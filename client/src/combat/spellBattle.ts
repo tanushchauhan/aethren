@@ -335,7 +335,7 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
       player.setMagicPower(player.magicPower + 3);
       const nextHint = nextUndiscovered(state.discoveredSpells, state.hintedSpellId);
       const rested = state.coop ? `${who(hero)} rests, recovering stance and Magic Power.` : 'You rest, recovering stance and Magic Power.';
-      set({ hintedSpellId: nextHint, message: nextHint ? `${rested} Hint: ${SPELLS[nextHint].hint}` : rested });
+      set({ hintedSpellId: nextHint, message: nextHint ? `${rested} Hold B2 to Rest again. Hint: ${SPELLS[nextHint].hint}` : `${rested} Hold B2 to Rest.` });
     },
     endTurn() {
       const state = get();

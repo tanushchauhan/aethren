@@ -1,6 +1,7 @@
-.glove-combat { --el: #7f978c; --dock: 118px; --wheel-scale: 1; position: absolute; z-index: 20; inset: 0; pointer-events: none; color: #e6dfbd; font: 20px/1.15 'VT323', monospace; }
-@media (max-height: 800px) { .glove-combat { --wheel-scale: .84; } }
-@media (max-height: 640px) { .glove-combat { --wheel-scale: .66; } }
+.glove-combat { --el: #7f978c; --dock: 14px; --wheel-scale: 1; position: absolute; z-index: 20; inset: 0; pointer-events: none; color: #e6dfbd; font: 20px/1.15 'VT323', monospace; }
+@media (max-height: 900px) { .glove-combat { --wheel-scale: .92; } }
+@media (max-height: 820px) { .glove-combat { --wheel-scale: .8; } }
+@media (max-height: 700px) { .glove-combat { --wheel-scale: .68; } }
 
 /* Top turn countdown bar and Pass Turn control */
 .player-turn-timer { position: absolute; top: 10px; left: 50%; translate: -50% 0; width: min(560px, calc(100% - 160px)); padding: 6px 12px; background: #07131be8; border: 1px solid #a8844a; box-shadow: 0 4px 12px #000b; pointer-events: auto; z-index: 25; }
@@ -10,19 +11,23 @@
 .turn-timer-label b { color: #fff; font-weight: 400; }
 .player-turn-timer[data-urgent='true'] .turn-timer-label b { color: #ff8e75; }
 .turn-timer-sub { font-size: 16px; color: #b9c8c2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.turn-pass-btn { border: 1px solid #c9a15a; background: #142630; color: #ffe5a1; font: 13px 'Pixelify Sans', monospace; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
-.turn-pass-btn:hover { background: #213a48; color: #fff; }
+.turn-pass-btn, .turn-cast-toggle { border: 1px solid #c9a15a; background: #142630; color: #ffe5a1; font: 13px 'Pixelify Sans', monospace; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
+.turn-pass-btn:hover, .turn-cast-toggle:hover { background: #213a48; color: #fff; }
+.cast-open-btn { position: absolute; left: 50%; bottom: 22px; translate: -50% 0; z-index: 26; pointer-events: auto; padding: 8px 22px; border: 1.5px solid #ffd479; background: #142630ee; color: #fff3c4; font: 20px 'Pixelify Sans', monospace; cursor: pointer; box-shadow: 0 4px 16px #000c; }
+.cast-open-btn:hover { background: #213a48; }
 .turn-timer-track { height: 6px; background: #0e2028; border: 1px solid #526a65; overflow: hidden; }
 .turn-timer-fill { display: block; height: 100%; background: linear-gradient(90deg, #63d297, #ffd479); transition: width .08s linear; }
 .player-turn-timer[data-urgent='true'] .turn-timer-fill { background: linear-gradient(90deg, #ff4b3a, #ff9e44); }
 
 /* The wheel: 12 wedges in a dark glass ring, element arcs on the rim, a gold pointer on the live wedge. */
-.spell-wheel { position: absolute; left: 50%; bottom: var(--dock); translate: -50% 0; width: 360px; transform-origin: 50% 100%; transform: scale(var(--wheel-scale)); opacity: 1; transition: transform .36s cubic-bezier(.3, 1.3, .5, 1), opacity .26s ease; }
+.spell-wheel { position: absolute; left: 50%; bottom: var(--dock); translate: -50% 0; width: 840px; height: 840px; transform-origin: 50% 100%; transform: scale(var(--wheel-scale)); opacity: 1; transition: transform .36s cubic-bezier(.3, 1.3, .5, 1), opacity .26s ease; }
 .glove-combat[data-phase='banner'] .spell-wheel,
-.glove-combat[data-phase='ritual'] .spell-wheel { transform: scale(.1) translateY(40px); opacity: 0; pointer-events: none; transition: transform .28s ease-in, opacity .2s ease-in; }
+.glove-combat[data-phase='ritual'] .spell-wheel,
+.glove-combat[data-phase='hidden'] .spell-wheel { transform: scale(.1) translateY(40px); opacity: 0; pointer-events: none; transition: transform .28s ease-in, opacity .2s ease-in; }
 .glove-combat[data-phase='banner'] .spell-wheel *,
-.glove-combat[data-phase='ritual'] .spell-wheel * { pointer-events: none; }
-.spell-wheel-dial { position: relative; width: 360px; height: 360px; border-radius: 50%; background: radial-gradient(circle at 50% 42%, rgba(26, 54, 66, 0.28), rgba(6, 16, 22, 0.42) 72%); backdrop-filter: blur(10px) saturate(135%); -webkit-backdrop-filter: blur(10px) saturate(135%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 8px 24px rgba(0, 0, 0, 0.55); }
+.glove-combat[data-phase='ritual'] .spell-wheel *,
+.glove-combat[data-phase='hidden'] .spell-wheel * { pointer-events: none; }
+.spell-wheel-dial { position: relative; width: 840px; height: 840px; border-radius: 50%; background: radial-gradient(circle at 50% 42%, rgba(26, 54, 66, 0.28), rgba(6, 16, 22, 0.42) 72%); backdrop-filter: blur(10px) saturate(135%); -webkit-backdrop-filter: blur(10px) saturate(135%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 8px 24px rgba(0, 0, 0, 0.55); }
 .spell-wheel-dial svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: auto; }
 .wheel-arc { opacity: .45; transition: opacity .2s; }
 .wheel-arc[data-active='true'] { opacity: 1; filter: drop-shadow(0 0 6px var(--el)); }
@@ -30,78 +35,88 @@
 .wheel-wedge path { fill: rgba(12, 28, 38, 0.52); stroke: color-mix(in srgb, var(--wedge) 55%, rgba(255, 255, 255, 0.28)); stroke-width: 1.5; transition: fill .15s, stroke .15s; }
 .wheel-wedge:hover path { fill: color-mix(in srgb, var(--wedge) 22%, rgba(16, 36, 48, 0.65)); }
 .wheel-wedge[data-active='true'] path { fill: color-mix(in srgb, var(--wedge) 34%, rgba(16, 36, 48, 0.68)); stroke: var(--wedge); stroke-width: 2.5; filter: drop-shadow(0 0 7px var(--wedge)); }
-.wheel-wedge text { fill: #e3d7b3; font: 14px 'Pixelify Sans', monospace; pointer-events: none; user-select: none; }
+/* SVG font sizes are viewBox units: 840px / 360 = 2.33px per unit, so 10 units is about 23px. */
+.wheel-wedge text { fill: #e3d7b3; font: 10px 'Pixelify Sans', monospace; pointer-events: none; user-select: none; }
 .wheel-wedge[data-active='true'] text { fill: #fff3c4; }
 .wheel-wedge[data-affordable='false'] path, .wheel-wedge[data-affordable='false'] text { opacity: .42; }
 .wheel-wedge[data-locked='true'] path { fill: rgba(8, 18, 26, 0.42); stroke-dasharray: 4 3; opacity: .78; }
 .wheel-wedge[data-locked='true'] text { fill: #9bb0ab; font-style: italic; }
 .wheel-wedge[data-hinted='true'] path { stroke: #ffe27a; stroke-dasharray: none; filter: drop-shadow(0 0 6px #ffe27a88); }
 .wheel-wedge[data-hinted='true'] text { fill: #ffe5a1; }
-.wheel-cost-gem { fill: rgba(27, 20, 9, 0.72); stroke: #c9a15a; stroke-width: 1.5; pointer-events: none; }
+.wheel-cost-gem { fill: rgba(27, 20, 9, 0.72); stroke: #c9a15a; stroke-width: 1.2; pointer-events: none; }
 .wheel-wedge[data-affordable='false'] .wheel-cost-gem { stroke: #e1836b; }
-.wheel-wedge text.wheel-cost { font: 14px 'VT323', monospace; fill: #ffe5a1; opacity: 1; }
+.wheel-wedge text.wheel-cost { font: 10px 'VT323', monospace; fill: #ffe5a1; opacity: 1; }
 .wheel-wedge[data-affordable='false'] text.wheel-cost { fill: #f0a08a; opacity: 1; }
 .wheel-pointer { fill: #ffd479; stroke: #5b3f14; stroke-width: 1; transform-box: view-box; transform-origin: 50% 50%; transition: transform .16s ease-out; pointer-events: none; filter: drop-shadow(0 0 4px #ffd479); }
 
-/* The hub shows the live spell (semi-glass center). */
-.wheel-hub { position: absolute; left: 50%; top: 50%; translate: -50% -50%; box-sizing: border-box; width: 198px; height: 198px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 14px 18px; text-align: center; border-radius: 50%; background: radial-gradient(circle at 50% 34%, rgba(28, 56, 68, 0.62), rgba(8, 20, 27, 0.68) 74%); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1.5px solid rgba(212, 180, 118, 0.75); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 0 22px color-mix(in srgb, var(--el) 26%, transparent), 0 0 18px color-mix(in srgb, var(--el) 30%, transparent); pointer-events: auto; }
-.wheel-hub-crest { font-size: 20px; line-height: 1; filter: drop-shadow(0 0 6px var(--el)); }
-.wheel-hub-name { font: 400 18px/1.1 'Pixelify Sans', monospace; color: #fff3c4; text-shadow: 0 0 10px color-mix(in srgb, var(--el) 70%, transparent); }
-.wheel-hub-cost { color: var(--el); font-size: 17px; }
+/* The hub stays inside the ring's inner radius (76 / 360 of the 840px wheel ≈ 354px). */
+.wheel-hub { position: absolute; left: 50%; top: 50%; translate: -50% -50%; box-sizing: border-box; width: 340px; height: 340px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 22px 30px; text-align: center; border-radius: 50%; background: radial-gradient(circle at 50% 34%, rgba(28, 56, 68, 0.62), rgba(8, 20, 27, 0.68) 74%); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1.5px solid rgba(212, 180, 118, 0.75); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 0 22px color-mix(in srgb, var(--el) 26%, transparent), 0 0 18px color-mix(in srgb, var(--el) 30%, transparent); pointer-events: auto; }
+.wheel-hub-crest { font-size: 26px; line-height: 1; filter: drop-shadow(0 0 6px var(--el)); }
+.wheel-hub-name { font: 400 25px/1.1 'Pixelify Sans', monospace; color: #fff3c4; text-shadow: 0 0 10px color-mix(in srgb, var(--el) 70%, transparent); }
+.wheel-hub-cost { color: var(--el); font-size: 22px; }
 .wheel-hub-cost[data-affordable='false'] { color: #e1836b; }
-.wheel-hub-detail { margin: 1px 0; font-size: 13px; line-height: 1.08; color: #c1ccbf; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.wheel-hub-target { font-size: 14px; color: #9fb5b0; white-space: nowrap; }
+.wheel-hub-detail { margin: 1px 0; font-size: 19px; line-height: 1.05; color: #c1ccbf; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.wheel-hub-rest { padding: 2px 10px; border: 1px solid #c9a15a; background: #1b1409cc; color: #ffe5a1; font-size: 16px; white-space: nowrap; }
+.wheel-hub-rest[data-low='true'] { border-color: #ffd479; color: #fff3c4; box-shadow: 0 0 10px #ffd47955; }
+.wheel-hub-target { font-size: 20px; color: #9fb5b0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .wheel-hub-target b { color: #ffe5a1; font-weight: 400; }
-.wheel-begin-btn { margin-top: 2px; padding: 3px 9px; border: 1px solid #ffd479; background: #1d313b; color: #fff3c4; font: 12px 'Pixelify Sans', monospace; cursor: pointer; }
+.wheel-begin-btn { margin-top: 4px; padding: 5px 16px; border: 1px solid #ffd479; background: #1d313b; color: #fff3c4; font: 17px 'Pixelify Sans', monospace; cursor: pointer; }
 .wheel-begin-btn:hover:not(:disabled) { background: #2b4756; }
 .wheel-begin-btn:disabled { opacity: .45; cursor: default; }
 
-.wheel-notice { margin-top: 5px; padding: 4px 10px; background: #261216eb; border: 1px solid #f0937b; color: #ffd7cc; font-size: 16px; text-align: center; pointer-events: auto; }
+.wheel-notice { position: absolute; left: 50%; bottom: 18%; translate: -50% 0; width: min(70%, 420px); z-index: 2; padding: 4px 10px; background: #261216eb; border: 1px solid #f0937b; color: #ffd7cc; font-size: 18px; text-align: center; pointer-events: auto; }
 
-/* Keycap prompts under the wheel. */
-.wheel-prompts { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 12px; margin-top: 6px; padding: 5px 10px; background: rgba(8, 20, 27, 0.58); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(168, 132, 74, 0.6); color: #d2e0db; font-size: 17px; pointer-events: auto; }
+/* Glove control legend sits on the lower rim so the circle can stay large. */
+.wheel-prompts { position: absolute; left: 50%; bottom: 22px; translate: -50% 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 14px; margin: 0; padding: 5px 12px; background: rgba(8, 20, 27, 0.72); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(168, 132, 74, 0.6); color: #d2e0db; font-size: 18px; pointer-events: auto; }
 .wheel-prompts span { white-space: nowrap; }
+.wheel-prompts b { margin-right: 4px; font: 400 18px 'Pixelify Sans', monospace; color: #ffe5a1; }
+.wheel-prompts .wheel-rest-hint { padding: 2px 8px; border: 1px solid #ffd479; background: #2a2410cc; color: #fff3c4; animation: rest-hint-pulse 1.6s ease-in-out infinite; }
+.wheel-prompts .wheel-rest-hint b { color: #ffe27a; }
+@keyframes rest-hint-pulse { 0%, 100% { box-shadow: 0 0 0 #ffd47900; } 50% { box-shadow: 0 0 12px #ffd47988; } }
 .wheel-prompts small { flex-basis: 100%; text-align: center; font-size: 15px; color: #8aa09a; }
 .wheel-prompts .wheel-glove { color: #6f857f; }
-.ritual-hint-btn { border: 1px solid #c9a15a; background: #19262e; color: #ffe5a1; font: 12px 'Pixelify Sans', monospace; padding: 2px 6px; cursor: pointer; white-space: nowrap; }
+.ritual-hint-btn { border: 1px solid #c9a15a; background: #19262e; color: #ffe5a1; font: 16px 'Pixelify Sans', monospace; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
 .ritual-hint-btn:hover { background: #253844; }
-.glove-combat kbd { display: inline-block; margin: 0 2px; padding: 0 5px; font: 12px/1.45 'Pixelify Sans', monospace; color: #ffe5a1; background: #1b1409; border: 1px solid #b8964f; border-bottom-width: 2px; border-radius: 2px; }
 
-/* ON-SCREEN RITUAL COMMAND STAGE (replaces the wheel while casting a spell!) */
-.ritual-stage-overlay { position: absolute; left: 50%; bottom: var(--dock); translate: -50% 0; width: min(680px, calc(100% - 32px)); padding: 10px 14px; background: rgba(7, 19, 27, 0.72); backdrop-filter: blur(12px) saturate(135%); -webkit-backdrop-filter: blur(12px) saturate(135%); border: 1.5px solid var(--el); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 26px color-mix(in srgb, var(--el) 30%, transparent), 0 8px 24px #000c; pointer-events: auto; display: grid; gap: 8px; }
-.ritual-stage-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #ffffff24; padding-bottom: 5px; }
-.ritual-stage-element { display: block; font: 11px 'Pixelify Sans', monospace; letter-spacing: 2px; color: var(--el); }
-.ritual-stage-title { margin: 0; font: 400 20px/1.1 'Pixelify Sans', monospace; color: #fff3c4; }
-.ritual-stage-title small { font-size: 14px; color: #9fb5b0; }
-.ritual-last-grade { padding: 2px 9px; background: rgba(24, 52, 43, 0.78); border: 1px solid #79f2b0; color: #d8ffea; font: 13px 'Pixelify Sans', monospace; }
-.ritual-cancel-btn { border: 1px solid #9fb5b080; background: rgba(16, 32, 41, 0.75); color: #d4e3df; font: 13px 'Pixelify Sans', monospace; padding: 3px 9px; cursor: pointer; }
+/* ON-SCREEN RITUAL COMMAND STAGE (replaces the wheel while casting a spell) */
+.ritual-stage-overlay { position: absolute; left: 50%; bottom: var(--dock); translate: -50% 0; box-sizing: border-box; width: min(1120px, calc(100% - 16px)); max-height: min(42vh, 420px); overflow: hidden; padding: 10px 14px; background: rgba(7, 19, 27, 0.72); backdrop-filter: blur(12px) saturate(135%); -webkit-backdrop-filter: blur(12px) saturate(135%); border: 1.5px solid var(--el); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 26px color-mix(in srgb, var(--el) 30%, transparent), 0 8px 24px #000c; pointer-events: auto; display: grid; gap: 8px; }
+.ritual-stage-header { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #ffffff24; padding-bottom: 8px; }
+.ritual-stage-heading { flex: 1; min-width: 0; }
+.ritual-stage-element { display: block; font: 16px 'Pixelify Sans', monospace; letter-spacing: 1px; color: var(--el); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ritual-stage-title { margin: 0; font: 400 24px/1.1 'Pixelify Sans', monospace; color: #fff3c4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ritual-last-grade { flex-shrink: 0; padding: 4px 12px; background: rgba(24, 52, 43, 0.78); border: 1px solid #79f2b0; color: #d8ffea; font: 18px 'Pixelify Sans', monospace; white-space: nowrap; }
+.ritual-last-grade[data-grade='perfect'] { border-color: #ffd479; background: rgba(44, 38, 18, 0.82); color: #fff3c4; }
+.ritual-last-grade[data-grade='sloppy'] { border-color: #e1836b; background: rgba(44, 21, 21, 0.82); color: #ffd2c4; }
+.ritual-last-grade[data-grade='missed'] { border-color: #ff4b3a; background: rgba(70, 14, 14, 0.88); color: #ffc2b8; }
+.ritual-cancel-btn { flex-shrink: 0; border: 1px solid #9fb5b080; background: rgba(16, 32, 41, 0.75); color: #d4e3df; font: 20px 'Pixelify Sans', monospace; padding: 4px 12px; cursor: pointer; }
 .ritual-cancel-btn:hover { background: #1b3340; color: #fff; }
 
-/* Command sequence kbd cards on screen */
-.ritual-command-cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 8px; }
-.ritual-command-card { padding: 8px 10px; background: rgba(12, 29, 38, 0.65); border: 1px solid rgba(110, 145, 138, 0.55); display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; transition: transform .15s, border-color .15s, box-shadow .15s; }
+/* Move sequence cards */
+.ritual-command-cards { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.ritual-command-card { min-width: 0; overflow: hidden; padding: 8px 6px; background: rgba(12, 29, 38, 0.65); border: 2px solid rgba(110, 145, 138, 0.55); display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; transition: transform .15s, border-color .15s, box-shadow .15s; }
 .ritual-command-card[data-kind='pose'] { border-color: rgba(100, 185, 215, 0.65); }
-.ritual-command-card[data-state='current'] { background: rgba(24, 52, 66, 0.82); border: 2px solid #ffd479; box-shadow: 0 0 16px #ffd47955; transform: translateY(-2px); }
+.ritual-command-card[data-state='current'] { background: rgba(24, 52, 66, 0.82); border-color: #ffd479; box-shadow: 0 0 16px #ffd47955; transform: translateY(-2px); }
 .ritual-command-card[data-state='done'] { background: rgba(16, 42, 34, 0.72); border-color: #63d297; opacity: .9; }
 .ritual-command-card[data-grade='perfect'] { border-color: #ffd479; background: rgba(44, 38, 18, 0.78); }
 .ritual-command-card[data-grade='sloppy'] { border-color: #e1836b; background: rgba(44, 21, 21, 0.78); }
-.ritual-card-step { font: 11px 'Pixelify Sans', monospace; text-transform: uppercase; letter-spacing: 1px; color: #9fc0ba; }
-.ritual-kbd-row { display: inline-flex; align-items: center; gap: 5px; margin: 1px 0; }
-.glove-combat kbd.ritual-main-kbd { padding: 3px 10px; font: 700 17px/1.2 'Pixelify Sans', monospace; color: #fff7d6; background: #142630; border: 1.5px solid #ffd479; border-bottom-width: 3px; border-radius: 4px; box-shadow: 0 2px 6px #0008; }
-.ritual-command-card[data-kind='pose'] kbd.ritual-main-kbd { border-color: #7fd8ff; color: #e3f8ff; background: #102834; }
-.glove-combat kbd.ritual-sub-kbd { padding: 1px 6px; font: 12px/1.2 'Pixelify Sans', monospace; color: #cfe3df; background: #0b161c; border-color: #6b8580; }
-.ritual-card-action { font: 400 15px/1.15 'Pixelify Sans', monospace; color: #fff5d6; }
-.ritual-card-sub { font-size: 13px; color: #b9d2cd; letter-spacing: .5px; }
+.ritual-command-card[data-grade='missed'] { border-color: #ff4b3a; background: rgba(70, 14, 14, 0.85); box-shadow: inset 0 0 14px #ff4b3a55; opacity: 1; }
+.ritual-card-step { font: 13px 'Pixelify Sans', monospace; text-transform: uppercase; letter-spacing: 1px; color: #9fc0ba; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ritual-card-glyph { max-width: 100%; font: 700 clamp(16px, 2vw, 22px)/1.15 'Pixelify Sans', monospace; color: #fff7d6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ritual-command-card[data-kind='pose'] .ritual-card-glyph { color: #c4f4ff; }
+.ritual-card-sub { font-size: 15px; color: #b9d2cd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .ritual-command-card[data-state='current'] .ritual-card-sub { color: #ffe27a; font-weight: 700; }
+.ritual-command-card[data-grade='missed'] .ritual-card-sub,
+.ritual-command-card[data-grade='missed'] .ritual-card-glyph { color: #ff9a8a; }
 
-/* Concise Timing window bar */
-.ritual-timing-box { padding: 6px 10px; background: rgba(5, 14, 20, 0.68); border: 1px solid rgba(115, 145, 138, 0.6); display: grid; gap: 5px; }
+/* Timing window bar */
+.ritual-timing-box { padding: 8px 12px; background: rgba(5, 14, 20, 0.68); border: 1px solid rgba(115, 145, 138, 0.6); display: grid; gap: 6px; }
 .ritual-timing-box[data-sweet='true'] { border-color: #ffd479; box-shadow: inset 0 0 16px #ffd47933, 0 0 12px #ffd47955; }
-.ritual-timing-instructions { display: flex; align-items: center; justify-content: space-between; gap: 10px; font: 15px 'Pixelify Sans', monospace; color: #ffe5a1; }
-.ritual-timing-instructions b { color: #ffd479; }
+.ritual-timing-instructions { display: flex; align-items: center; justify-content: space-between; gap: 10px; font: 18px 'Pixelify Sans', monospace; color: #ffe5a1; min-width: 0; }
+.ritual-timing-instructions span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ritual-timing-instructions b { color: #fff7d6; font-weight: 400; }
 .ritual-step-clock { color: #cfe3df; white-space: nowrap; }
 .ritual-step-clock b { color: #fff; }
-.ritual-timing-track { position: relative; height: 22px; display: flex; border: 1px solid #8ea8a3; overflow: hidden; font: 12px/22px 'Pixelify Sans', monospace; text-align: center; user-select: none; }
+.ritual-timing-track { position: relative; height: 34px; display: flex; border: 1px solid #8ea8a3; overflow: hidden; font: 16px/34px 'Pixelify Sans', monospace; text-align: center; user-select: none; }
 .ritual-zone { height: 100%; overflow: hidden; white-space: nowrap; }
 .ritual-zone.early { width: 12%; background: rgba(58, 25, 29, 0.85); color: #f2a2a8; }
 .ritual-zone.good-left { width: 16%; background: rgba(23, 51, 59, 0.85); color: #9fe3ff; }
@@ -109,15 +124,8 @@
 .ritual-zone.good-right { width: 14%; background: rgba(23, 51, 59, 0.85); color: #9fe3ff; }
 .ritual-zone.late { width: 10%; background: rgba(58, 25, 29, 0.85); color: #f2a2a8; }
 .ritual-timing-cursor { position: absolute; top: -2px; bottom: -2px; width: 6px; translate: -50% 0; background: #fff; border: 1px solid #000; box-shadow: 0 0 10px #fff, 0 0 18px #ffd479; pointer-events: none; }
-.ritual-timing-explain { margin: 0; font-size: 14px; color: #b9ccc7; text-align: center; }
+.ritual-timing-explain { margin: 0; font-size: 18px; color: #b9ccc7; text-align: center; }
 .ritual-timing-explain b { color: #ffe5a1; font-weight: 400; }
-
-.ritual-step-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; }
-.ritual-step-btn { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; background: rgba(16, 34, 44, 0.72); border: 1px solid rgba(107, 133, 128, 0.65); color: #e6dfbd; font: 12px 'Pixelify Sans', monospace; cursor: pointer; }
-.ritual-step-btn small { color: #9fb5b0; font-size: 11px; }
-.ritual-step-btn[data-kind='pose'] kbd { border-color: #5ca9bf; color: #c4f4ff; }
-.ritual-step-btn[data-expected='true'] { border-color: #ffd479; background: rgba(43, 38, 18, 0.85); box-shadow: 0 0 10px #ffd47966; }
-.ritual-step-btn:hover { background: #1c3644; border-color: #ffe5a1; }
 
 /* The wolves' turn: the wheel folds into this banner so the attacks stay in view. */
 .defense-banner { position: absolute; left: 50%; bottom: var(--dock); translate: -50% 0; box-sizing: border-box; width: min(720px, calc(100% - 24px)); display: grid; justify-items: center; gap: 2px; padding: 7px 16px; text-align: center; background: #08141bec; border: 2px solid #a8844a; box-shadow: 4px 4px 0 #040b10; opacity: 0; transform: translateY(16px) scale(.96); pointer-events: none; transition: opacity .2s ease, transform .25s ease; }
