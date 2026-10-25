@@ -17,6 +17,8 @@ import { PlayerStatusPanel } from './components/PlayerStatusPanel';
 import { ScornFlames } from './components/ScornFlames';
 import { useFieldFlamesSound } from './useFieldFlamesSound';
 import { BossAtmosphere } from './components/BossAtmosphere';
+import { CombatTutorialOverlay } from './components/CombatTutorialOverlay';
+import { useWolfTutorial } from '../combat/wolfTutorial';
 import { GloveCombatControl, useWheelSelection } from '../glove/GloveCombatControl';
 import { RainOverlay } from './components/RainOverlay';
 import './wolf-combat-stage.css';
@@ -80,6 +82,17 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
   }, [activeId, enemyMove?.id, enemyMove?.phase, reduced, status]);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { heading.current?.focus(); }, []);
+  useEffect(() => {
+    if (status === 'active' && activeId === 'player' && !pending) {
+      useWolfTutorial.getState().startTurnTutorial(encounterId, turnNumber);
+    }
+  }, [status, activeId, pending, encounterId, turnNumber]);
+  const defenseMatching = useDefense(s => s.matching);
+  useEffect(() => {
+    if (defenseMatching === 'dodged' || defenseMatching === 'blocked') {
+      useWolfTutorial.getState().notifyAction('parry');
+    }
+  }, [defenseMatching]);
   return <motion.main className={`wolf-combat-stage${boss ? ' boss-combat-stage' : ''}`} aria-label={boss ? 'Gatekeeper combat stage' : 'Wolf combat stage'}
     initial={{ opacity: 0 }} animate={{ opacity: leaving ? 0 : 1 }} transition={{ duration: reduced ? .15 : leaving ? .65 : 1.1 }}
     onAnimationComplete={() => { if (leaving) onContinue(); }}>
@@ -125,7 +138,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
               <div className="wolf-status-icons">{stats.statuses.map(effect => <StatusEffectIcon key={effect.id} effect={effect} />)}</div>
             </div>
             <div className="wolf-turn-ring" aria-hidden="true" />
-            {targetedId === wolf.id && !stats.defeated && status === 'active' && <span className="wolf-target-badge" role="status">🎯 Targeted · <kbd>T</kbd> Switch</span>}
+            {targetedId === wolf.id && !stats.defeated && status === 'active' && <span className="wolf-target-badge" role="status">◆ Targeted · <kbd>T</kbd> Switch</span>}
             {acting && enemyMove.phase === 'playing' ? <WolfMoveAnimation key={enemyMove.id} move={moves[enemyMove.moveId]} sprite={wolf.sprite} muted={muted} reduced={!!reduced}
               onProgress={progress => useDefense.getState().setProgress(enemyMove.id, progress)}
               onImpact={() => useSpellBattle.getState().enemyStep('impact', enemyMove.id)} onComplete={() => useSpellBattle.getState().enemyStep('return', enemyMove.id)} /> : <img className={`wolf-sprite${reaction?.kind === 'hurt' ? ' wolf-hurt' : ''}`} src={wolf.sprite} alt={wolf.name} draggable={false} />}
@@ -186,6 +199,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
     {status === 'active' && <PlayerStatusPanel />}
     <GloveCombatControl />
     {status === 'active' && <CombatCamera />}
+    {status === 'active' && !boss && <CombatTutorialOverlay />}
     {status === 'won' && <motion.section className="encounter-victory" aria-labelledby="victory-title" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: reduced ? .1 : .8 }}>
       <p>Encounter won</p><h2 id="victory-title">{boss ? 'The Scorn is broken' : 'The vale falls silent'}</h2>
       <span>{boss ? 'The kingdom awaits beyond the gate.' : 'The path beyond the clearing is open.'}</span>

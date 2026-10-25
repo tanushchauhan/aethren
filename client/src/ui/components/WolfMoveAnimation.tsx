@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CombatMove } from '../../combat/encounter';
+import { useSpellBattle } from '../../combat/spellBattle';
+import { useWolfTutorial } from '../../combat/wolfTutorial';
+
+const NON_ATTACK_MOVES = new Set(['rest', 'roar', 'descent']);
 
 /** Remove only edge-connected near-white background, retaining enclosed eyes/teeth. */
 function clearBackdrop(frame: ImageData, visited: Uint8Array, queue: Int32Array) {
@@ -27,8 +31,10 @@ function clearBackdrop(frame: ImageData, visited: Uint8Array, queue: Int32Array)
   }
 }
 
-export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onComplete, onProgress }: {
+export function WolfMoveAnimation({ move, sprite, muted, reduced, paused = false, onImpact, onComplete, onProgress }: {
   move: CombatMove; sprite: string; muted: boolean; reduced: boolean;
+  /** Suspends the animation (frame stays on the canvas) until false again. */
+  paused?: boolean;
   onProgress?: (progress: number) => void;
   onImpact: () => void; onComplete: () => void;
 }) {
@@ -38,6 +44,7 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onCo
   const callbacks = useRef({ onImpact, onComplete, onProgress });
   callbacks.current = { onImpact, onComplete, onProgress };
   const mutedRef = useRef(muted); mutedRef.current = muted;
+  const pausedRef = useRef(paused); pausedRef.current = paused;
   const [ready, setReady] = useState(false);
   useEffect(() => {
     let done = false, impacted = false, raf = 0, elapsed = 0, previous = performance.now(), lastDraw = -1;
@@ -54,8 +61,17 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onCo
     const ctx = canvas.current?.getContext('2d', { willReadFrequently: true });
     const width = 768, height = 512;
     const visited = new Uint8Array(width * height), queue = new Int32Array(width * height);
+    const isFrozen = () => pausedRef.current || useWolfTutorial.getState().attackFrozen;
+    let wasFrozen = false;
+    const isAttack = !NON_ATTACK_MOVES.has(move.id);
+    // The interactive tutorial suspends the first wolf lunge shortly before it lands.
+    const tutorialPause = (progress: number) => {
+      if (!isAttack || impacted || progress < .6 || progress >= .92) return false;
+      return useWolfTutorial.getState().triggerMidAttackPause(useSpellBattle.getState().encounterId);
+    };
+    const freeze = () => { wasFrozen = true; if (!track.paused) track.pause(); if (sound && !sound.paused) sound.pause(); };
     const start = () => {
-      if (document.hidden || done || reduced || !move.video) return;
+      if (document.hidden || done || reduced || !move.video || isFrozen()) return;
       void track.play().catch(() => {
         // Muted playback is allowed even when the browser blocks audible autoplay.
         track.muted = true; void track.play().catch(finish);
@@ -65,12 +81,24 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onCo
     const tick = (now: number) => {
       if (done) return;
       const delta = Math.min(now - previous, 250); previous = now;
-      if (!document.hidden) {
+      if (!document.hidden && isFrozen()) {
+        // Hold the last drawn frame on the canvas; time and impact do not advance.
+        freeze();
+      } else if (!document.hidden) {
+        if (wasFrozen) {
+          wasFrozen = false;
+          start();
+          if (sounded && sound && !sound.ended) void sound.play().catch(() => {});
+        }
         elapsed += delta;
         if (reduced || !move.video) {
-          callbacks.current.onProgress?.(Math.min(1, elapsed / 300));
-          if (elapsed >= 300) impact();
-          if (elapsed >= 800) finish();
+          const progress = Math.min(1, elapsed / 300);
+          callbacks.current.onProgress?.(progress);
+          if (tutorialPause(progress)) freeze();
+          else {
+            if (elapsed >= 300) impact();
+            if (elapsed >= 800) finish();
+          }
         } else {
           if (track.readyState >= 2 && !track.seeking && track.currentTime >= move.start) {
             if (track.currentTime !== lastDraw && ctx) {
@@ -92,10 +120,14 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onCo
                 setReady(true);
               } catch { finish(); }
             }
-            callbacks.current.onProgress?.(Math.min(1, Math.max(0, (track.currentTime - move.start) / Math.max(.01, move.impact - move.start))));
-            if (track.currentTime >= move.impact - .25) playSound();
-            if (track.currentTime >= move.impact) impact();
-            if (track.currentTime >= move.end) finish();
+            const progress = Math.min(1, Math.max(0, (track.currentTime - move.start) / Math.max(.01, move.impact - move.start)));
+            callbacks.current.onProgress?.(progress);
+            if (tutorialPause(progress)) freeze();
+            else {
+              if (track.currentTime >= move.impact - .25) playSound();
+              if (track.currentTime >= move.impact) impact();
+              if (track.currentTime >= move.end) finish();
+            }
           }
           // Finite, visible-time fallback covers loading errors and stalled media.
           if (elapsed > (move.end - move.start) / 2.4 * 1000 + 6000) finish();

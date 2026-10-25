@@ -31,7 +31,7 @@ function GateContents({ children, onBypass }: { children: ReactNode; onBypass?: 
         <kbd className="glove-key">{CONTROL_LABELS.touch}</kbd>
         <kbd className="glove-key">{CONTROL_LABELS.button1}</kbd>
         <kbd className="glove-key">{CONTROL_LABELS.button2}</kbd>
-        <kbd className="glove-key">{CONTROL_LABELS.dial} ⟳</kbd>
+        <kbd className="glove-key">{CONTROL_LABELS.dial}</kbd>
       </span>
       <button type="button" onClick={leave}>Give back</button>
     </aside>

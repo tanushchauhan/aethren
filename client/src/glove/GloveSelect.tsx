@@ -89,7 +89,7 @@ export function GloveSelect({ lostGlove = false, onBypass }: { lostGlove?: boole
         <span><kbd className="glove-key">{CONTROL_LABELS.touch}</kbd> touch sensor</span>
         <span><kbd className="glove-key">{CONTROL_LABELS.button1}</kbd> button 1</span>
         <span><kbd className="glove-key">{CONTROL_LABELS.button2}</kbd> button 2</span>
-        <span><kbd className="glove-key">{CONTROL_LABELS.dial} ⟳</kbd> turn to choose</span>
+        <span><kbd className="glove-key">{CONTROL_LABELS.dial}</kbd> turn to choose</span>
         <span><kbd className="glove-key">Hold {CONTROL_LABELS.button2}</kbd> skip dialogue</span>
       </footer>
 

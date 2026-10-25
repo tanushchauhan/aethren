@@ -45,7 +45,7 @@ export function LandingScreen() {
     finally { setBusy(false); }
   }
   const menu = [
-    { id: 'solo', label: 'Start adventure', key: 'B1', glove: { 'data-glove-b1': 'Play' }, onClick: startSolo },
+    { id: 'solo', label: 'New adventure', key: 'B1', glove: { 'data-glove-b1': 'Play' }, onClick: startSolo },
     { id: 'coop', label: 'Co-op / Online', key: 'B2', glove: { 'data-glove-b2': 'Co-op' }, onClick: () => setOpen(true) },
   ] as const;
   return <main className="title-screen">
@@ -66,7 +66,7 @@ export function LandingScreen() {
       <button type="button" className="title-name" data-glove-t onClick={cycleName}>
         Playing as <b>{name}</b> <kbd className="glove-key">T</kbd>
       </button>
-      <p className="title-glove-hint"><kbd className="glove-key">Dial ⟳</kbd> choose <kbd className="glove-key">B1</kbd> confirm <kbd className="glove-key">T</kbd> change name</p>
+      <p className="title-glove-hint"><kbd className="glove-key">Dial</kbd> choose <kbd className="glove-key">B1</kbd> start <kbd className="glove-key">B2</kbd> co-op <kbd className="glove-key">T</kbd> name</p>
     </section>
     <footer className="title-footer"><span>A spellcasting adventure</span><span>Every memory has its magic.</span></footer>
     <dialog ref={dialog} className="title-dialog vn-setup" aria-labelledby="setup-title" onCancel={() => setOpen(false)}>
@@ -78,7 +78,7 @@ export function LandingScreen() {
       </div>
       <form onSubmit={submit}>
         <fieldset className="adventure-modes">
-          <legend>Turn the dial to choose <kbd className="glove-key">Dial ⟳</kbd></legend>
+          <legend>Turn the dial to choose <kbd className="glove-key">Dial</kbd></legend>
           {([['host', 'Host a room'], ['join', 'Join a room']] as const).map(([id, label]) => (
             <button key={id} type="button" className="coop-option" data-glove-pick aria-pressed={coop === id}
               onFocus={() => setCoop(id)} onClick={() => setCoop(id)}>{label}</button>

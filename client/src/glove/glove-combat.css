@@ -1,4 +1,5 @@
-.glove-combat { --el: #7f978c; --dock: 118px; --wheel-scale: 1; position: absolute; z-index: 20; inset: 0; pointer-events: none; color: #e6dfbd; font: 20px/1.15 'VT323', monospace; }
+.glove-combat { --el: #7f978c; --dock: 118px; --wheel-scale: 1; position: absolute; z-index: 20; inset: 0; pointer-events: none; color: #e6dfbd; font: 18px/1.2 'Pixelify Sans', monospace; }
+.glove-combat[data-tutorial='true'] { z-index: 48; }
 @media (max-height: 800px) { .glove-combat { --wheel-scale: .84; } }
 @media (max-height: 640px) { .glove-combat { --wheel-scale: .66; } }
 
@@ -14,38 +15,38 @@
 .wheel-wedge path { fill: #08141be6; stroke: color-mix(in srgb, var(--wedge) 45%, #3a4f4a); stroke-width: 1.5; transition: fill .15s, stroke .15s; }
 .wheel-wedge:hover path { fill: color-mix(in srgb, var(--wedge) 14%, #08141b); }
 .wheel-wedge[data-active='true'] path { fill: color-mix(in srgb, var(--wedge) 30%, #0b1a20); stroke: var(--wedge); stroke-width: 2.5; filter: drop-shadow(0 0 7px var(--wedge)); }
-.wheel-wedge text { fill: #cbbd94; font: 14px 'Pixelify Sans', monospace; pointer-events: none; user-select: none; }
+.wheel-wedge text { fill: #cbbd94; font: 12px 'Pixelify Sans', monospace; pointer-events: none; user-select: none; }
 .wheel-wedge[data-active='true'] text { fill: #fff3c4; }
 .wheel-wedge[data-affordable='false'] path, .wheel-wedge[data-affordable='false'] text { opacity: .42; }
-.wheel-cost-gem { fill: #1b1409; stroke: #c9a15a; stroke-width: 1.5; pointer-events: none; }
+.wheel-cost-gem { fill: #0b1922; stroke: #c9a15a; stroke-width: 1.5; pointer-events: none; }
 .wheel-wedge[data-affordable='false'] .wheel-cost-gem { stroke: #e1836b; }
-.wheel-wedge text.wheel-cost { font: 14px 'VT323', monospace; fill: #ffe5a1; opacity: 1; }
+.wheel-wedge text.wheel-cost { font: 12px 'Pixelify Sans', monospace; fill: #ffe5a1; opacity: 1; }
 .wheel-wedge[data-affordable='false'] text.wheel-cost { fill: #f0a08a; opacity: 1; }
 .wheel-pointer { fill: #ffd479; stroke: #5b3f14; stroke-width: 1; transform-box: view-box; transform-origin: 50% 50%; transition: transform .16s ease-out; pointer-events: none; filter: drop-shadow(0 0 4px #ffd479); }
 
 /* The hub shows the live spell. */
-.wheel-hub { position: absolute; left: 50%; top: 50%; translate: -50% -50%; box-sizing: border-box; width: 196px; height: 196px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 16px 20px; text-align: center; border-radius: 50%; background: radial-gradient(circle at 50% 38%, #12262d, #08141bf2 72%); border: 2px solid #a8844a; box-shadow: inset 0 0 22px color-mix(in srgb, var(--el) 28%, transparent), 0 0 20px color-mix(in srgb, var(--el) 35%, transparent); pointer-events: none; }
-.wheel-hub-crest { font-size: 22px; line-height: 1; filter: drop-shadow(0 0 6px var(--el)); }
-.wheel-hub-name { font: 400 19px/1.1 'Pixelify Sans', monospace; color: #fff3c4; text-shadow: 0 0 10px color-mix(in srgb, var(--el) 70%, transparent); }
-.wheel-hub-cost { color: var(--el); font-size: 19px; }
+.wheel-hub { position: absolute; left: 50%; top: 50%; translate: -50% -50%; box-sizing: border-box; width: 196px; height: 196px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 16px 20px; text-align: center; border-radius: 50%; background: radial-gradient(circle at 50% 38%, #12262d, #08141bf2 72%); border: 2px solid #a8844a; box-shadow: inset 0 0 22px color-mix(in srgb, var(--el) 28%, transparent), 0 0 20px color-mix(in srgb, var(--el) 35%, transparent); pointer-events: none; }
+.wheel-hub-crest { font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--el); filter: drop-shadow(0 0 6px var(--el)); }
+.wheel-hub-name { font: 400 18px/1.15 'Pixelify Sans', monospace; color: #fff3c4; text-shadow: 0 0 10px color-mix(in srgb, var(--el) 70%, transparent); }
+.wheel-hub-cost { color: var(--el); font-size: 15px; }
 .wheel-hub-cost[data-affordable='false'] { color: #e1836b; }
-.wheel-hub-detail { margin: 2px 0; font-size: 16px; line-height: 1.05; color: #c1ccbf; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.wheel-hub-target { font-size: 17px; color: #9fb5b0; white-space: nowrap; }
+.wheel-hub-detail { margin: 2px 0; font-size: 13px; line-height: 1.2; color: #c1ccbf; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.wheel-hub-target { font-size: 14px; color: #9fb5b0; white-space: nowrap; }
 .wheel-hub-target b { color: #ffe5a1; font-weight: 400; }
 
 /* Keycap prompts under the wheel. */
-.wheel-prompts { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 14px; margin-top: 6px; padding: 5px 8px; background: #08141be6; border: 1px solid #6e5a35; color: #b9c8c2; font-size: 18px; pointer-events: auto; }
-.wheel-prompts span { white-space: nowrap; }
-.wheel-prompts small { flex-basis: 100%; text-align: center; font-size: 16px; color: #8aa09a; }
+.wheel-prompts { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; margin-top: 6px; padding: 6px 10px; background: #08141be6; border: 1px solid #6e5a35; color: #b9c8c2; font-size: 14px; pointer-events: auto; }
+.wheel-prompts span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.wheel-prompts small { flex-basis: 100%; text-align: center; font-size: 13px; color: #8aa09a; }
 .wheel-prompts .wheel-glove { color: #6f857f; }
-.glove-combat kbd { display: inline-block; margin: 0 2px; padding: 0 5px; font: 13px/1.5 'Pixelify Sans', monospace; color: #ffe5a1; background: #1b1409; border: 1px solid #b8964f; border-bottom-width: 2px; border-radius: 2px; }
+.glove-combat kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 19px; margin: 0 2px; padding: 0 5px; font: 12px/1 'Pixelify Sans', monospace; color: #ffe5a1; background: #0b1922; border: 1px solid #b8964f; border-bottom-width: 2px; border-radius: 2px; }
 
 /* The wolves' turn: the wheel folds into this banner so the attacks stay in view. */
-.defense-banner { position: absolute; left: 50%; bottom: var(--dock); translate: -50% 0; box-sizing: border-box; width: min(720px, calc(100% - 24px)); display: grid; justify-items: center; gap: 2px; padding: 7px 16px; text-align: center; background: #08141bec; border: 2px solid #a8844a; box-shadow: 4px 4px 0 #040b10; opacity: 0; transform: translateY(16px) scale(.96); pointer-events: none; transition: opacity .2s ease, transform .25s ease; }
+.defense-banner { position: absolute; left: 50%; bottom: var(--dock); translate: -50% 0; box-sizing: border-box; width: min(720px, calc(100% - 24px)); display: grid; justify-items: center; gap: 3px; padding: 8px 16px; text-align: center; background: #08141bec; border: 2px solid #a8844a; box-shadow: 4px 4px 0 #040b10; opacity: 0; transform: translateY(16px) scale(.96); pointer-events: none; transition: opacity .2s ease, transform .25s ease; }
 .glove-combat[data-phase='banner'] .defense-banner { opacity: 1; transform: none; transition-delay: .16s; }
-.defense-prompt { margin: 0; font: 400 23px/1.15 'VT323', monospace; color: #e6dfbd; }
-.defense-prompt[data-calm='true'] { font-size: 21px; color: #b9c8c2; }
-.defense-meta { font-size: 16px; color: #8aa09a; }
+.defense-prompt { margin: 0; font: 400 18px/1.25 'Pixelify Sans', monospace; color: #e6dfbd; }
+.defense-prompt[data-calm='true'] { font-size: 17px; color: #b9c8c2; }
+.defense-meta { font-size: 13px; color: #8aa09a; }
 .defense-banner[data-urgent='true'] { border-color: #ff6a4d; background: linear-gradient(#2a0d0aee, #08141bec); animation: defense-urgent 1s ease-in-out infinite; }
 .defense-banner[data-urgent='true'] .defense-prompt { color: #ffd9a8; text-shadow: 0 0 10px #ff5a3c; }
 .defense-banner[data-defending='true'] { border-color: #7fd8ff; animation: none; box-shadow: 0 0 26px #7fd8ff88, 4px 4px 0 #040b10; }

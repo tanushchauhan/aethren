@@ -181,7 +181,7 @@ export function GloveMenuNav() {
   if (!selected || !selected.host.isConnected) return null;
   return createPortal(
     <div className="glove-selected" role="status">
-      <span aria-hidden="true">⟳</span> Selected · Press <kbd className="glove-key">B1</kbd>
+      <kbd className="glove-key">Dial</kbd> Selected · Press <kbd className="glove-key">B1</kbd>
       {selected.label && <b>{selected.label}</b>}
     </div>,
     selected.host,

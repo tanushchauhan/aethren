@@ -4,6 +4,7 @@ import { useReducedMotion } from 'motion/react';
 import type { BuzzPattern } from '@once-upon/shared';
 import { playerStore, usePlayerState } from '../combat/playerState';
 import { useSpellBattle } from '../combat/spellBattle';
+import { useWolfTutorial } from '../combat/wolfTutorial';
 import { combatants } from '../combat/encounter';
 import { SPELLS, SPELLS_BY_ELEMENT, type SpellElement } from '../combat/spells';
 import { spellTiming } from '../combat/spellVfx';
@@ -16,7 +17,7 @@ import './glove-combat.css';
 const ELEMENTS: SpellElement[] = ['fire', 'frost', 'storm'];
 const ELEMENT_RGB: Record<SpellElement, [number, number, number]> = { fire: [255, 110, 30], frost: [80, 200, 255], storm: [170, 110, 255] };
 const ELEMENT_COLOR: Record<SpellElement, string> = { fire: '#ff8a3d', frost: '#7fd8ff', storm: '#c49bff' };
-const ELEMENT_CREST: Record<SpellElement, string> = { fire: '🔥', frost: '❄', storm: '⚡' };
+const ELEMENT_CREST: Record<SpellElement, string> = { fire: '◆ Fire', frost: '❖ Frost', storm: '✦ Storm' };
 const TARGET_CLASS = 'glove-target';
 /** Fire, frost, then storm: four spells each, so a wedge index / 4 is its element. */
 const WHEEL = ELEMENTS.flatMap((element) => SPELLS_BY_ELEMENT[element]);
@@ -90,7 +91,10 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
 
   const moveTo = (next: number, withBuzz = false) => {
     const wrapped = ((next % SLOTS) + SLOTS) % SLOTS;
-    if (withBuzz && wrapped !== slotRef.current) buzz('tick');
+    if (wrapped !== slotRef.current) {
+      if (withBuzz) buzz('tick');
+      useWolfTutorial.getState().notifyAction('dial');
+    }
     slotRef.current = wrapped;
     setSlot(wrapped);
   };
@@ -104,7 +108,8 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       'natural',
       powerBoost ? { autoEndTurn: true, powerBoost } : { autoEndTurn: true },
     );
-    if (!ok && source === 'glove') buzz('fizzle');
+    if (ok) useWolfTutorial.getState().notifyAction('cast');
+    else if (source === 'glove') buzz('fizzle');
   };
   const rest = () => {
     const state = useSpellBattle.getState();
@@ -113,8 +118,12 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   const cycleTarget = (withBuzz = false) => {
     setTargetIndex((index) => (index + 1) % Math.max(1, wolves.length));
     if (withBuzz) buzz('tick');
+    useWolfTutorial.getState().notifyAction('target');
   };
-  const nextElement = (withBuzz = false) => moveTo((slotRef.current ?? slot) + PER_ELEMENT, withBuzz);
+  const nextElement = (withBuzz = false) => {
+    moveTo((slotRef.current ?? slot) + PER_ELEMENT, withBuzz);
+    useWolfTutorial.getState().notifyAction('element');
+  };
   /** Dodge and parry only mean something while a wolf is attacking; a dodge is never downgraded to a parry. */
   const defend = (mode: 'dodge' | 'parry', label: string, ms: number) => {
     const state = useSpellBattle.getState();
@@ -125,6 +134,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
     lastDefense.current = { mode, at: now };
     state.triggerDefense(mode, label, ms);
     if (mode === 'parry') playerStore.getState().setStance('guarding');
+    useWolfTutorial.getState().notifyAction('parry');
     setFlash({ id: ++flashId.current, mode });
   };
   const swung = (power: number) => {
@@ -194,7 +204,11 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   useEffect(() => {
     if (!hub || !glove) return;
     const value = readDial(hub, glove.id);
-    if (value !== null) moveTo(dialSlot(value, SLOTS));
+    if (value !== null) {
+      const initial = dialSlot(value, SLOTS);
+      slotRef.current = initial;
+      setSlot(initial);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [glove?.id, hub]);
 
@@ -282,7 +296,10 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   const targetLine = spell.target === 'self' ? 'Self' : (target?.name ?? 'none');
   const canAfford = magic >= spell.cost;
 
-  return <aside className="glove-combat" data-element={element} data-phase={wheelShown ? 'wheel' : 'banner'} style={{ '--el': ELEMENT_COLOR[element] } as CSSProperties} aria-label="Spell wheel">
+  const tutorialStep = useWolfTutorial((s) => s.activeStep);
+  const wheelTutorialActive = wheelShown && tutorialStep !== null && tutorialStep !== 'parry';
+
+  return <aside className="glove-combat" data-element={element} data-phase={wheelShown ? 'wheel' : 'banner'} data-tutorial={wheelTutorialActive || undefined} style={{ '--el': ELEMENT_COLOR[element] } as CSSProperties} aria-label="Spell wheel">
     <section className="spell-wheel" aria-hidden={!wheelShown} aria-label="Radial spell wheel">
       <div className="spell-wheel-dial">
         <svg viewBox="0 0 360 360" role="group" aria-label="Spells">
@@ -315,20 +332,20 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
         </div>
       </div>
       <footer className="wheel-prompts">
-        <span><kbd>⟳ Dial</kbd> Spin Wheel</span>
-        <span><kbd>B1</kbd> or <kbd>Swing</kbd> Cast Spell</span>
-        <span><kbd>T</kbd> Target Wolf</span>
-        <span><kbd>B2</kbd> Next Element · <kbd>Hold B2</kbd> Rest (+3 MP)</span>
-        {!glove && <small className="wheel-keys">No glove: <kbd>←</kbd><kbd>→</kbd> spin · <kbd>Enter</kbd> cast · <kbd>T</kbd> target · <kbd>R</kbd> rest · or click a wedge</small>}
+        <span><kbd>Dial</kbd> Spin Wheel</span>
+        <span><kbd>B1</kbd> or <kbd>Swing</kbd> Cast</span>
+        <span><kbd>T</kbd> Target</span>
+        <span><kbd>B2</kbd> Element · <kbd>Hold B2</kbd> Rest</span>
+        {!glove && <small className="wheel-keys">Keys: <kbd>←</kbd><kbd>→</kbd> spin · <kbd>Enter</kbd> cast · <kbd>T</kbd> target · <kbd>R</kbd> rest · or click a wedge</small>}
         {profile && <small className="wheel-glove">{profile.label}</small>}
       </footer>
     </section>
 
     <section className="defense-banner" data-urgent={attacking} data-defending={dodging || parrying} aria-hidden={wheelShown} role="status">
-      {dodging && <strong className="defense-flash" data-mode="dodge">⚡ DODGED!</strong>}
-      {parrying && !dodging && <strong className="defense-flash" data-mode="parry">🛡 PARRYING (GLOVE WARD)!</strong>}
+      {dodging && <strong className="defense-flash" data-mode="dodge">◆ DODGED!</strong>}
+      {parrying && !dodging && <strong className="defense-flash" data-mode="parry">◆ PARRYING (GLOVE WARD)!</strong>}
       {attacking
-        ? <p className="defense-prompt">⚔ {boss ? 'GATEKEEPER ATTACKING!' : 'WOLF ATTACKING!'} Shake Glove or Press <kbd>T</kbd> / <kbd>B2</kbd> to PARRY!</p>
+        ? <p className="defense-prompt">◆ {boss ? 'GATEKEEPER ATTACKING!' : 'WOLF ATTACKING!'} Shake Glove or Press <kbd>T</kbd> / <kbd>B2</kbd> to PARRY!</p>
         : <p className="defense-prompt" data-calm="true">{battle.pending ? `✦ Casting ${battle.pending.spell.name}…` : battle.activeId === 'player' ? 'Your turn…' : boss ? 'The Gatekeeper raises his axe…' : 'The wolves are moving…'}</p>}
       <small className="defense-meta">Turn {battle.turnNumber} · MP {magic}/{maxMagic}</small>
     </section>

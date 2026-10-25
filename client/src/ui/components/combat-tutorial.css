@@ -1,0 +1,205 @@
+.combat-tutorial {
+  position: fixed; inset: 0; z-index: 45;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  padding-top: 3.5vh; box-sizing: border-box;
+  background: radial-gradient(circle at 50% 68%, rgba(6, 16, 24, 0.58) 0%, rgba(2, 8, 13, 0.92) 62%);
+  backdrop-filter: blur(9px) saturate(130%); -webkit-backdrop-filter: blur(9px) saturate(130%);
+  color: #e7e2cb; font-family: 'Pixelify Sans', monospace;
+  animation: ct-fade .3s ease-out both;
+  pointer-events: none; /* Let glove, keyboard, and wheel clicks pass through to the live HUD! */
+}
+.combat-tutorial.ct-parry {
+  justify-content: center; padding-top: 0;
+  background: radial-gradient(circle at 50% 42%, rgba(45, 10, 18, 0.45) 0%, rgba(4, 10, 16, 0.94) 68%);
+}
+.ct-scanlines {
+  position: absolute; inset: 0; pointer-events: none; opacity: .28;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(0, 0, 0, .35) 3px 4px);
+}
+.ct-panel {
+  position: relative; box-sizing: border-box;
+  width: min(600px, 92vw); max-height: 54vh; overflow-y: auto;
+  padding: 16px 26px 14px;
+  border: 2px solid #c9b883; background: #0b1922f2; text-align: center;
+  box-shadow: 0 0 0 4px #061016cc, 0 0 38px #000c, 0 0 26px #ffe5ad22;
+  animation: ct-rise .38s cubic-bezier(.2, .8, .3, 1) both;
+  pointer-events: auto;
+}
+.combat-tutorial.ct-parry .ct-panel {
+  max-height: 78vh;
+  border-color: #ff7a59;
+  box-shadow: 0 0 0 4px #1a070bcc, 0 0 42px #ff5a3c55, inset 0 0 24px #ff5a3c22;
+}
+.ct-step {
+  margin-bottom: 4px; color: #d6b77b; font-size: 13px; letter-spacing: 2.5px; text-transform: uppercase;
+}
+.combat-tutorial.ct-parry .ct-step {
+  color: #ffb199; font-weight: 700;
+}
+.ct-title {
+  margin: 0 0 10px; color: #ffe5ad;
+  font: 400 clamp(22px, 3vw, 30px)/1.1 'Pixelify Sans', monospace;
+  letter-spacing: 1px; text-shadow: 0 2px 4px #000;
+}
+.ct-lines p {
+  margin: 0 0 5px; font-size: clamp(15px, 1.6vw, 18px); line-height: 1.35; color: #d5e0dc;
+}
+.ct-requirement {
+  margin: 8px auto 6px; padding: 6px 14px; display: inline-block;
+  color: #ffe5ad; background: #162c38; border: 1px solid #c9b883;
+  font-size: 16px; letter-spacing: .5px;
+  box-shadow: 0 0 14px #ffe5ad33;
+  animation: ct-keypulse 1.3s ease-in-out infinite;
+}
+.combat-tutorial.ct-parry .ct-requirement {
+  background: #331219; border-color: #ff8a6b; color: #ffe27a;
+}
+.ct-keys {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px;
+  margin: 6px 0 4px; padding: 0; list-style: none;
+}
+.ct-keys li { display: flex; align-items: center; gap: 7px; font-size: 14px; color: #b9c8c2; }
+.ct-keys kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; height: 22px; padding: 0 8px; box-sizing: border-box;
+  color: #ffe5ad; background: #0b1922; border: 1px solid #c9b883; border-bottom: 2px solid #9f8c63; border-radius: 3px;
+  font: 400 13px/1 'Pixelify Sans', monospace;
+}
+.ct-actions {
+  display: flex; justify-content: center; align-items: center; gap: 14px; margin-top: 8px;
+}
+.ct-actions button {
+  font: 400 14px 'Pixelify Sans', monospace; letter-spacing: .5px; cursor: pointer;
+}
+.ct-continue {
+  padding: 5px 18px; color: #ffe5ad; background: #1d3540; border: 1px solid #c9b883;
+}
+.ct-continue:hover, .ct-continue:focus-visible {
+  background: #294957; outline: 2px solid #ffe5ad; outline-offset: 2px;
+}
+.ct-skip {
+  padding: 4px 8px; color: #8da39e; background: transparent; border: 0; text-decoration: underline;
+}
+.ct-skip:hover, .ct-skip:focus-visible { color: #ffe5ad; }
+
+.ct-wheel-callout {
+  margin-top: 8px; padding: 4px 14px;
+  background: #08141be6; border: 1px solid #c9b88388; color: #ffe5ad;
+  font-size: 14px; letter-spacing: 1.5px;
+  animation: ct-bob 1.2s ease-in-out infinite;
+}
+
+/* Framed Animated SVG Demo Screen */
+.ct-demo {
+  position: relative; width: 100%; height: 132px; margin: 0 0 10px;
+  overflow: hidden; border: 1px solid #c9b88366; background: #050e14;
+  box-shadow: inset 0 0 24px #000a;
+}
+.ct-demo-tag {
+  position: absolute; top: 5px; left: 10px; z-index: 2;
+  font-size: 11px; letter-spacing: 1.5px; color: #9fb5b0;
+}
+.ct-svg {
+  width: 100%; height: 100%; display: block;
+  font-family: 'Pixelify Sans', monospace;
+}
+
+/* Step 1: Dial Knob & Wheel Sync Animation */
+.ct-anim-knob {
+  transform-origin: 0 0;
+  animation: ct-knob-twist 2.8s ease-in-out infinite;
+}
+@keyframes ct-knob-twist {
+  0%, 100% { transform: rotate(-65deg); }
+  50% { transform: rotate(75deg); }
+}
+
+/* Step 2: B2 Tap & Element Highlight */
+.ct-anim-tap {
+  animation: ct-tap-press 1.2s ease-in-out infinite;
+}
+@keyframes ct-tap-press {
+  0%, 100% { transform: translateY(0) scale(1); }
+  35% { transform: translateY(3px) scale(0.93); }
+}
+.ct-el-fire { animation: ct-el-pulse 3.6s steps(1) infinite; }
+.ct-el-frost { animation: ct-el-pulse 3.6s steps(1) infinite -2.4s; }
+.ct-el-storm { animation: ct-el-pulse 3.6s steps(1) infinite -1.2s; }
+@keyframes ct-el-pulse {
+  0%, 33% { filter: drop-shadow(0 0 10px #ffe5ad); transform: translateY(-4px) scale(1.06); opacity: 1; }
+  34%, 100% { filter: none; opacity: 0.45; }
+}
+
+/* Step 3: Touch Sensor & Target Reticle Hop */
+.ct-anim-touch-ring {
+  animation: ct-touch-ripple 1.2s ease-out infinite;
+}
+@keyframes ct-touch-ripple {
+  0% { transform: scale(0.85); opacity: 1; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+.ct-reticle-0 { animation: ct-reticle-show 3.6s steps(1) infinite; }
+.ct-reticle-1 { animation: ct-reticle-show 3.6s steps(1) infinite -2.4s; }
+.ct-reticle-2 { animation: ct-reticle-show 3.6s steps(1) infinite -1.2s; }
+@keyframes ct-reticle-show {
+  0%, 33% { opacity: 1; }
+  34%, 100% { opacity: 0; }
+}
+
+/* Step 4: Glove Swing & Fireball Cast */
+.ct-anim-glove-swing {
+  animation: ct-glove-thrust 2.2s ease-in-out infinite;
+}
+@keyframes ct-glove-thrust {
+  0%, 20%, 100% { transform: translate(78px, 76px) rotate(0deg); }
+  40% { transform: translate(96px, 72px) rotate(12deg) scale(1.08); }
+}
+.ct-anim-fireball {
+  animation: ct-fireball-fly 2.2s ease-in infinite;
+}
+@keyframes ct-fireball-fly {
+  0%, 30% { transform: translate(125px, 76px) scale(0.3); opacity: 0; }
+  40% { opacity: 1; transform: translate(145px, 76px) scale(1); }
+  78% { opacity: 1; transform: translate(285px, 76px) scale(1.15); }
+  85%, 100% { opacity: 0; transform: translate(305px, 76px) scale(0.4); }
+}
+.ct-anim-impact-burst {
+  animation: ct-burst-flash 2.2s ease-out infinite;
+}
+@keyframes ct-burst-flash {
+  0%, 72%, 100% { opacity: 0; }
+  78%, 92% { opacity: 1; }
+}
+
+/* Step 5: Mid-Attack Freeze Parry */
+.ct-anim-wolf-lunge {
+  animation: ct-wolf-lunge-step 2.2s ease-in-out infinite;
+}
+@keyframes ct-wolf-lunge-step {
+  0%, 100% { transform: translate(74px, 76px); }
+  45%, 75% { transform: translate(112px, 72px) scale(1.08); }
+}
+.ct-anim-shield-flash {
+  animation: ct-shield-pop 2.2s ease-out infinite;
+}
+@keyframes ct-shield-pop {
+  0%, 38% { opacity: 0.25; transform: translate(192px, 74px) scale(0.88); }
+  48%, 85% { opacity: 1; transform: translate(192px, 74px) scale(1.06); filter: drop-shadow(0 0 14px #7fd8ff); }
+  100% { opacity: 0.25; transform: translate(192px, 74px) scale(0.88); }
+}
+.ct-anim-glove-shake {
+  animation: ct-shake-hand 0.55s ease-in-out infinite;
+}
+@keyframes ct-shake-hand {
+  0%, 100% { transform: translate(304px, 76px) rotate(-5deg); }
+  50% { transform: translate(304px, 72px) rotate(6deg); }
+}
+
+@keyframes ct-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ct-rise { from { opacity: 0; transform: translateY(-12px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes ct-keypulse { 0%, 100% { box-shadow: 0 0 8px #ffe5ad22; } 50% { box-shadow: 0 0 18px #ffe5ad77; } }
+@keyframes ct-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .combat-tutorial, .ct-panel, .ct-requirement, .ct-wheel-callout, .ct-svg * { animation: none !important; }
+}

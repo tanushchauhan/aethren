@@ -1,12 +1,12 @@
-.glove-select { min-height: 100svh; display: grid; place-items: center; padding: 24px; box-sizing: border-box; background: #071015 url('/art/moonlit-forest.png') center / cover no-repeat; color: #efe9c9; font: 24px 'VT323', monospace; }
+.glove-select { min-height: 100svh; display: grid; place-items: center; padding: 24px; box-sizing: border-box; background: #071015 url('/art/moonlit-forest.png') center / cover no-repeat; color: #efe9c9; font: 20px/1.4 'Pixelify Sans', monospace; }
 .glove-panel { width: min(760px, 100%); box-sizing: border-box; padding: 32px 36px; background: #101e23ee; border: 2px solid #7f978c; box-shadow: 6px 6px 0 #040b10, 0 0 55px #78a7a326; }
-.glove-panel h1 { margin: 0 0 12px; font: 22px/1.4 'Silkscreen', monospace; color: #ebdfb6; }
-.glove-lede { margin: 0 0 22px; line-height: 1.25; color: #c1ccbf; }
+.glove-panel h1 { margin: 0 0 12px; font: 28px/1.3 'Pixelify Sans', monospace; color: #ebdfb6; }
+.glove-lede { margin: 0 0 22px; line-height: 1.4; color: #c1ccbf; }
 .glove-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
 .glove-card { width: 100%; display: grid; gap: 6px; text-align: left; padding: 16px; font: inherit; color: inherit; background: #0b161b; border: 1px solid #748d83; cursor: pointer; }
 .glove-card:not(:disabled):hover, .glove-card:not(:disabled):focus-visible { border-color: #f4dc99; box-shadow: 0 0 18px #f4dc9955; outline: none; }
 .glove-card:disabled { cursor: not-allowed; opacity: .6; }
-.glove-name { font: 20px 'Silkscreen', monospace; color: #ffe5a1; }
+.glove-name { font: 22px 'Pixelify Sans', monospace; color: #ffe5a1; }
 .glove-kind { color: #9fb5b0; }
 .glove-state { display: flex; align-items: center; gap: 8px; }
 .glove-state i { width: 10px; height: 10px; border-radius: 50%; background: #6c7b76; }
@@ -18,16 +18,16 @@
 .glove-alert code { background: #071116; padding: 1px 6px; border: 1px solid #748d83; }
 .glove-hint { margin: 16px 0 0; color: #9fb5b0; }
 .glove-legend { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 26px; padding-top: 16px; border-top: 1px solid #3a4f4a; color: #9fb5b0; font-size: 21px; }
-/* Keycaps: parchment gold on deep forest slate, the same on every screen. */
-kbd, .glove-key { display: inline-block; min-width: 26px; padding: 0 6px; box-sizing: border-box; text-align: center; white-space: nowrap; color: #0d202b; background: #ffe5ad; border: 1px solid #d9bb73; border-bottom-width: 3px; border-bottom-color: #a98a46; border-radius: 3px; box-shadow: 0 0 8px #ffe5ad33; font: 16px/1.3 'Silkscreen', monospace; vertical-align: middle; }
+/* Keycaps: dark enchanted slate pill with crisp gold border and Pixelify Sans font, matching the game UI. */
+kbd, .glove-key { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 24px; height: 22px; padding: 0 7px; box-sizing: border-box; text-align: center; white-space: nowrap; color: #ffe5ad; background: #0b1922e6; border: 1px solid #c9b88399; border-bottom: 2px solid #9f8c63; border-radius: 3px; box-shadow: 0 1px 3px #02080d99; font: 400 13px/1 'Pixelify Sans', monospace; letter-spacing: .5px; text-shadow: none; vertical-align: middle; }
 button .glove-key { margin-left: 10px; font-size: 13px; pointer-events: none; }
-.glove-badge { position: fixed; z-index: 50; top: 12px; right: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 5px 8px 5px 14px; background: #0d202bea; border: 1px solid #bda675; border-radius: 999px; box-shadow: 0 0 0 3px #07141b85, 0 6px 18px #020a1266; color: #c1ccbf; font: 18px 'VT323', monospace; }
+.glove-badge { position: fixed; z-index: 50; top: 14px; right: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 6px 12px; background: #081319e6; border: 1px solid #8b9c7c70; color: #c1ccbf; font: 15px 'Pixelify Sans', monospace; }
 .glove-badge-id { color: #ffe5ad; }
 .glove-badge-keys { display: inline-flex; gap: 4px; }
-.glove-badge-keys .glove-key { min-width: 0; font-size: 12px; }
-.glove-badge button { font: inherit; color: #0d202b; background: #ffe5ad; border: 0; border-radius: 999px; padding: 0 10px; cursor: pointer; }
-.glove-badge button:hover, .glove-badge button:focus-visible { background: #fff1c9; outline: none; }
-.glove-selected { position: fixed; z-index: 70; left: 50%; bottom: 18px; translate: -50% 0; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 24px); padding: 6px 16px; background: #0d202bf2; border: 1px solid #ffe5ad; border-radius: 999px; box-shadow: 0 0 22px #ffe5ad55; color: #ffe5ad; font: 22px 'VT323', monospace; pointer-events: none; }
+.glove-badge-keys .glove-key { min-width: 0; height: 20px; padding: 0 5px; font-size: 11px; }
+.glove-badge button { font: inherit; color: #d6c59a; background: transparent; border: 1px solid #8b9c7c70; padding: 2px 8px; cursor: pointer; }
+.glove-badge button:hover, .glove-badge button:focus-visible { color: #ffe5ad; border-color: #ffe5ad; outline: none; }
+.glove-selected { position: fixed; z-index: 70; left: 50%; bottom: 18px; translate: -50% 0; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 24px); padding: 6px 16px; background: #081319f2; border: 1px solid #c9b883; box-shadow: 0 6px 22px #000a; color: #ffe5ad; font: 18px 'Pixelify Sans', monospace; pointer-events: none; }
 .glove-selected b { color: #c1ccbf; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .glove-lost { position: fixed; z-index: 60; inset: 0; display: grid; place-content: center; gap: 4px; text-align: center; background: #040b10d9; color: #efe9c9; font: 28px 'VT323', monospace; }
 @media (max-width: 600px) { .glove-panel { padding: 22px 18px; } }
