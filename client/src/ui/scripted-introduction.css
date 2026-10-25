@@ -1,0 +1,33 @@
+.scripted-intro { position: relative; width: 100%; height: 100%; overflow: hidden; background: #020609; }
+.scripted-intro.completed { background: #091820 url('/art/forest-base.png') center / cover no-repeat; }
+.intro-scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.intro-children { position: absolute; inset: 36% 40% 28%; display: flex; align-items: flex-end; justify-content: center; gap: 15px; }
+.intro-children img { height: 100%; max-width: 100%; object-fit: contain; image-rendering: pixelated; filter: brightness(.38); }
+.intro-children.multiple { left: 34%; right: 34%; }
+.intro-children.multiple img { max-width: 48%; }
+.intro-children img + img { transform: scaleX(-1); }
+.intro-dialogue-wrap .novel-dialogue { background: #08141de0; }
+.intro-skip, .intro-sound { position: absolute; border: 1px solid #aebbc450; background: #061018b3; color: #bdc9ca; font: 16px 'Pixelify Sans', monospace; padding: 10px 16px; cursor: pointer; }
+.intro-skip { right: 4%; bottom: 28px; }
+.intro-sound { top: 24px; right: 4%; }
+.intro-skip:focus-visible, .intro-sound:focus-visible { outline: 2px solid #ffe5ad; outline-offset: 4px; }
+
+/* The first panel is total darkness before the fracture reveals the forest. */
+.intro-scene:first-child { filter: brightness(0); }
+
+.intro-camera, .story-players { position: absolute; inset: 0; }
+.intro-camera { transform-origin: 50% 55%; }
+.story-arrival, .story-departure { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.story-arrival { transform-origin: 52% 46%; }
+
+.rift-flash { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+
+.wolf-arrival { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 35%; transform-origin: 50% 35%; pointer-events: none; }
+.path-choice h2 { color: #e3d4aa; font-size: 30px; margin: 0 0 10px; font-weight: 400; }
+.path-choice > p { color: #afc1bc; font-size: 21px; }
+.path-options { display: flex; gap: 24px; padding-top: 18px; border-top: 1px solid #bda67540; }
+.path-options button { flex: 1; background: #0d202bb3; border: 1px solid #bda67580; color: #ffe5ad; padding: 18px 22px; text-align: left; font: 26px 'Pixelify Sans', monospace; cursor: pointer; }
+.path-options button span { font-size: 13px; margin-right: 16px; }
+.path-options small { display: block; color: #afc1bc; font: 18px 'Pixelify Sans', monospace; margin: 8px 0 0 30px; }
+.path-options button:hover { background: #d5be851a; }
+.path-options button:focus-visible { outline: 2px solid #ffe5ad; outline-offset: 4px; }

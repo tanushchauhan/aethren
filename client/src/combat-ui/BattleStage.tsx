@@ -142,7 +142,7 @@ export function BattleStage() {
       </div>
       <section className={styles.foe} aria-label="Enemy">
         <div className={styles.portraitFrame}>
-          <FoePortrait key={artKey} url={artUrl} kind={kind} />
+          {kind === 'monster' ? <div className={styles.minionGroup}>{[0,1,2].map(i => <div key={`${artKey}-${i}`}><FoePortrait url={artUrl} kind={kind} /></div>)}</div> : <FoePortrait key={artKey} url={artUrl} kind={kind} />}
         </div>
         <h2 className={styles.foeName}>{name}</h2>
         <div className={styles.hpRow}>

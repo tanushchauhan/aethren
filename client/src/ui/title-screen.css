@@ -59,3 +59,9 @@
 .menu-flourish { margin-left: auto; color: #e7c68b; font-size: 15px; opacity: 0; }
 .title-menu button[data-active="true"] .menu-flourish { opacity: 1; }
 .title-menu button:focus-visible { outline: 1px solid #e6d6aa; outline-offset: 4px; }
+
+.adventure-modes { border: 1px solid #7f978c; padding: 14px; margin: 0 0 20px; }
+.adventure-modes legend { color: #ebdfb6; font-size: 18px; }
+.title-dialog .adventure-modes label { display: flex; align-items: center; gap: 12px; margin: 8px 0; cursor: pointer; }
+.title-dialog .adventure-modes input { width: 18px; height: 18px; accent-color: #e7c68b; }
+.adventure-modes p { font-size: 16px; line-height: 1.4; color: #b9c6b5; margin: 12px 0 0; }

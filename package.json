@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm --filter @once-upon/client dev",
+    "dev": "pnpm --parallel --filter @once-upon/client --filter @once-upon/server dev",
     "dev:server": "pnpm --filter @once-upon/server dev",
     "typecheck": "pnpm -r --if-present typecheck",
     "build": "pnpm -r --if-present build",

@@ -21,6 +21,21 @@ function storybookJoin(socket: FakeSocket, event: string, payload: Record<string
 const sbState = (socket: FakeSocket) => socket.last('room:state') as StorybookGameState;
 
 describe('storybook client contract', () => {
+  it('creates a full singleplayer adventure and rejects extra human seats', async () => {
+    const h = createHarness();
+    const host = h.connect();
+    storybookJoin(host, 'room:create', { playerName: 'Maya', role: 'spellbearer', mode: 'singleplayer' });
+    await adv(0);
+    const state = sbState(host);
+    expect(state.phase).toBe('upload');
+    expect(state.quickStart).toBe(false);
+    expect(h.engine.debugRoom(state.roomCode)?.singleplayer).toBe(true);
+    const guest = h.connect();
+    storybookJoin(guest, 'room:join', { code: state.roomCode, playerName: 'Dev', role: 'spellbearer' });
+    expect(guest.last('room:error')).toEqual({ message: 'This is a singleplayer adventure. Create an online adventure to play together.' });
+    expect(guest.all('room:joined')).toHaveLength(0);
+  });
+
   it('answers an ack-less create with room:joined, then storybook-shaped state on its own channel', async () => {
     const h = createHarness();
     const sb = h.connect();
@@ -92,12 +107,18 @@ describe('storybook client contract', () => {
     // ...until the client reports the narration finished (or Continue).
     sb.send('room:advance', { phase: 'calibrating' });
     expect(sbState(sb).phase).toBe('calibrating');
-    // No calibration event in the storybook contract: standing in the zone counts.
-    sb.send('player:pose', { landmarks: [], inZone: true });
+    // A missing camera must not time out into combat. Repeated pose frames must not
+    // keep postponing the one-second ready timer.
+    await adv(20_000);
+    expect(sbState(sb).phase).toBe('calibrating');
+    for (let i = 0; i < 20; i++) {
+      sb.send('player:pose', { landmarks: [], inZone: true });
+      await adv(75);
+    }
     await advanceUntil(h.engine, code, 'telegraph', adv, 5_000);
     const fight = sbState(sb);
     expect(fight).toMatchObject({ phase: 'encounter', combatPhase: 'telegraph' });
-    expect(fight.encounter).toMatchObject({ name: 'The Rusted Steed', hp: fight.encounter!.maxHp });
+    expect(fight.encounter).toMatchObject({ name: 'The Rusted Steed · minions', hp: fight.encounter!.maxHp });
     expect(sb.last('combat:telegraph')).toMatchObject({ attackType: expect.any(String), windowMs: expect.any(Number) });
 
     sb.send('player:dodge_result', { attackId: sb.last('combat:telegraph').attackId, dodged: true, parried: false, serverTimestampMs: Date.now() });
@@ -106,8 +127,36 @@ describe('storybook client contract', () => {
     sb.send('player:cast', { element: 'frost', gesture: 'thrust', transcript: '', power: 1, serverTimestampMs: Date.now() });
     expect(sb.last('player:cast')).toMatchObject({ playerId: me, element: 'frost' });
     expect(sbState(sb).combatPhase).toBe('team_turn');
-    // No camera frames were sent, yet the player may cast, so the client sees them in the zone.
+    // The calibrated pose keeps the player in the casting zone.
     expect(sbState(sb).players.find((p) => p.id === me)).toMatchObject({ inZone: true });
+  });
+
+  it('teaches all three defenses in one minion stage, then goes directly to the boss', async () => {
+    const h = createHarness();
+    const sb = h.connect();
+    storybookJoin(sb, 'room:quick_start', { playerName: 'Maya', role: 'spellbearer' });
+    await adv(0);
+    const code = sbState(sb).roomCode;
+    const me = sb.data.playerId!;
+    sb.send('room:advance', { phase: 'intro' });
+    await advanceUntil(h.engine, code, 'intro', adv);
+    sb.send('room:advance', { phase: 'calibrating' });
+    sb.send('player:pose', { landmarks: [], inZone: true });
+    for (const expected of ['low_sweep', 'high_swing', 'projectile']) {
+      await advanceUntil(h.engine, code, 'telegraph', adv);
+      const attack = sb.last('combat:telegraph');
+      expect(attack.attackType).toBe(expected);
+      sb.send('player:dodge_result', { attackId: attack.attackId, dodged: true, parried: false, serverTimestampMs: Date.now() });
+      await advanceUntil(h.engine, code, 'team_turn', adv);
+      h.engine.debugRoom(code)!.state.enemyHp = 1;
+      h.engine.recordIncantation(code, me, 'ember', passed());
+      sb.send('player:cast', { element: 'ember', gesture: 'thrust', power: 1, serverTimestampMs: Date.now() });
+      if (expected !== 'projectile') expect(h.engine.getState(code)!.enemyHp).toBe(1);
+      await advanceUntil(h.engine, code, 'resolve', adv);
+    }
+    await advanceUntil(h.engine, code, 'intro', adv);
+    expect(h.engine.getState(code)!.fightingBoss).toBe(true);
+    h.engine.dispose();
   });
 
   it('keeps several cards like the client, and crowning a kept card falls back to another for the encounter', async () => {

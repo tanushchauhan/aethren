@@ -1,3 +1,4 @@
+import type { PoseActionType } from '@once-upon/shared';
 /**
  * Teammate 2 client contract.
  * Mirrors docs/team-plan.md Phase 0 types. When Teammate 1 publishes
@@ -84,6 +85,7 @@ export interface PlayerPublic {
   name: string;
   role: PlayerRole;
   inZone: boolean;
+  canCast?: boolean;
   connected: boolean;
   selectedElement: ElementP0;
   elementLocked: boolean;
@@ -197,10 +199,10 @@ export interface ServerToClientEvents {
 export interface ClientToServerEvents {
   'room:advance': { phase: RoomPhase };
   'clock:ping': ClockPing;
-  'room:create': { playerName: string; role: PlayerRole };
+  'room:create': { playerName: string; role: PlayerRole; mode?: 'singleplayer' | 'online' };
   'room:join': { code: string; playerName: string; role: PlayerRole };
   'room:quick_start': { playerName: string; role: PlayerRole };
-  'player:pose': { landmarks: NormalizedLandmark[]; inZone: boolean };
+  'player:pose': { landmarks: NormalizedLandmark[]; inZone: boolean; activeAction?: PoseActionType; confidence?: number; serverTimestampMs?: number };
   'player:dodge_result': Omit<DodgeResult, 'playerId'>;
   'player:cast': Omit<CastEvent, 'playerId'>;
   'hardware:event': HardwareEvent;

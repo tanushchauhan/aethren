@@ -53,7 +53,8 @@ function resolveServerUrl(url?: string): string {
   if (requested) return requested;
   const fromEnv = import.meta.env.VITE_SERVER_URL?.trim();
   if (fromEnv) return fromEnv;
-  return DEFAULT_SERVER_URL;
+  // Vite proxies the game connection locally; production serves it at the same origin.
+  return typeof window !== 'undefined' ? window.location.origin : DEFAULT_SERVER_URL;
 }
 
 function bindSocket(socket: GameSocket): void {

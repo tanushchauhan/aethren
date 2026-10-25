@@ -1,0 +1,24 @@
+.novel-dialogue {
+  position: absolute; bottom: 28px; left: 4%; right: 4%;
+  box-sizing: border-box; padding: 36px 34px 16px;
+  border: 1px solid #bda675; background: #0d202bd9; color: #e7e2cb;
+  box-shadow: 0 0 0 4px #07141b85, 0 0 0 5px #ae996a55, 0 12px 40px #020a1266;
+  backdrop-filter: blur(4px); font-family: 'Pixelify Sans', monospace;
+}
+.novel-speaker { position: absolute; top: -22px; left: 26px; display: flex; gap: 14px; align-items: center; padding: 9px 22px; border: 1px solid #c9b883; background: #233a42; color: #ffe5ad; font-size: 20px; }
+.novel-speaker span { font-size: 11px; color: #d6b77b; }
+.novel-prose { min-height: 104px; font-size: clamp(22px, 2.1vw, 29px); line-height: 1.6; letter-spacing: .3px; overflow-wrap: anywhere; }
+.novel-prose p { margin: 0 0 10px; }
+.novel-prose strong { color: #ffe3a5; font-weight: 600; }
+.novel-prose em { color: #c3d9d2; }
+.novel-dialogue-actions { display: flex; gap: 24px; align-items: center; padding-top: 14px; margin-top: 14px; border-top: 1px solid #bda67540; }
+.novel-page { margin-right: auto; color: #9cafa9; font-size: 15px; letter-spacing: 2px; }
+.novel-dialogue-actions button { border: 0; background: transparent; color: #bccbc5; padding: 8px 14px; font: 21px 'Pixelify Sans', monospace; cursor: pointer; }
+.novel-dialogue-actions .novel-next { color: #ffe5ad; border: 1px solid #bda67580; min-width: 126px; }
+.novel-dialogue-actions button span { margin-left: 14px; font-size: 14px; }
+.novel-dialogue-actions button:hover { background: #d5be851a; color: #ffe5ad; }
+.novel-dialogue-actions button:focus-visible { outline: 2px solid #ffe5ad; outline-offset: 4px; }
+.novel-sr-text { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.novel-speaker { color: var(--speaker-color, #ffe5ad); border-color: var(--speaker-color, #c9b883); }
+.novel-prose { color: var(--speaker-color, #e7e2cb); }

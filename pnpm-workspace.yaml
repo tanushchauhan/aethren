@@ -4,3 +4,10 @@ packages:
   - "server"
 allowBuilds:
   esbuild: true
+  msedge-tts: true
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: true
+
+overrides:
+  ip-address: 10.0.1

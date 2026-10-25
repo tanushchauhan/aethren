@@ -153,7 +153,7 @@ export function buildMockGameState(input: {
     boss: world.boss,
     wardUp: true,
     twinCastMeter: 0,
-    currentRound: phase === 'lobby' || phase === 'upload' ? 0 : 1,
+    currentRound: 0,
     narratorCaption: quickStart ? world.intro : '',
     tooLoud: false,
     selectedMemoryIds: quickStart ? cards.slice(0, 2).map((card) => card.id) : [],

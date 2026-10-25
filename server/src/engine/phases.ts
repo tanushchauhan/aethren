@@ -212,6 +212,7 @@ function isWorld(value: unknown): value is WorldSchema {
 }
 
 export class GameRoom {
+  singleplayer = false;
   readonly state: GameState;
   readonly seats: Seat[] = [];
   readonly hostPlayerId: string;
@@ -671,7 +672,7 @@ export class GameRoom {
 
   calibrationDone(playerId: string | undefined): void {
     const seat = this.seat(playerId);
-    if (!seat) return;
+    if (!seat || seat.calibrated) return;
     seat.calibrated = true;
     if (this.state.phase === 'calibration' && !this.stash && this.allCalibrated()) {
       this.reschedule(this.scale(ENGINE_TIMINGS_MS.calibrationAllDone), () => this.startCombat());
@@ -924,6 +925,11 @@ export class GameRoom {
 
   private beginIntro(world: WorldSchema): void {
     this.generating = false;
+    if (this.holdIntroForNarration && world.encounters[0]) {
+      // One teaching encounter, then the boss; preserve the selected memory and art prompt.
+      world = { ...world, encounters: [{ ...world.encounters[0], tier: 1,
+        name: `${world.encounters[0].name} · minions`, attacks: ['low_sweep', 'high_swing', 'projectile'] }] };
+    }
     this.state.world = world;
     this.fillEmptySeatsWithBots();
     this.startImages(world);
@@ -955,7 +961,7 @@ export class GameRoom {
   }
 
   private enterCalibration(): void {
-    this.setPhase('calibration', this.scale(ENGINE_TIMINGS_MS.calibrationTimeout), () => this.startCombat());
+    this.setPhase('calibration', this.holdIntroForNarration ? null : this.scale(ENGINE_TIMINGS_MS.calibrationTimeout), () => this.startCombat());
     if (this.allCalibrated()) this.reschedule(this.scale(ENGINE_TIMINGS_MS.calibrationAllDone), () => this.startCombat());
     this.broadcast();
   }
@@ -1003,6 +1009,7 @@ export class GameRoom {
       this.enterEnding(true);
       return;
     }
+    if (this.holdIntroForNarration && this.state.fightingBoss) this.state.hearts = this.state.maxHearts;
     this.setPhase('intro', this.scale(ENGINE_TIMINGS_MS.enemyEntrance), () => this.startRound());
     this.broadcast();
     // The entrance uses the world's own words: a scene line, then the enemy's first line.
@@ -1095,6 +1102,12 @@ export class GameRoom {
     if (!replay) this.state.roundIndex = this.nextRound++;
     const roundIndex = this.state.roundIndex;
     const plan = replay ?? this.takePlan(roundIndex);
+    if (this.holdIntroForNarration && !this.state.fightingBoss) {
+      plan.attackType = (['low_sweep', 'high_swing', 'projectile'] as const)[roundIndex % 3]!;
+      plan.targetPlayerIds = this.seats.map(s => s.player.id);
+      plan.defenseWindowMs = 2000;
+      plan.taunt = null;
+    }
     this.currentPlan = plan;
     this.res = newResolution(roundIndex, this.now());
     this.turn = null;
@@ -1126,7 +1139,7 @@ export class GameRoom {
     if (targets.length === 0 && this.seats.length > 0) {
       targets = [this.seats[roundIndex % this.seats.length]!.player.id];
     }
-    const tele = this.scale(telegraphMs(enemy, this.state.fightingBoss));
+    const tele = this.scale(this.holdIntroForNarration && !this.state.fightingBoss ? 4000 : telegraphMs(enemy, this.state.fightingBoss));
     const windowMs = this.scale(this.roundWindowMs);
     const now = this.now();
     this.attack = {
@@ -1213,7 +1226,8 @@ export class GameRoom {
         if (!(this.state.wardActive && this.state.fightingBoss)) this.damageEnemy(COMBAT.parryDamage);
       }
       if (!dodged) {
-        const loss = Math.min(this.state.hearts, COMBAT.heartLossOnHit);
+        const floor = this.holdIntroForNarration && !this.state.fightingBoss ? 1 : 0;
+        const loss = Math.max(0, Math.min(this.state.hearts - floor, COMBAT.heartLossOnHit));
         this.state.hearts -= loss;
         res.heartsLost += loss;
         lost += loss;
@@ -1247,7 +1261,7 @@ export class GameRoom {
       ending: false,
     };
     if (this.res) this.res.sittingOut = sittingOut;
-    const duration = this.scale(ROUND_TIMINGS_MS.teamTurn);
+    const duration = this.scale(this.holdIntroForNarration && !this.state.fightingBoss ? 16000 : ROUND_TIMINGS_MS.teamTurn);
     this.setPhase('team_turn', duration, () => this.enterResolve());
     this.requestPlan(this.nextRound);
     this.broadcast();
@@ -1300,7 +1314,8 @@ export class GameRoom {
   }
 
   private damageEnemy(amount: number): number {
-    const dealt = Math.max(0, Math.min(this.state.enemyHp, Math.round(amount)));
+    const floor = this.holdIntroForNarration && !this.state.fightingBoss && this.state.roundIndex < 2 ? 1 : 0;
+    const dealt = Math.max(0, Math.min(this.state.enemyHp - floor, Math.round(amount)));
     this.state.enemyHp -= dealt;
     if (this.res) this.res.damageDealt += dealt;
     return dealt;

@@ -1,8 +1,8 @@
 import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
-import { MockToolbar } from './net';
-import { useGameStore } from './net/store';
+import { ScriptedIntroduction } from './ui/ScriptedIntroduction';
+import { GameViewport } from './ui/GameViewport';
 import { AppRoutes } from './ui/AppRoutes';
-import { CombatLayer } from './combat-ui/CombatLayer';
+import { useGameStore } from './net/store';
 import { GameMusic } from './combat-ui/audio/GameMusic';
 import { Narrator } from './combat-ui/Narrator';
 import { isGamePath, isTestLabPath } from './debugRoutes';
@@ -25,8 +25,15 @@ class ScreenBoundary extends Component<{ children: ReactNode }, { failed: boolea
 }
 
 function GameApp() {
-  const phase = useGameStore(s => s.gameState?.phase);
-  return <ScreenBoundary><AppRoutes /><CombatLayer /><Narrator /><GameMusic />{import.meta.env.DEV && phase && phase !== 'lobby' && <MockToolbar />}</ScreenBoundary>;
+  const phase = useGameStore(state => state.gameState?.phase);
+  useEffect(() => {
+    if (phase === 'intro') useGameStore.getState().setPhase('calibrating');
+  }, [phase]);
+  const rebuildingCombat = phase === 'intro' || phase === 'calibrating' || phase === 'encounter' || phase === 'boss';
+  return <ScreenBoundary><GameViewport>{rebuildingCombat
+    ? <ScriptedIntroduction />
+    : <><AppRoutes />{phase !== 'generating' && phase !== 'opening' && <Narrator />}<GameMusic /></>
+  }</GameViewport></ScreenBoundary>;
 }
 
 const LabsApp = lazy(() => import('./LabsApp'));

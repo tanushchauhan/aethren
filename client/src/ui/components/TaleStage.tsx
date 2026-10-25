@@ -1,3 +1,4 @@
+import { DialogueText } from './DialogueText';
 import type { CSSProperties, ReactNode } from 'react';
 import { useGameStore } from '../../net/store';
 import { ELEMENT_COLORS } from '../../net/contract';
@@ -20,8 +21,8 @@ interface TaleStageProps {
 export function TaleStage({ screen, children, roomCode, caption }: TaleStageProps) {
   const narrator = useGameStore(s => s.gameState?.narratorCaption);
   const openingLines: Record<string, string> = {
-    upload: 'Every friendship holds a story. Choose the memories that will awaken yours.',
-    opening: 'A few forgotten moments flicker in the moonlight. Which will you carry into the tale?',
+    upload: 'Every friendship holds a story. The forest will find a memory to awaken yours.',
+    opening: 'A few forgotten moments flicker in the moonlight. The forest is weaving them into your tale.',
   };
   caption = narrator || caption || openingLines[screen];
   return (
@@ -37,7 +38,7 @@ export function TaleStage({ screen, children, roomCode, caption }: TaleStageProp
       {caption ? (
         <p className="ouam-caption" role="status">
           <span className="vn-nameplate">The storyteller</span>
-          {caption}
+          <DialogueText text={caption} />
           <span className="vn-dialogue-diamond" aria-hidden="true">◆</span>
         </p>
       ) : null}

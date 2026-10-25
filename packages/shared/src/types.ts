@@ -310,6 +310,7 @@ export interface WorldImage {
 export type JoinableRole = Exclude<PlayerRole, 'bot'>;
 
 export interface RoomCreateRequest {
+  mode?: 'singleplayer' | 'online';
   playerName: string;
   role: JoinableRole;
   difficulty?: QuestDifficulty;

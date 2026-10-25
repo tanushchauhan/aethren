@@ -1,5 +1,16 @@
 # Tech Stack & 3-Teammate Parallel Agent Plan
 
+## Current playable flow (2026-10-25)
+
+- Title menu: New adventure → Singleplayer (AI companion) or Play online; Join adventure uses an online room code. Both use the full server-backed game. No demo mode, Quick Start, or Oracle entry in the player menu.
+
+The frontend automatically chooses a scenario memory and a distinct boss memory from the extracted conversation. There is no manual memory-selection page. The story introduction leads to camera calibration, then **one minion training stage**, then **one boss fight**. Training cycles through side-stepping a sweep, ducking a high swing, and dodging/parrying a projectile, with longer casting turns and a protected last heart. All three training rounds must occur before the minions can fall. Hearts refill for the boss.
+
+The battle viewport is split **75% gameplay / 25% camera**. The existing MediaPipe service and VisionCanvas supply the mirrored video, skeleton, calibration, zone detection, dodge classification, and swipe/thrust gestures. Pose updates run at 15 Hz; dodge reports use the server's attack ID, target IDs, and defense window. Camera failure never silently counts synthetic movements as live defenses. Local practice offers explicitly labeled simulated movement and incantation controls; online combat remains server-authoritative.
+
+The player interface scales to the viewport without page scrolling. Diagnostic labs retain their own layouts. Live calibration waits for ready poses; repeated ready frames do not restart its completion timer.
+
+
 > Current art direction and Muse asset handoff: [Meta Muse asset-generation instructions](muse-asset-generation.md). Use this guide for the visual-novel presentation and generated artwork.
 
 ## Two glove wearers (P0 contract)

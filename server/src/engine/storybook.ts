@@ -60,6 +60,7 @@ export interface StorybookGameState {
     name: string;
     role: 'spellbearer';
     inZone: boolean;
+    canCast?: boolean;
     connected: boolean;
     selectedElement: P0ElementType;
     elementLocked: boolean;
@@ -173,9 +174,9 @@ export function toStorybookState(state: GameState, extras: StorybookExtras): Sto
       name: p.name,
       // Every storybook player is a spellbearer; bots keep the seat's look.
       role: 'spellbearer',
-      // The client only lets a player speak while `inZone`. Without a camera there are no
-      // pose frames, so report the server's own cast eligibility as well.
-      inZone: p.inZone || p.canCast,
+      // Preserve actual pose state separately from the turn's server-side cast eligibility.
+      inZone: p.inZone,
+      canCast: p.canCast,
       connected: p.connected,
       selectedElement: p.selectedElement ?? 'ember',
       elementLocked: false,

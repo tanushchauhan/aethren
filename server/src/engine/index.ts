@@ -139,6 +139,9 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
 
   /** Claims a reserved seat with a matching name, or takes a free seat. */
   function seatSocket(socket: GameSocket, room: GameRoom, name: string, role: JoinableRole): RoomJoinAck {
+    if (room.singleplayer && name !== room.state.players.find(p => p.id === room.hostPlayerId)?.name) {
+      return { ok: false, error: 'This is a singleplayer adventure. Create an online adventure to play together.' };
+    }
     const claim = room.claim(name, toJoinableRole(role));
     if (!claim.ok) return { ok: false, error: claim.error };
     const seat = claim.seat;
@@ -221,6 +224,7 @@ export function createEngine(deps: EngineDeps, options: EngineOptions = {}): Eng
             difficulty: DIFFICULTIES.includes(payload.difficulty as QuestDifficulty) ? payload.difficulty : undefined,
           });
           const room = rooms.get(roomCode)!;
+          room.singleplayer = payload.mode === 'singleplayer';
           const host = room.state.players.find((p) => p.id === hostPlayerId)!;
           ack(seatSocket(socket, room, host.name, toJoinableRole(payload.role)));
         } catch (err) {

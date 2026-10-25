@@ -1,3 +1,4 @@
+import type { PoseActionType } from '@once-upon/shared';
 import { create } from 'zustand';
 import { serverUrl } from '../combat-ui/audio/serverUrl';
 import { getServerNow } from './clock';
@@ -31,6 +32,7 @@ let lastPoseSentMs = 0;
 export interface GameStoreState {
   connection: ConnectionStatus;
   mockMode: boolean;
+  adventureMode: 'singleplayer' | 'online';
   localPlayerId: string | null;
   localRole: PlayerRole | null;
   playerName: string;
@@ -49,7 +51,7 @@ export interface GameStoreState {
 export interface GameStoreActions {
   connect: (url?: string) => void;
   disconnect: () => void;
-  createRoom: (name: string, role: PlayerRole) => void;
+  createRoom: (name: string, role: PlayerRole, mode?: 'singleplayer' | 'online') => void;
   joinRoom: (code: string, name: string, role: PlayerRole) => void;
   quickStart: (name: string, role: PlayerRole) => void;
   selectCard: (cardId: string) => void;
@@ -58,7 +60,7 @@ export interface GameStoreActions {
   sendCast: (input: Omit<CastEvent, 'playerId'>) => void;
   sendDodge: (input: Omit<DodgeResult, 'playerId'>) => void;
   sendHardware: (event: HardwareEvent) => void;
-  sendPose: (landmarks: NormalizedLandmark[], inZone: boolean) => void;
+  sendPose: (landmarks: NormalizedLandmark[], inZone: boolean, activeAction?: PoseActionType, confidence?: number) => void;
   applyMemoryCards: (cards: MemoryCard[]) => void;
   applyRoomState: (state: GameState) => void;
   applyTelegraph: (event: TelegraphEvent) => void;
@@ -113,6 +115,7 @@ export const useGameStore = create<GameStore>((set, get) => {
 
   return {
   connection: 'disconnected',
+  adventureMode: 'online',
   mockMode: true,
   localPlayerId: null,
   localRole: null,
@@ -148,11 +151,12 @@ export const useGameStore = create<GameStore>((set, get) => {
     set({ connection: 'disconnected', mockMode: true, serverTimeOffsetMs: 0 });
   },
 
-  createRoom: (name, role) => {
+  createRoom: (name, role, mode = 'online') => {
+    set({ adventureMode: mode });
     if (!get().mockMode && !live()) { set({ lastError: 'Reconnect before continuing your online quest.' }); return; }
     if (live()) {
       set({ playerName: name, localRole: role, lastError: null });
-      getSocket()?.emit('room:create', { playerName: name, role });
+      getSocket()?.emit('room:create', { playerName: name, role, mode });
       return;
     }
     set({
@@ -163,6 +167,7 @@ export const useGameStore = create<GameStore>((set, get) => {
   },
 
   joinRoom: (code, name, role) => {
+    set({ adventureMode: 'online' });
     if (!get().mockMode && !live()) { set({ lastError: 'Reconnect before continuing your online quest.' }); return; }
     const roomCode = code.trim().toUpperCase();
     if (live()) {
@@ -190,7 +195,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       gameState: buildMockGameState({
         playerName: name,
         role,
-        phase: 'calibrating',
+        phase: 'intro',
         quickStart: true,
       }),
     });
@@ -286,12 +291,13 @@ export const useGameStore = create<GameStore>((set, get) => {
     if (live()) getSocket()?.emit('hardware:event', ownedEvent);
   },
 
-  sendPose: (landmarks, inZone) => {
-    if (!live()) return;
+  sendPose: (landmarks, inZone, activeAction = 'none', confidence = 0) => {
     const now = performance.now();
     if (now - lastPoseSentMs < 1000 / 15) return;
     lastPoseSentMs = now;
-    getSocket()?.emit('player:pose', { landmarks, inZone });
+    set(state => ({ gameState: state.gameState ? { ...state.gameState, players: state.gameState.players.map(p => p.id === state.localPlayerId ? { ...p, inZone } : p) } : null }));
+    if (!live()) return;
+    getSocket()?.emit('player:pose', { landmarks, inZone, activeAction, confidence, serverTimestampMs: getServerNow() });
   },
 
   applyMemoryCards: (cards) => {
@@ -375,10 +381,10 @@ registerSocketBridge({
       connection: willReconnect ? 'connecting' : 'disconnected',
     });
   },
-  onConnectError: (message) => {
+  onConnectError: () => {
     useGameStore.setState({
       connection: 'connecting',
-      lastError: message,
+      lastError: 'Cannot reach the game server. Reconnecting…',
     });
   },
   onClockOffset: (offsetMs) => {

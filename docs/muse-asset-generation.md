@@ -64,7 +64,7 @@ Keep the enemy's visual identity stable through a run. A ward breaking may alter
 
 ## Asset briefs
 
-The sizes below are preferred delivery targets, not assumed API parameters. If unsupported, request the closest supported size and preserve aspect ratio when preparing the final asset. P0 needs three still images: cover, encounter, boss.
+The sizes below are preferred delivery targets, not assumed API parameters. If unsupported, request the closest supported size and preserve aspect ratio when preparing the final asset. P0 needs three still images: cover, minion encounter, boss. The game automatically selects the scenario and boss motifs from extracted conversation memories. Generate exactly one training encounter followed by one boss; do not request another player choice or add extra encounters. The training encounter is a small band of minions; deliver a readable minion design suitable for the renderer to repeat as a group.
 
 | Asset | Preferred delivery | Background | Required composition |
 | --- | --- | --- | --- |

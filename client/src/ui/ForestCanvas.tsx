@@ -1,3 +1,4 @@
+import { drawRain } from './rain';
 import { useEffect, useRef } from 'react';
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
@@ -159,14 +160,7 @@ export function ForestCanvas() {
       if (discSprite) ctx!.drawImage(discSprite, moonX - discSprite.width / 2, moonY - discSprite.height / 2);
       ctx!.restore();
       if (!motion.matches) {
-        ctx!.strokeStyle = '#bad9e633'; ctx!.lineWidth = .8;
-        ctx!.beginPath();
-        for (let i = 0; i < 90; i++) {
-          const y = ((i * 173 + elapsed * (420 + i % 4 * 90)) % (height + 80)) - 40;
-          const x = ((i * 139 - elapsed * 70) % (width + 100) + width + 100) % (width + 100) - 50;
-          ctx!.moveTo(x, y); ctx!.lineTo(x - 9, y + 26 + i % 5 * 3);
-        }
-        ctx!.stroke();
+        drawRain(ctx!, width, height, elapsed);
         frame = requestAnimationFrame(render);
       }
     }

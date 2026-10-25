@@ -11,7 +11,7 @@ import { uploadInstagramExport } from './uploadChat';
 
 const MAX_BYTES = 20 * 1024 * 1024;
 const EXPORT_HELP = 'Accounts Center -> Your information -> Export, JSON, messages only';
-// TODO(2A): expose setPhase('opening') so a failed upload or demo memories can leave this screen.
+// TODO(2A): expose setPhase('opening') so a failed upload or story memories can leave this screen.
 
 export function ChatUploadScreen() {
   const gameState = useUiStore((state) => state.gameState);
@@ -21,11 +21,11 @@ export function ChatUploadScreen() {
   const [holdLocal, setHoldLocal] = useState(false);
 
 
-  function openDemoMemories() {
+  function openStoryMemories() {
     const moved = advancePhase('opening');
     if (!moved) {
       setHoldLocal(true);
-      setMessage('These demo memories are ready, but the tale cannot open from this screen yet.');
+      setMessage('These story memories are ready, but the tale cannot open from this screen yet.');
     }
   }
 
@@ -36,7 +36,7 @@ export function ChatUploadScreen() {
       return;
     }
     if (file.size > MAX_BYTES) {
-      setMessage('That export is larger than 20MB. Use a messages-only JSON export, or the demo memories.');
+      setMessage('That export is larger than 20MB. Use a messages-only JSON export, or the story memories.');
       return;
     }
     setSending(true);
@@ -44,11 +44,11 @@ export function ChatUploadScreen() {
     try {
       const outcome = await uploadInstagramExport(file, gameState?.roomCode);
       if (!outcome.ok && outcome.reason === 'rejected') {
-        setMessage('That file is not JSON. Export the chat as JSON, or use the demo memories.');
+        setMessage('That file is not JSON. Export the chat as JSON, or use the story memories.');
         return;
       }
       if (!outcome.ok) {
-        setMessage('The upload service is unavailable. Retry, or choose demo memories below.');
+        setMessage('The upload service is unavailable. Retry, or choose story memories below.');
         return;
       }
       if (outcome.cardsApplied) {
@@ -109,8 +109,8 @@ export function ChatUploadScreen() {
           Only upload a chat whose members consented.
         </p>
         <div className="ouam-actions">
-          <button className="ouam-button ouam-button-gold" type="button" onClick={openDemoMemories} disabled={sending}>
-            Use demo memories
+          <button className="ouam-button ouam-button-gold" type="button" onClick={openStoryMemories} disabled={sending}>
+            Use story memories
           </button>
         </div>
         {message ? (
