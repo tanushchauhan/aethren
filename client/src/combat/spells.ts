@@ -7,10 +7,9 @@ export type SpellId =
 /**
  * Steps a player can chain to weave a spell:
  * - Glove / key inputs: `B1` (cast button / 1), `B2` (element button / 2), `T` (touch / 3), `swing` (slash/thrust glove or Space)
- * - CV body poses (no leans — only reliable vertical poses, also mapped to W/S fallbacks):
- *   `raise` (raise right arm), `duck` (crouch low)
+ * - CV body pose (only the reliable one, also mapped to W as a fallback): `raise` (raise right arm)
  */
-export type RitualStep = 'B1' | 'B2' | 'T' | 'swing' | 'raise' | 'duck';
+export type RitualStep = 'B1' | 'B2' | 'T' | 'swing' | 'raise';
 
 export const RITUAL_LABELS: Record<
   RitualStep,
@@ -50,13 +49,6 @@ export const RITUAL_LABELS: Record<
     timingCue: 'Raise Arm in ★ PERFECT',
     kind: 'pose',
     keyHint: 'W',
-  },
-  duck: {
-    short: '↓ Duck',
-    label: 'Duck',
-    timingCue: 'Duck in ★ PERFECT',
-    kind: 'pose',
-    keyHint: 'S',
   },
 };
 
@@ -165,15 +157,15 @@ export const SPELLS: Record<SpellId, Spell> = {
   immolate: {
     id: 'immolate', name: 'Immolate', element: 'fire', cost: 3, target: 'enemy', damage: 8, color: '#ff7a2e',
     applies: { id: 'burning', turns: 3, amount: 6 },
-    ritual: ['duck', 'B2', 'swing'],
-    hint: '↓ Duck, B2, then Swing.',
+    ritual: ['B2', 'swing'],
+    hint: 'B2, then Swing.',
     counterHint: 'Applies Burning (ignores armor, primes Storm Conductive).',
     description: '8 damage, then Burning: 6 damage at the start of its next 3 turns.',
   },
   meteor: {
     id: 'meteor', name: 'Meteor', element: 'fire', cost: 7, target: 'enemy', damage: 34, splash: 16, color: '#ff6a2a',
-    ritual: ['raise', 'duck', 'B1', 'B2', 'swing'],
-    hint: '5 steps: ↑ Arm → ↓ Duck → B1 → B2 → Swing.',
+    ritual: ['raise', 'B1', 'B2', 'T', 'swing'],
+    hint: '5 steps: ↑ Arm → B1 → B2 → T → Swing.',
     counterHint: 'Undodgeable pack devastation. Shatters Chilled packs.',
     description: '34 damage to the target and 16 to every other wolf. Long charge.',
   },
@@ -181,8 +173,8 @@ export const SPELLS: Record<SpellId, Spell> = {
     id: 'frost-shard', name: 'Frost Shard', element: 'frost', cost: 2, target: 'enemy', damage: 10, color: '#98e8ff',
     applies: { id: 'chilled', turns: 1 },
     starter: true,
-    ritual: ['duck', 'T', 'swing'],
-    hint: '↓ Duck, T, then Swing.',
+    ritual: ['T', 'swing'],
+    hint: 'T, then Swing.',
     counterHint: 'Chills target (−30% dmg, blocks Jaw & Grab, primes Fire Shatter).',
     description: '10 damage and Chilled: its next attack does 30% less.',
   },
@@ -197,16 +189,16 @@ export const SPELLS: Record<SpellId, Spell> = {
   'frost-prison': {
     id: 'frost-prison', name: 'Frost Prison', element: 'frost', cost: 5, target: 'enemy', damage: 0, color: '#c4f4ff',
     applies: { id: 'frozen', turns: 2 },
-    ritual: ['raise', 'duck', 'T', 'B1', 'swing'],
-    hint: '5 steps: ↑ Arm → ↓ Duck → T → B1 → Swing.',
+    ritual: ['raise', 'T', 'B1', 'swing'],
+    hint: '4 steps: ↑ Arm → T → B1 → Swing.',
     counterHint: 'Freezes 2 turns, strips Roused, and primes Fire Shatter (+50%).',
     description: 'Frozen: strips Roused and the wolf skips its next 2 turns.',
   },
   'frost-nova': {
     id: 'frost-nova', name: 'Frost Nova', element: 'frost', cost: 4, target: 'enemy', damage: 12, area: true, color: '#7fd8ff',
     applies: { id: 'chilled', turns: 1 },
-    ritual: ['duck', 'T', 'B2', 'swing'],
-    hint: '4 steps: ↓ Duck → T → B2 → Swing.',
+    ritual: ['T', 'B2', 'swing'],
+    hint: '3 steps: T → B2 → Swing.',
     counterHint: 'Undodgeable; Chills the entire pack to set up Meteor or Chain Lightning.',
     description: '12 damage to every wolf and Chills them all.',
   },
@@ -228,8 +220,8 @@ export const SPELLS: Record<SpellId, Spell> = {
   'static-shock': {
     id: 'static-shock', name: 'Static Shock', element: 'storm', cost: 3, target: 'enemy', damage: 8, drain: true, color: '#b48cff',
     applies: { id: 'drained', turns: 1 },
-    ritual: ['duck', 'T', 'B1'],
-    hint: '↓ Duck, T, then B1.',
+    ritual: ['T', 'B1'],
+    hint: 'T, then B1.',
     counterHint: 'HARD COUNTER: strips Roused (+5 bonus dmg) and drains all Energy!',
     description: '8 damage, strips Roused, and Drained: empties energy so it must Rest.',
   },

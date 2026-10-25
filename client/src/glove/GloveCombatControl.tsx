@@ -51,10 +51,8 @@ const TURN_DURATION_MS = 80000;
 /** The wolf the next cast will hit, or null when it is not your turn or the spell targets you. Read by the stage. */
 export const useWheelSelection = create<{ targetId: string | null }>(() => ({ targetId: null }));
 
-// Wheel geometry in a 360 x 360 viewBox (SVG font sizes in the CSS are in these units, not screen pixels).
-// Wedge 0 starts at 12 o'clock and the wheel runs clockwise. The hub covers everything inside R_IN.
-const CENTER = 180, R_IN = 76, R_OUT = 174, R_ARC_IN = 176, R_ARC_OUT = 180, WEDGE_DEG = 360 / SLOTS;
-const R_LABEL = 130, R_GEM = 92, LABEL_LINE = 12;
+// Wheel geometry in a 360 x 360 viewBox. Wedge 0 starts at 12 o'clock and the wheel runs clockwise.
+const CENTER = 180, R_IN = 106, R_OUT = 164, R_ARC_IN = 168, R_ARC_OUT = 175, WEDGE_DEG = 360 / SLOTS;
 const polar = (radius: number, deg: number) => {
   const rad = (deg * Math.PI) / 180;
   return [CENTER + radius * Math.cos(rad), CENTER + radius * Math.sin(rad)] as const;
@@ -111,15 +109,12 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   const [turnRemainingMs, setTurnRemainingMs] = useState(TURN_DURATION_MS);
   const [bannerNotice, setBannerNotice] = useState<string | null>(null);
   const [flash, setFlash] = useState<{ id: number; mode: 'dodge' | 'parry' } | null>(null);
-  const [castOpen, setCastOpen] = useState(false);
   const [introReady, setIntroReady] = useState(false);
   const reduced = useReducedMotion();
 
   const slotRef = useRef<number | null>(0);
   const ritualRef = useRef<ActiveRitualState | null>(null);
   ritualRef.current = ritual;
-  const castOpenRef = useRef(false);
-  castOpenRef.current = castOpen;
   const introReadyRef = useRef(false);
   introReadyRef.current = introReady;
   const heldB2 = useRef(false);
@@ -170,10 +165,6 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
     if (tutorial.activeStep && tutorial.activeStep !== 'cast') return;
     if (!tutorial.castUnlocked(state.encounterId)) return;
     if (!introReadyRef.current) return;
-    if (!castOpenRef.current) {
-      setCastOpen(true);
-      return;
-    }
     if (heroStore(me).getState().magicPower < forSpell.cost) {
       buzz('fizzle');
       setBannerNotice(`Not enough MP for ${ state.discoveredSpells.includes(forSpell.id) ? forSpell.name : 'this rune' } (${forSpell.cost} MP). Hold B2 to Rest.`);
@@ -197,10 +188,9 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
     setRitual(nextState);
     setStepProgress(0);
     setBannerNotice(null);
-    const browsingLesson = tutorial.activeStep !== null && tutorial.activeStep !== 'ritual';
+    // Finishing the cast lesson unlocks the Spell Maneuvers lesson, which the first real weave then opens.
     useWolfTutorial.getState().notifyAction('cast');
-    // Spell Maneuvers is only for the first real weave after the opening lessons, never while browsing.
-    if (!browsingLesson) useWolfTutorial.getState().triggerFirstRitualTutorial();
+    useWolfTutorial.getState().triggerFirstRitualTutorial();
     buzz('tick');
   };
 
@@ -403,7 +393,6 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
     if (event.type === 'gesture') swung(event.power);
     else if (event.type === 'dial' && !ritualRef.current) {
       if (!introReadyRef.current) return;
-      if (!castOpenRef.current) setCastOpen(true);
       moveTo(dialSlot(event.value, SLOTS, slotRef.current), true);
     }
     else if (event.type === 'down' && event.button === 'B2') {
@@ -429,10 +418,6 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
         return;
       }
       if (!introReadyRef.current) return;
-      if (!castOpenRef.current) {
-        setCastOpen(true);
-        return;
-      }
       if (ritualRef.current) pushRitualStep('B1');
       else beginRitualMode();
     }
@@ -453,11 +438,6 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       event.preventDefault();
       return;
     }
-    if (key === 'Escape' && mine && castOpenRef.current && !ritualRef.current) {
-      setCastOpen(false);
-      event.preventDefault();
-      return;
-    }
     const tutStep = useWolfTutorial.getState().activeStep;
     if (tutStep === 'ritual' && (key === 'Enter' || key === ' ') && !onButton && !event.repeat) {
       useWolfTutorial.getState().notifyAction('ritual');
@@ -466,7 +446,6 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
     }
     if ((key === 'ArrowLeft' || key === 'ArrowRight') && !ritualRef.current) {
       if (!introReadyRef.current) return;
-      if (!castOpenRef.current) setCastOpen(true);
       moveTo((slotRef.current ?? slot) + (key === 'ArrowRight' ? 1 : -1));
       event.preventDefault();
     } else if (key === 't' || (key === 'Tab' && !event.shiftKey && !onButton)) {
@@ -484,8 +463,6 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       event.preventDefault();
     } else if (mine && !event.repeat && key === 'w') {
       pushRitualStep('raise');
-    } else if (mine && !event.repeat && key === 's') {
-      pushRitualStep('duck');
     } else if (mine && !event.repeat && key === 'h') {
       const next = state.cycleHint(element);
       if (next) {
@@ -496,8 +473,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       passTurn();
     } else if (key === 'Enter' && !onButton && mine && !event.repeat) {
       if (!introReadyRef.current) return;
-      if (!castOpenRef.current) setCastOpen(true);
-      else if (!ritualRef.current) beginRitualMode();
+      if (!ritualRef.current) beginRitualMode();
       event.preventDefault();
     } else if (key === 'r' && !event.repeat) rest();
     else if (key === 'e' && !event.repeat && !enemyTurn && !ritualRef.current) nextElement();
@@ -508,7 +484,6 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
 
   useEffect(() => {
     if (!myTurn) {
-      setCastOpen(false);
       setIntroReady(false);
       return;
     }
@@ -516,20 +491,15 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
     const delay = castUiRevealDelayMs(enemies, !!reduced, battle.turnNumber === 1);
     if (delay <= 0) {
       setIntroReady(true);
-      setCastOpen(true);
       return;
     }
-    setCastOpen(false);
     setIntroReady(false);
-    const timer = window.setTimeout(() => {
-      setIntroReady(true);
-      setCastOpen(true);
-    }, delay);
+    const timer = window.setTimeout(() => setIntroReady(true), delay);
     return () => clearTimeout(timer);
   }, [myTurn, battle.turnNumber, reduced]);
 
   // Turn timer & step timing loop: updates the top turn clock and the active ritual step progress bar.
-  // Waits until the cast UI has opened once this turn, and pauses while a tutorial is on screen.
+  // Waits until the cast wheel has appeared this turn, and pauses while a tutorial is on screen.
   useEffect(() => {
     if (!myTurn) {
       cancelRitual();
@@ -577,17 +547,13 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myTurn, battle.turnNumber, introReady]);
 
-  // Feed CV body poses (Raise Arm / Duck) into the active spell-weaving ritual when in Ritual Mode!
+  // Feed the CV Raise Arm pose into the active spell-weaving ritual when in Ritual Mode!
   useEffect(() => {
     if (!myTurn || !ritual || lessonOpen || !cvEnabled || !cvPose || cvPose.confidence < 0.6) {
       activePoseRef.current = { step: null, since: 0, fired: false };
       return;
     }
-    const detected: RitualStep | null = cvPose.isRightArmRaised
-      ? 'raise'
-      : cvPose.isDucking
-        ? 'duck'
-        : null;
+    const detected: RitualStep | null = cvPose.isRightArmRaised ? 'raise' : null;
     const now = performance.now();
     if (!detected) {
       activePoseRef.current = { step: null, since: 0, fired: false };
@@ -697,7 +663,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
   const wanted = wedgeCenter(slot);
   pointerRotation.current += ((wanted - pointerRotation.current + 540) % 360) - 180;
   const profile = glove ? gloveProfile(glove) : null;
-  const phase = !myTurn || lessonOpen ? 'banner' : !castOpen ? 'hidden' : ritual ? 'ritual' : 'wheel';
+  const phase = !myTurn || lessonOpen || !introReady ? 'banner' : ritual ? 'ritual' : 'wheel';
   const dodging = flash?.mode === 'dodge', parrying = flash?.mode === 'parry';
   const targetLine = spell.target === 'self' ? 'Self' : (target?.name ?? 'none');
   const canAfford = magic >= spell.cost;
@@ -723,19 +689,12 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
           <span className="turn-timer-sub">
             {ritual ? `Weaving ${isDiscovered ? spell.name : 'Unknown Rune'}…` : 'Dial · B1 weave · Hold B2 rest'}
           </span>
-          {castOpen && !ritual && !lessonOpen && (
-            <button type="button" className="turn-cast-toggle" onClick={() => setCastOpen(false)}>Hide Cast</button>
-          )}
           <button type="button" className="turn-pass-btn" onClick={passTurn}>Pass Turn</button>
         </div>
         <div className="turn-timer-track">
           <span className="turn-timer-fill" style={{ width: `${turnFraction * 100}%` }} />
         </div>
       </header>
-    )}
-
-    {myTurn && introReady && !castOpen && !lessonOpen && (
-      <button type="button" className="cast-open-btn" onClick={() => setCastOpen(true)}>Open Cast</button>
     )}
 
     {/* RADIAL SPELL WHEEL (hidden as soon as you start casting/weaving a spell!) */}
@@ -748,22 +707,22 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
             const wedge = SPELLS[id], color = ELEMENT_COLOR[wedge.element], active = index === slot, affordable = magic >= wedge.cost;
             const known = battle.discoveredSpells.includes(id);
             const hinted = battle.hintedSpellId === id && !known;
-            const [tx, ty] = polar(R_LABEL, wedgeCenter(index)), [bx, by] = polar(R_GEM, wedgeCenter(index));
+            const [tx, ty] = polar(131, wedgeCenter(index)), [bx, by] = polar(169, wedgeCenter(index));
             const labelText = known ? wedge.name : hinted ? '? Hint' : '???';
             const words = labelText.split(' ');
             const lines = words.length > 1 ? [words[0]!, words.slice(1).join(' ')] : [labelText];
             return <g key={id} className="wheel-wedge" data-active={active} data-affordable={affordable} data-locked={!known} data-hinted={hinted}
               role="button" aria-label={known ? `${wedge.name}, ${wedge.cost} MP` : `Unknown ${wedge.element} spell, ${wedge.cost} MP`} aria-pressed={active}
-              onClick={() => moveTo(index)}>
+              onClick={() => (active ? beginRitualMode(wedge) : moveTo(index))}>
               <path d={sector(R_IN, R_OUT, wedgeStart(index) + 1.4, wedgeStart(index + 1) - 1.4)} style={{ '--wedge': color } as CSSProperties} />
-              <text x={tx} y={ty - ((lines.length - 1) * LABEL_LINE) / 2} textAnchor="middle" dominantBaseline="middle">
-                {lines.map((line, i) => <tspan key={i} x={tx} dy={i === 0 ? 0 : LABEL_LINE}>{line}</tspan>)}
+              <text x={tx} y={ty - (lines.length - 1) * 7} textAnchor="middle" dominantBaseline="middle">
+                {lines.map((line, i) => <tspan key={i} x={tx} dy={i === 0 ? 0 : 14}>{line}</tspan>)}
               </text>
-              <circle className="wheel-cost-gem" cx={bx} cy={by} r={8} />
+              <circle className="wheel-cost-gem" cx={bx} cy={by} r={9} />
               <text className="wheel-cost" x={bx} y={by + 0.5} textAnchor="middle" dominantBaseline="middle">{wedge.cost}</text>
             </g>;
           })}
-          <polygon className="wheel-pointer" points={`${CENTER + R_ARC_OUT + 1},${CENTER} ${CENTER + R_ARC_OUT + 13},${CENTER - 7} ${CENTER + R_ARC_OUT + 13},${CENTER + 7}`}
+          <polygon className="wheel-pointer" points={`${CENTER + R_IN - 1},${CENTER} ${CENTER + R_IN - 15},${CENTER - 8} ${CENTER + R_IN - 15},${CENTER + 8}`}
             style={{ transform: `rotate(${pointerRotation.current}deg)` }} />
         </svg>
         <div className="wheel-hub" role="status">
@@ -779,7 +738,6 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
                 ? `${spell.description} ${spell.counterHint}`
                 : `Whisper: ${spell.hint}`}
           </p>
-          <span className="wheel-hub-rest" data-low={!canAfford}>Hold B2 · Rest +3 MP</span>
           <span className="wheel-hub-target">Target: <b>{targetLine}</b></span>
           <button
             type="button"

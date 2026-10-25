@@ -90,7 +90,7 @@ const STEP_CONFIG: Record<TutorialStep, {
     ],
     requirement: '◆ Do the highlighted move',
     keys: [
-      { label: '↑ Arm · ↓ Duck', action: 'Pose' },
+      { label: '↑ Arm', action: 'Pose' },
       { label: 'B1 · B2 · T · Swing', action: 'Glove' },
     ],
   },
