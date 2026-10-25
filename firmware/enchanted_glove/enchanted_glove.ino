@@ -89,11 +89,13 @@ const uint8_t dialPin = A0;
 // Buzzer patterns for {"cmd":"buzz"}. Each is a short run of notes stepped from loop() so nothing
 // blocks; a new pattern or beep replaces one still playing. A zero frequency is a rest. Declared up
 // here because the Arduino builder prototypes every function above the first one.
+// The Grove piezo is loudest around 2-4 kHz and fades below ~500 Hz, so "low" sounds stay at or
+// above ~300 Hz; the hit gets its weight from a bright blip and a stutter rather than a deep pitch.
 struct Note { uint16_t hz; uint16_t ms; };
 const Note TICK_NOTES[] = {{2400, 12}};
 const Note CAST_NOTES[] = {{660, 50}, {880, 50}, {1320, 90}};
-const Note FIZZLE_NOTES[] = {{520, 70}, {0, 20}, {330, 70}, {0, 20}, {220, 120}};
-const Note HIT_NOTES[] = {{150, 120}, {0, 30}, {110, 160}};
+const Note FIZZLE_NOTES[] = {{700, 70}, {0, 20}, {480, 70}, {0, 20}, {350, 120}};
+const Note HIT_NOTES[] = {{1000, 15}, {380, 30}, {0, 12}, {340, 30}, {0, 12}, {320, 30}, {0, 12}, {300, 60}};
 #define NOTE_COUNT(notes) (uint8_t)(sizeof(notes) / sizeof((notes)[0]))
 
 const uint32_t FRAME_MS = 25;            // 40 Hz target; a UDP packet costs ~15 ms on the R4 WiFi

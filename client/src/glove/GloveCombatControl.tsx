@@ -64,6 +64,19 @@ function ActiveGloveCombatControl() {
   const buzzRef = useRef(buzz);
   buzzRef.current = buzz;
 
+  // Double tick when control comes back to you after the enemies act, so a player watching the
+  // glove knows it is their turn. The fight's opening turn is skipped: the encounter title covers it.
+  const previousActive = useRef(battle.activeId);
+  useEffect(() => {
+    const was = previousActive.current;
+    previousActive.current = battle.activeId;
+    if (!live || battle.activeId !== 'player' || was === 'player') return;
+    buzzRef.current('tick');
+    // A new pattern replaces one still playing, so the second tick waits for the first to finish.
+    const second = window.setTimeout(() => buzzRef.current('tick'), 140);
+    return () => window.clearTimeout(second);
+  }, [battle.activeId, live]);
+
   useGloveInput((event) => {
     if (!live) return;
     if (event.type === 'dial') {

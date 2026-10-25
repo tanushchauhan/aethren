@@ -239,7 +239,7 @@ When a glove is claimed, `GloveCombatControl` sends `{"cmd":"buzz","p":…}` to 
 
 | Pattern | Sound | When |
 | --- | --- | --- |
-| `tick` | One short high click | Dial moves to another spell, B2 changes element, T changes target, or the Ice Shield fully blocks a hit |
+| `tick` | One short high click | Dial moves to another spell or menu item, B2 changes element, T changes target, or the Ice Shield fully blocks a hit. Two ticks 140 ms apart mean your turn has started (not on the opening turn). |
 | `cast` | Rising three-note chirp | The charged spell leaves the hand (after its charge time) |
 | `fizzle` | Falling three notes | On your turn, a glove cast is refused (not enough MP, staggered, no living target) or every target dodges |
 | `hit` | Two low thuds | An enemy attack wounds you (not bleed, Scorn or Eclipse ticks, or Inferno field flames) |

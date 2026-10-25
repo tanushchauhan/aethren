@@ -34,7 +34,10 @@ export function GloveMenuNav() {
     if (event.type === 'dial') {
       const items = candidates();
       if (items.length === 0) return;
-      slot.current = dialSlot(event.value, items.length, slot.current);
+      const next = dialSlot(event.value, items.length, slot.current);
+      // Click like the combat dial does, but only when the highlight actually moves.
+      if (next !== slot.current && glove) hub.send(glove.id, { cmd: 'buzz', p: 'tick' });
+      slot.current = next;
       clearFocus();
       const target = items[slot.current]!;
       target.setAttribute(FOCUS_ATTR, '');
