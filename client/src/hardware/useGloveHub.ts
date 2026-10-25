@@ -110,7 +110,7 @@ export function useGloveHub(url: string = GLOVE_HUB_URL): GloveHub {
           return;
         }
         if (message.type === 'snapshot' && Array.isArray(message.gloves)) {
-          setGloves(message.gloves as GloveSummary[]);
+          setGloves([...(message.gloves as GloveSummary[])].sort((x, y) => x.id - y.id));
         } else if (message.type === 'glove' && message.glove) {
           const next = message.glove as GloveSummary;
           setGloves((current) => [...current.filter((g) => g.id !== next.id), next].sort((a, b) => a.id - b.id));

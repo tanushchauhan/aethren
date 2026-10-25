@@ -218,7 +218,7 @@ setInterval(() => {
     g.rxRate = g.windowCount;
     g.windowCount = 0;
   }
-  broadcast({ type: 'snapshot', gloves: [...gloves.values()].map(summary) });
+  broadcast({ type: 'snapshot', gloves: [...gloves.values()].sort((a, b) => a.id - b.id).map(summary) });
 }, 1000);
 
 setInterval(() => {
@@ -285,7 +285,7 @@ function handleClientMessage(text: string): void {
 const server = createServer((req, res) => {
   if (req.url === '/api/gloves') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify([...gloves.values()].map(summary)));
+    res.end(JSON.stringify([...gloves.values()].sort((a, b) => a.id - b.id).map(summary)));
     return;
   }
   res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -303,7 +303,7 @@ server.on('upgrade', (req, socket: Socket) => {
     `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`,
   );
   clients.add(socket);
-  socket.write(encodeWs(JSON.stringify({ type: 'snapshot', gloves: [...gloves.values()].map(summary) })));
+  socket.write(encodeWs(JSON.stringify({ type: 'snapshot', gloves: [...gloves.values()].sort((a, b) => a.id - b.id).map(summary) })));
   let pending: Buffer = Buffer.alloc(0);
   socket.on('data', (chunk: Buffer) => {
     pending = Buffer.concat([pending, chunk]);
