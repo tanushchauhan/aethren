@@ -1,3 +1,5 @@
+import { CombatCamera } from './components/CombatCamera';
+import { useDefense } from '../combat/defense';
 import { useEffect, useRef, useState } from 'react';
 import { motion, useAnimate, useReducedMotion } from 'motion/react';
 import { combatants, isRoused, moves } from '../combat/encounter';
@@ -59,12 +61,12 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
   useEffect(() => {
     if (!enemyTurn || status !== 'active') return;
     if (!enemyMove) {
-      const timer = window.setTimeout(() => useSpellBattle.getState().beginEnemy(), reduced ? 400 : 1100);
+      const timer = window.setTimeout(() => useSpellBattle.getState().beginEnemy(), reduced ? 400 : 650);
       return () => clearTimeout(timer);
     }
     if (enemyMove.phase !== 'playing') {
       const type = enemyMove.phase === 'approaching' ? 'play' : 'finish';
-      const timer = window.setTimeout(() => useSpellBattle.getState().enemyStep(type, enemyMove.id), reduced ? 150 : 650);
+      const timer = window.setTimeout(() => useSpellBattle.getState().enemyStep(type, enemyMove.id), enemyMove.phase === 'approaching' && useDefense.getState().enabled && useDefense.getState().cue ? useDefense.getState().windupMs : reduced ? 150 : 350);
       return () => clearTimeout(timer);
     }
   }, [activeId, enemyMove?.id, enemyMove?.phase, reduced, status]);
@@ -100,7 +102,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
             animate={struck ? { x: [0, 0, 20 * knock, -7 * knock, 2 * knock, 0], y: [0, 0, -16, 5, 0, 0], scale: [1, 1.07, .9, 1.03, 1, 1] }
               : { x: forward && !reduced ? `${boss ? 0 : (1 - i) * 113.043}%` : !reduced && reaction ? [0, i === 2 ? 45 : -45, 0] : 0, y: forward && !reduced ? 40 : 0, scale: !reduced && forward ? 1.15 : 1 }}
             transition={struck ? { duration: HIT_TIMING.react, times: [0, stop, stop + .18, stop + .42, stop + .64, 1], ease: 'easeOut' }
-              : { duration: reduced ? .1 : .55 }} className={`wolf-combatant ${wolf.kind}${activeId === wolf.id ? ' is-active' : ''}${isRoused(stats) ? ' is-roused' : ''}`}>
+              : { duration: reduced ? .1 : .28 }} className={`wolf-combatant ${wolf.kind}${activeId === wolf.id ? ' is-active' : ''}${isRoused(stats) ? ' is-roused' : ''}`}>
             {boss && !stats.defeated && <ScornFlames reduced={!!reduced} />}
             <div className="wolf-bars">
               {[{ id: 'health', value: stats.hp, max: wolf.maxHp }, { id: 'energy', value: stats.energy, max: wolf.maxEnergy }].map(stat =>
@@ -116,6 +118,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
             </div>
             <div className="wolf-turn-ring" aria-hidden="true" />
             {acting && enemyMove.phase === 'playing' ? <WolfMoveAnimation key={enemyMove.id} move={moves[enemyMove.moveId]} sprite={wolf.sprite} muted={muted} reduced={!!reduced}
+              onProgress={progress => useDefense.getState().setProgress(enemyMove.id, progress)}
               onImpact={() => useSpellBattle.getState().enemyStep('impact', enemyMove.id)} onComplete={() => useSpellBattle.getState().enemyStep('return', enemyMove.id)} /> : <img className={`wolf-sprite${reaction?.kind === 'hurt' ? ' wolf-hurt' : ''}`} src={wolf.sprite} alt={wolf.name} draggable={false} />}
             <WolfStatusAura statuses={stats.statuses} reduced={!!reduced} />
             {acting && <div className={`wolf-move-label${enemyMove.moveId === 'rest' ? ' is-resting' : ''}`} role="status">
@@ -149,7 +152,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
       initial={{ opacity: reduced ? .35 : 1 }} animate={{ opacity: 0 }} transition={{ duration: .85 }}>
       {!reduced && hurt.impact === 'axe' && <div className="player-axe-gash"><i className="gash-glow" /><i className="gash-wound" /><i className="gash-edge" /><i className="gash-splinter" /></div>}
       {!reduced && hurt.kind === 'slash' && <div className="player-slash-marks"><i /><i /><i /></div>}
-      <span>{hurt.kind === 'blocked' ? `Shield blocked ${hurt.absorbed}` : `−${hurt.damage}${hurt.kind === 'bleed' ? ' · Bleeding' : hurt.kind === 'curse' ? ' · Scorn' : ''}${hurt.absorbed ? ` · ${hurt.absorbed} blocked` : ''}`}</span>
+      <span>{hurt.guarded ? `Blocked · −${hurt.damage}` : hurt.kind === 'blocked' ? `Shield blocked ${hurt.absorbed}` : `−${hurt.damage}${hurt.kind === 'bleed' ? ' · Bleeding' : hurt.kind === 'curse' ? ' · Scorn' : ''}${hurt.absorbed ? ` · ${hurt.absorbed} blocked` : ''}`}</span>
     </motion.div>}
     {status === 'lost' && <section className="encounter-victory" role="alert">
       <p>Encounter lost</p><h2>{boss ? 'The gate remains sealed' : 'The vale claims another'}</h2><span>Your health has fallen to zero.</span>
@@ -167,6 +170,7 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue }: { muted: b
     </aside>
     {status === 'active' && <PlayerStatusPanel />}
     <GloveCombatControl />
+    {status === 'active' && <CombatCamera />}
     {status === 'won' && <motion.section className="encounter-victory" aria-labelledby="victory-title" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: reduced ? .1 : .8 }}>
       <p>Encounter won</p><h2 id="victory-title">{boss ? 'The Scorn is broken' : 'The vale falls silent'}</h2>
       <span>{boss ? 'The kingdom awaits beyond the gate.' : 'The path beyond the clearing is open.'}</span>

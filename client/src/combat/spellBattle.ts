@@ -1,3 +1,4 @@
+import { useDefense } from './defense';
 import { create } from 'zustand';
 import { combatants, createEncounter, armorValue, encounterReducer, PLAYER_ACTION, type EncounterId, type EncounterState, type ActorState } from './encounter';
 import { playerStore, stanceFromValue, type PlayerStance } from './playerState';
@@ -72,7 +73,8 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
     const state = get();
     const fieldTurns = next.lastAttack !== engine.lastAttack && next.lastAttack?.type === 'inferno' ? 5 : state.fieldTurns;
     if (next.lastAttack && next.lastAttack !== engine.lastAttack) {
-      playerStore.getState().receiveAttack(next.lastAttack.damage, next.lastAttack.stanceDamage, next.lastAttack.type === 'inferno' ? 'scorn' : next.lastAttack.type === 'scorn' || next.lastAttack.type === 'eclipse' ? next.lastAttack.type : undefined);
+      const defense = useDefense.getState().resolve(next.lastAttack.actionId, playerStore.getState().stanceValue);
+      if (defense !== 'dodged') playerStore.getState().receiveAttack(next.lastAttack.damage, next.lastAttack.stanceDamage, next.lastAttack.type === 'inferno' ? 'scorn' : next.lastAttack.type === 'scorn' || next.lastAttack.type === 'eclipse' ? next.lastAttack.type : undefined, defense === 'blocked');
     }
     const feedback: HitFeedback[] = [];
     const tick = next.lastTick !== engine.lastTick ? next.lastTick : null;
@@ -183,7 +185,10 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
       const state = get(), engine = state.enemyTurn;
       if (!engine || engine.action || engine.queue[0] === 'player' || state.status !== 'active') return;
       const next = encounterReducer(engine, { type: 'begin', actorId: engine.queue[0], turn: engine.serial });
-      if (next !== engine) applyEngine(engine, next);
+      if (next !== engine) {
+        if (next.action && !engine.action) useDefense.getState().begin(next.action.id, next.action.moveId);
+        applyEngine(engine, next);
+      }
     },
     enemyStep(type, actionId) {
       const state = get(), engine = state.enemyTurn;
@@ -194,6 +199,7 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
     diagnosticKillAll() {
       const state = get();
       if (state.status !== 'active') return;
+      useDefense.getState().clear();
       if (state.pending) restoreStance(state.pending);
       set({ opponents: Object.fromEntries(Object.entries(state.opponents).map(([id, actor]) => [id, { ...actor, hp: 0, defeated: true, statuses: [] }])),
         fieldTurns: 0, pending: null, enemyTurn: null, feedback: [], activeId: 'player', status: 'won', message: 'Diagnostics: all opponents defeated.' });
@@ -204,6 +210,7 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
       set({ pending: null, feedback: [] });
     },
     reset(encounterId = get().encounterId) {
+      useDefense.getState().clear();
       get().cancelCast();
       set({ encounterId, fieldTurns: 0, opponents: initialOpponents(encounterId), enemyTurn: null, activeId: 'player', turnNumber: 1, status: 'active', message: 'Choose a spell and a target.' });
     },

@@ -27,15 +27,16 @@ function clearBackdrop(frame: ImageData, visited: Uint8Array, queue: Int32Array)
   }
 }
 
-export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onComplete }: {
+export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onComplete, onProgress }: {
   move: CombatMove; sprite: string; muted: boolean; reduced: boolean;
+  onProgress?: (progress: number) => void;
   onImpact: () => void; onComplete: () => void;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const video = useRef<HTMLVideoElement | null>(null);
   const effectAudio = useRef<HTMLAudioElement | null>(null);
-  const callbacks = useRef({ onImpact, onComplete });
-  callbacks.current = { onImpact, onComplete };
+  const callbacks = useRef({ onImpact, onComplete, onProgress });
+  callbacks.current = { onImpact, onComplete, onProgress };
   const mutedRef = useRef(muted); mutedRef.current = muted;
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -45,11 +46,11 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onCo
     if (sound) { sound.volume = .55; sound.muted = mutedRef.current; sound.preload = 'auto'; }
     let sounded = false;
     const playSound = () => { if (sound && !sounded) { sounded = true; if (!document.hidden) void sound.play().catch(() => {}); } };
-    const impact = () => { if (!impacted) { impacted = true; playSound(); callbacks.current.onImpact(); } };
+    const impact = () => { if (!impacted) { callbacks.current.onProgress?.(1); impacted = true; playSound(); callbacks.current.onImpact(); } };
     const finish = () => { if (!done) { done = true; impact(); callbacks.current.onComplete(); } };
     const track = document.createElement('video');
     video.current = track;
-    track.playbackRate = 1.35; track.muted = !!move.sound || mutedRef.current; track.volume = .65; track.playsInline = true; track.preload = 'auto';
+    track.playbackRate = 2.4; track.muted = !!move.sound || mutedRef.current; track.volume = .65; track.playsInline = true; track.preload = 'auto';
     const ctx = canvas.current?.getContext('2d', { willReadFrequently: true });
     const width = 768, height = 512;
     const visited = new Uint8Array(width * height), queue = new Int32Array(width * height);
@@ -67,6 +68,7 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onCo
       if (!document.hidden) {
         elapsed += delta;
         if (reduced || !move.video) {
+          callbacks.current.onProgress?.(Math.min(1, elapsed / 300));
           if (elapsed >= 300) impact();
           if (elapsed >= 800) finish();
         } else {
@@ -90,12 +92,13 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onCo
                 setReady(true);
               } catch { finish(); }
             }
+            callbacks.current.onProgress?.(Math.min(1, Math.max(0, (track.currentTime - move.start) / Math.max(.01, move.impact - move.start))));
             if (track.currentTime >= move.impact - .25) playSound();
             if (track.currentTime >= move.impact) impact();
             if (track.currentTime >= move.end) finish();
           }
           // Finite, visible-time fallback covers loading errors and stalled media.
-          if (elapsed > (move.end - move.start) / 1.35 * 1000 + 6000) finish();
+          if (elapsed > (move.end - move.start) / 2.4 * 1000 + 6000) finish();
         }
       }
       if (!done) raf = requestAnimationFrame(tick);

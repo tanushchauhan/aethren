@@ -1,0 +1,24 @@
+.combat-defense { position:absolute; inset:0; z-index:15; pointer-events:none; font-family:inherit; color:#f2f8f8; }
+.defense-hidden-video { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.combat-defense button { pointer-events:auto; font:inherit; color:inherit; background:#0a1926bd; border:1px solid #bbd7dc75; padding:7px 12px; cursor:pointer; }
+.combat-defense button:disabled { opacity:.5; cursor:default; }
+.defense-camera-toggle { position:absolute; top:4.7rem; right:1.5rem; font-size:12px!important; }
+.defense-tracking-prompt { position:absolute; top:18%; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:12px; max-width:75%; background:#09141de8; padding:9px 14px; border:1px solid #f0d59780; text-align:center; font-size:14px; }
+.defense-tracking-prompt button { white-space:nowrap; }
+.defense-encounter-overlay { position:absolute; inset:20% 19% 20%; }
+.defense-projection { position:absolute; width:100%; height:100%; overflow:visible; filter:drop-shadow(0 2px 3px #020811) drop-shadow(0 0 7px #70e3ef55); }
+.projected-body { fill:#a5f4ff15; stroke:#b5f5ffd9; stroke-width:3; stroke-linejoin:round; transition:opacity .2s; }
+.projected-body line { stroke-width:13; stroke-linecap:round; stroke:#98e7ee70; }
+.projected-body circle { fill:#dbffffb0; stroke:#1d3f49; stroke-width:2; }
+.projected-impact { filter:drop-shadow(0 0 5px #0a1018); }
+.impact-target { fill:#17162550; stroke:currentColor; stroke-width:3; }
+.impact-approach { fill:none; stroke:currentColor; stroke-width:2; opacity:.9; }
+.projected-impact text { fill:#fff7de; font:20px monospace; stroke:#131826; stroke-width:2px; paint-order:stroke; }
+.defense-impact-caption { position:absolute; bottom:0; left:50%; transform:translateX(-50%); text-align:center; white-space:nowrap; padding:8px 18px; background:#08141ccd; border-bottom:2px solid #ffc09a; text-shadow:0 2px 4px #000; }
+.defense-impact-caption strong { display:block; font-size:24px; color:#ffe4b7; }
+.defense-impact-caption small { display:block; font-size:12px; color:#d3e9ea; }
+.defense-encounter-overlay.dodged strong,.defense-encounter-overlay.blocked strong { color:#9fffd4; }
+@media(max-width:800px) { .defense-encounter-overlay { left:10%; right:10%; } .defense-tracking-prompt { max-width:90%; font-size:12px; } .defense-camera-toggle { right:8px; } }
+@media(max-height:650px) { .defense-impact-caption strong { font-size:18px; } .defense-camera-toggle { top:3rem; } }
+.defense-danger-zone line { stroke:#ff5365; stroke-width:3; stroke-dasharray:9 5; filter:drop-shadow(0 0 4px #8d0a25); }
+.defense-danger-zone text { fill:#ffb1b7; font:12px monospace; stroke:#071018; stroke-width:3px; paint-order:stroke; }
