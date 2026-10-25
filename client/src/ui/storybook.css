@@ -1,0 +1,827 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,560;0,650;1,560&family=Source+Serif+4:ital,opsz,wght@0,8..60,460;0,8..60,650;1,8..60,460&display=swap');
+
+.ouam-stage {
+  --ouam-ink: #24160d;
+  --ouam-gold: #e3c36a;
+  --ouam-gold-deep: #8d6a2f;
+  --ouam-cream: #f6edd8;
+  --ouam-parchment: #f3e4c4;
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 28px 28px 36px;
+  color: var(--ouam-cream);
+  background-color: #120c08;
+  background-image:
+    radial-gradient(ellipse at 50% -8%, #4a3420 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, #000 0%, transparent 46%);
+  font-family: 'Source Serif 4', Palatino, 'Palatino Linotype', Georgia, serif;
+  font-size: 1.2rem;
+  line-height: 1.45;
+  color-scheme: light;
+}
+
+.ouam-stage *,
+.ouam-stage *::before,
+.ouam-stage *::after {
+  box-sizing: border-box;
+}
+
+.ouam-stage-captioned {
+  padding-bottom: 148px;
+}
+
+.ouam-shell {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+}
+
+.ouam-stage button,
+.ouam-stage input,
+.ouam-stage textarea {
+  font-family: inherit;
+}
+
+.ouam-topbar {
+  display: flex;
+  justify-content: flex-start;
+  min-height: 3.2rem;
+  margin-bottom: 8px;
+  padding-right: 96px;
+}
+
+.ouam-room {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0;
+}
+
+.ouam-room-label {
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 0.95rem;
+  color: #f8efd8;
+}
+
+.ouam-room-code {
+  font-family: 'Cormorant Garamond', Palatino, Georgia, serif;
+  font-size: 2.6rem;
+  font-weight: 650;
+  letter-spacing: 0.28em;
+  line-height: 1;
+  color: #fff6df;
+}
+
+.ouam-hero {
+  margin: 0 0 22px;
+}
+
+.ouam-title {
+  margin: 0;
+  font-family: 'Cormorant Garamond', Palatino, Georgia, serif;
+  font-weight: 560;
+  font-size: clamp(3.3rem, 7vw, 5.5rem);
+  line-height: 0.92;
+  color: #f8efd8;
+  text-wrap: balance;
+}
+
+.ouam-title::after {
+  content: '';
+  display: block;
+  width: 148px;
+  height: 3px;
+  margin-top: 16px;
+  background: linear-gradient(90deg, var(--ouam-gold), transparent);
+}
+
+.ouam-subtitle {
+  margin: 14px 0 0;
+  max-width: 38rem;
+  font-size: clamp(1.3rem, 2.3vw, 1.75rem);
+  color: #f0d9a4;
+}
+
+.ouam-landing {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.85fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.ouam-landing-side {
+  display: grid;
+  gap: 14px;
+}
+
+.ouam-parchment {
+  color: var(--ouam-ink);
+  background-color: var(--ouam-parchment);
+  background-image:
+    radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.55), transparent 28%),
+    radial-gradient(rgba(90, 60, 20, 0.055) 0.7px, transparent 0.8px);
+  background-size: auto, 8px 8px;
+  border: 3px solid var(--ouam-gold-deep);
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 6px #c6a15a,
+    0 18px 40px rgba(20, 10, 0, 0.35),
+    inset 0 0 36px rgba(120, 80, 20, 0.1);
+  padding: 22px 22px 20px;
+}
+
+.ouam-parchment-torn {
+  background-color: #e4d2ae;
+  background-image:
+    radial-gradient(circle at 78% 88%, rgba(90, 16, 16, 0.2), transparent 36%),
+    radial-gradient(rgba(90, 60, 20, 0.06) 0.7px, transparent 0.8px);
+}
+
+.ouam-panel-title,
+.ouam-book-title {
+  margin: 0 0 12px;
+  font-family: 'Cormorant Garamond', Palatino, Georgia, serif;
+  font-weight: 560;
+  line-height: 1;
+  color: var(--ouam-ink);
+}
+
+.ouam-panel-title {
+  font-size: clamp(1.8rem, 3vw, 2.3rem);
+}
+
+.ouam-book-title {
+  font-size: clamp(2.4rem, 4vw, 3.5rem);
+}
+
+.ouam-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.ouam-field span,
+.ouam-label {
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+}
+
+.ouam-stage input:not([type='radio']),
+.ouam-stage textarea {
+  width: 100%;
+  color: var(--ouam-ink);
+  background: rgba(255, 252, 245, 0.78);
+  border: 2px solid var(--ouam-gold-deep);
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  font-size: 1.25rem;
+}
+
+.ouam-stage textarea {
+  min-height: 128px;
+  resize: vertical;
+}
+
+.ouam-code {
+  font-size: 2rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  text-align: center;
+  min-width: 9rem;
+}
+
+.ouam-roles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
+}
+
+.ouam-roles legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 1.05rem;
+}
+
+.ouam-role {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 92px;
+  padding: 12px 14px;
+  border: 2px solid var(--ouam-gold-deep);
+  border-radius: 14px;
+  background: rgba(255, 252, 245, 0.5);
+  cursor: pointer;
+}
+
+.ouam-role input {
+  width: 1.35rem;
+  height: 1.35rem;
+  margin: 0;
+  flex: none;
+  accent-color: #6e4e22;
+}
+
+.ouam-role.is-selected {
+  background: #f6e3ad;
+  box-shadow: inset 0 0 0 2px var(--ouam-gold-deep);
+}
+
+.ouam-role strong,
+.ouam-role small {
+  display: block;
+}
+
+.ouam-role strong {
+  font-size: 1.35rem;
+  line-height: 1.15;
+}
+
+.ouam-role small {
+  margin-top: 2px;
+  font-size: 1.02rem;
+}
+
+.ouam-or {
+  margin: 4px 0 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.95rem;
+  color: #6d5130;
+}
+
+.ouam-join {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.ouam-join .ouam-field {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.ouam-button {
+  min-height: 64px;
+  padding: 0.8rem 1.35rem;
+  border: 2px solid var(--ouam-gold);
+  border-radius: 999px;
+  background: #2a1a10;
+  color: #f8efd8;
+  font-size: 1.22rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.ouam-button:hover {
+  background: #3d2718;
+}
+
+.ouam-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ouam-button-gold {
+  background: linear-gradient(#f3d78a, #c4963a);
+  color: #24160d;
+  font-weight: 650;
+  border-color: #8a6418;
+}
+
+.ouam-button-gold:hover {
+  background: linear-gradient(#ffe7a8, #d4a84a);
+}
+
+.ouam-button-block {
+  width: 100%;
+}
+
+.ouam-quick {
+  width: 100%;
+  min-height: 96px;
+  font-size: clamp(1.45rem, 2vw, 1.85rem);
+}
+
+.ouam-quick-note,
+.ouam-help,
+.ouam-consent,
+.ouam-error,
+.ouam-note,
+.ouam-status,
+.ouam-hint,
+.ouam-hw {
+  margin: 0;
+}
+
+.ouam-quick-note,
+.ouam-hint,
+.ouam-hw,
+.ouam-status {
+  color: #f6e7c4;
+  font-size: 1.22rem;
+}
+
+.ouam-error {
+  margin-top: 12px;
+  color: #7a1d1d;
+  font-size: 1.12rem;
+  font-weight: 650;
+}
+
+.ouam-note {
+  margin-top: 10px;
+  color: #5c3b16;
+  font-size: 1.08rem;
+}
+
+.ouam-help {
+  margin-top: 14px;
+  font-size: 1.15rem;
+}
+
+.ouam-consent {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 4px solid #7a1d1d;
+  background: rgba(122, 29, 29, 0.08);
+  font-size: 1.12rem;
+}
+
+.ouam-dropzone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 240px;
+  padding: 24px;
+  border: 3px dashed var(--ouam-gold-deep);
+  border-radius: 18px;
+  background: rgba(255, 252, 245, 0.38);
+  text-align: center;
+  cursor: pointer;
+}
+
+.ouam-dropzone.is-dragging {
+  background: #f6e3ad;
+  border-style: solid;
+}
+
+.ouam-drop-title {
+  font-family: 'Cormorant Garamond', Palatino, Georgia, serif;
+  font-size: clamp(2rem, 3vw, 2.7rem);
+  line-height: 1;
+}
+
+.ouam-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.ouam-dropzone:focus-within {
+  outline: 3px solid #1a1008;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 7px #f3d98a;
+}
+
+.ouam-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.ouam-begin {
+  min-width: min(100%, 320px);
+  font-size: 1.45rem;
+}
+
+.ouam-carousel {
+  display: flex;
+  gap: 16px;
+  margin: 0 0 16px;
+  padding: 8px 4px 18px;
+  overflow-x: auto;
+  list-style: none;
+  scroll-snap-type: x mandatory;
+}
+
+.ouam-carousel li {
+  display: flex;
+  flex: 0 0 270px;
+  scroll-snap-align: center;
+}
+
+.ouam-carousel li.is-focused {
+  flex-basis: 330px;
+}
+
+.ouam-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  min-height: 380px;
+  padding: 18px 16px 16px;
+  border: 3px solid var(--ouam-gold-deep);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f8efd6, #ead7ae);
+  color: var(--ouam-ink);
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+}
+
+.ouam-carousel li.is-focused .ouam-card {
+  border-color: #f0d48a;
+  box-shadow:
+    0 0 0 4px #1a1008,
+    0 0 0 8px #e3c36a;
+}
+
+.ouam-card.is-boss {
+  background: linear-gradient(180deg, #fbf6e4, #f0ddb0);
+}
+
+.ouam-card-quote {
+  display: block;
+  margin: 0;
+  padding-right: 78px;
+  font-size: 1.48rem;
+  line-height: 1.3;
+}
+
+.ouam-card-meta {
+  display: grid;
+  gap: 4px;
+  margin-top: auto;
+  font-size: 1.05rem;
+}
+
+.ouam-card .ouam-wax {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.ouam-browsing {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.ouam-stack {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ouam-wax {
+  display: grid;
+  width: 74px;
+  height: 74px;
+  place-items: center;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.28), transparent 40%),
+    #8e1e1e;
+  box-shadow:
+    inset 0 -6px 10px rgba(0, 0, 0, 0.25),
+    0 6px 0 #5c1010;
+  color: #f8e7c8;
+  font-family: 'Cormorant Garamond', Palatino, Georgia, serif;
+  font-size: 0.95rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transform: rotate(-8deg);
+}
+
+.ouam-card .ouam-crown {
+  margin-right: 78px;
+}
+
+.ouam-crown {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: flex-start;
+  padding: 0.28rem 0.75rem;
+  border-radius: 999px;
+  background: #1a1008;
+  color: #f6e2a8;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ouam-color-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0.15rem 0.7rem 0.15rem 0.35rem;
+  border: 2px solid var(--ouam-gold-deep);
+  border-radius: 999px;
+  background: rgba(255, 252, 245, 0.8);
+  color: var(--ouam-ink);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.ouam-color-swatch {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #24160d;
+  border-radius: 50%;
+}
+
+.ouam-book {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(280px, 1.15fr);
+  min-height: 480px;
+  overflow: hidden;
+  border: 3px solid var(--ouam-gold-deep);
+  border-radius: 18px;
+  background: #f4e6c4;
+  color: var(--ouam-ink);
+  box-shadow:
+    0 0 0 7px #c6a15a,
+    0 24px 50px rgba(0, 0, 0, 0.35);
+  animation: ouam-open 700ms ease both;
+}
+
+.ouam-book-cover {
+  display: grid;
+  padding: 16px;
+  place-items: stretch;
+  background: #1b140e;
+  border-right: 10px solid #6e4e22;
+}
+
+.ouam-book-page {
+  padding: 28px 32px 32px;
+  background-color: #f7edd4;
+  background-image: radial-gradient(rgba(90, 60, 20, 0.05) 0.7px, transparent 0.8px);
+  background-size: 8px 8px;
+}
+
+.ouam-eyebrow {
+  margin: 0 0 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.95rem;
+  color: #6d5130;
+}
+
+.ouam-intro {
+  margin: 0 0 18px;
+  font-size: 1.35rem;
+}
+
+.ouam-intro::first-letter {
+  float: left;
+  padding-right: 8px;
+  font-family: 'Cormorant Garamond', Palatino, Georgia, serif;
+  font-size: 4.2rem;
+  line-height: 0.8;
+  color: #7a5416;
+}
+
+.ouam-spells {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ouam-spells li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.35rem;
+}
+
+.ouam-spell-phrase {
+  font-style: italic;
+}
+
+.ouam-art {
+  display: block;
+  width: 100%;
+  height: 240px;
+  object-fit: cover;
+  border-radius: 12px;
+  background: #1b140e;
+}
+
+.ouam-book-cover .ouam-art {
+  height: 100%;
+  min-height: 320px;
+  border-radius: 8px;
+}
+
+.ouam-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.ouam-gallery figure {
+  margin: 0;
+}
+
+.ouam-gallery figcaption {
+  margin-top: 8px;
+  font-size: 1.15rem;
+  text-align: center;
+}
+
+.ouam-ending-line {
+  margin: 18px 0 8px;
+  font-family: 'Cormorant Garamond', Palatino, Georgia, serif;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.15;
+  text-align: center;
+}
+
+.ouam-meta {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ouam-room-prose {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.ouam-players {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 1.28rem;
+}
+
+.ouam-role-tag {
+  margin-left: 8px;
+  color: #6d5130;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ouam-hearts {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.ouam-hearts-label {
+  font-size: 1.25rem;
+}
+
+.ouam-hearts-row {
+  display: flex;
+  gap: 8px;
+  font-size: 2.6rem;
+  line-height: 1;
+}
+
+.ouam-heart {
+  color: #8a7560;
+}
+
+.ouam-heart.is-full {
+  color: #9c2f2f;
+}
+
+.ouam-local-cards {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.ouam-local-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  font-size: 1.12rem;
+}
+
+.ouam-caption {
+  position: fixed;
+  z-index: 5;
+  left: 50%;
+  bottom: 16px;
+  width: min(960px, calc(100% - 32px));
+  margin: 0;
+  padding: 16px 22px;
+  transform: translateX(-50%);
+  border: 2px solid var(--ouam-gold);
+  border-radius: 14px;
+  background: #140d08;
+  color: #fff8ea;
+  font-size: clamp(1.25rem, 2vw, 1.6rem);
+  font-weight: 650;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.ouam-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ouam-stage :focus-visible {
+  outline: 3px solid #fff6d8;
+  outline-offset: 3px;
+}
+
+.ouam-parchment :focus-visible,
+.ouam-card:focus-visible,
+.ouam-book :focus-visible {
+  outline-color: #1a1008;
+  box-shadow: 0 0 0 5px #f3d98a;
+}
+
+@keyframes ouam-open {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.ouam-book.is-inking .ouam-book-cover {
+  background-image: linear-gradient(110deg, #1b140e 0%, #3d2c16 45%, #1b140e 80%);
+  background-size: 200% 100%;
+  animation: ouam-ink 1.8s linear infinite;
+}
+
+@keyframes ouam-ink {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (hover: hover) {
+  .ouam-card:hover {
+    transform: translateY(-3px);
+  }
+}
+
+@media (max-width: 900px) {
+  .ouam-landing,
+  .ouam-book,
+  .ouam-gallery,
+  .ouam-roles {
+    grid-template-columns: 1fr;
+  }
+
+  .ouam-join {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ouam-stage *,
+  .ouam-stage *::before,
+  .ouam-stage *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
