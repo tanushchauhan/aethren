@@ -26,7 +26,7 @@ export function useSpellSelection(): SpellSelection {
   const dialSlot = useGameStore((state) => state.hardware?.dialSlot);
   const buttonPressed = useGameStore((state) => state.hardware?.buttonPressed ?? false);
   const fistCharged = useGameStore((state) => state.hardware?.fistCharged ?? false);
-  const role = useGameStore((state) => state.localRole);
+  const armed = useGameStore((state) => state.hardware?.armed ?? false);
   const incantations = useGameStore((state) => state.gameState?.world?.incantations);
   const elementLocked = useGameStore(
     (state) => findLocalPlayer(state.gameState?.players, state.localPlayerId, state.localRole)?.elementLocked ?? false,
@@ -39,7 +39,7 @@ export function useSpellSelection(): SpellSelection {
   const [localLock, setLocalLock] = useState(false);
   const [buttonLatched, setButtonLatched] = useState(false);
 
-  const hardwareDrives = dialSlot !== undefined && role !== 'partner';
+  const hardwareDrives = dialSlot !== undefined && armed;
 
   useEffect(() => {
     if (hardwareDrives || !selectedElement) return;
@@ -48,24 +48,25 @@ export function useSpellSelection(): SpellSelection {
   }, [hardwareDrives, selectedElement]);
 
   useEffect(() => {
-    if (dialSlot === undefined) return;
+    if (!hardwareDrives || dialSlot === undefined) return;
     setSlot(dialSlot);
-  }, [dialSlot]);
+  }, [dialSlot, hardwareDrives]);
 
   useEffect(() => {
-    if (!buttonPressed) return;
+    if (!hardwareDrives || !buttonPressed) return;
     setButtonLatched(true);
-  }, [buttonPressed]);
+  }, [buttonPressed, hardwareDrives]);
 
   const dialReady = useRef(false);
   useEffect(() => {
+    if (!hardwareDrives) return;
     if (!dialReady.current) {
       dialReady.current = true;
       return;
     }
     setButtonLatched(false);
     setLocalLock(false);
-  }, [dialSlot]);
+  }, [dialSlot, hardwareDrives]);
 
   const choose = (next: DialSlot) => {
     if (hardwareDrives) return;
@@ -74,6 +75,13 @@ export function useSpellSelection(): SpellSelection {
     setButtonLatched(false);
   };
 
+  useEffect(() => {
+    if (hardwareDrives) return;
+    const next = () => { setSlot(current => ((current + 1) % 3) as DialSlot); setLocalLock(true); };
+    window.addEventListener('ouam:arm-raise', next);
+    return () => window.removeEventListener('ouam:arm-raise', next);
+  }, [hardwareDrives]);
+
   const phrase = spellPhrase(incantations, ELEMENTS_P0[slot]);
 
   return {
@@ -81,8 +89,8 @@ export function useSpellSelection(): SpellSelection {
     element: ELEMENTS_P0[slot],
     phrase: phrase.text,
     generated: phrase.generated,
-    locked: elementLocked || localLock || buttonLatched || buttonPressed,
-    fistCharged,
+    locked: elementLocked || localLock || (hardwareDrives && (buttonLatched || buttonPressed)),
+    fistCharged: hardwareDrives && fistCharged,
     hardwareDrives,
     choose,
     toggleLock: () => setLocalLock((value) => !value),

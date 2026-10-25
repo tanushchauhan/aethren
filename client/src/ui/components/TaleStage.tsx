@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { useGameStore } from '../../net/store';
 import { ELEMENT_COLORS } from '../../net/contract';
 import { cx } from '../cx';
 import { RoomCodeBadge } from './RoomCodeBadge';
@@ -17,6 +18,8 @@ interface TaleStageProps {
 }
 
 export function TaleStage({ screen, children, roomCode, caption }: TaleStageProps) {
+  const narrator = useGameStore(s => s.gameState?.narratorCaption);
+  caption = narrator || caption;
   return (
     <div
       className={cx('ouam-stage', caption ? 'ouam-stage-captioned' : undefined)}

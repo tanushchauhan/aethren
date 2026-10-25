@@ -12,11 +12,8 @@
     "caption caption caption";
   overflow: hidden;
   color: #fff6e8;
-  background:
-    radial-gradient(ellipse at 50% -10%, rgba(120, 64, 24, 0.5), transparent 52%),
-    radial-gradient(ellipse at 50% 120%, rgba(0, 0, 0, 0.7), transparent 46%),
-    linear-gradient(180deg, #24160f 0%, #120e0c 42%, #07060b 100%);
-  font-family: Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  background: #152329;
+  font-family: 'VT323', monospace;
   user-select: none;
 }
 
@@ -45,7 +42,7 @@
 
 .round {
   margin: 0;
-  font-family: Impact, "Arial Black", Haettenschweiler, sans-serif;
+  font-family: 'VT323', monospace;
   font-size: clamp(1.4rem, 3vw, 2.2rem);
   letter-spacing: 0.08em;
   color: #f0d78c;
@@ -66,7 +63,7 @@
   border: 1px solid rgba(240, 215, 140, 0.4);
   border-radius: 999px;
   color: rgba(255, 246, 232, 0.72);
-  font-family: Impact, "Arial Black", Haettenschweiler, sans-serif;
+  font-family: 'VT323', monospace;
   font-size: clamp(0.95rem, 2vw, 1.35rem);
   letter-spacing: 0.12em;
 }
@@ -123,7 +120,7 @@
 .heartCount {
   margin: 0;
   min-width: 4.2rem;
-  font-family: Impact, "Arial Black", sans-serif;
+  font-family: 'VT323', monospace;
   font-size: clamp(1.8rem, 4vh, 2.8rem);
   letter-spacing: 0.04em;
 }
@@ -233,7 +230,7 @@
 
 .wardCopy {
   margin: 0;
-  font-family: Impact, "Arial Black", sans-serif;
+  font-family: 'VT323', monospace;
   letter-spacing: 0.08em;
   font-size: 1.15rem;
 }
@@ -274,11 +271,11 @@
 }
 
 .shardOn {
-  background: linear-gradient(180deg, #fff6d2, #f0d78c 42%, #a8742a);
+  background: #152329;
 }
 
 .meter[data-level='2'] .shardOn {
-  background: linear-gradient(180deg, #e7fff8, #8dffe4 40%, #1e8f78);
+  background: #152329;
   box-shadow: 0 0 16px rgba(141, 255, 228, 0.75);
 }
 
@@ -322,7 +319,7 @@
 
 .oopTitle {
   margin: 0;
-  font-family: Impact, "Arial Black", sans-serif;
+  font-family: 'VT323', monospace;
   font-size: clamp(2.4rem, 6vw, 4.6rem);
   letter-spacing: 0.04em;
   line-height: 0.95;
@@ -342,7 +339,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse at center, rgba(8, 10, 18, 0.05), rgba(0, 0, 0, 0.58) 74%);
+  background: #152329;
   box-shadow:
     inset 0 0 0 2px rgba(240, 215, 140, 0.4),
     inset 0 0 80px rgba(0, 0, 0, 0.28);
@@ -417,7 +414,7 @@
   width: min(19rem, 46vh);
   aspect-ratio: 1;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 38%, #4a3424, #1a120c 64%, #0a0806);
+  background: #152329;
   box-shadow:
     0 0 0 3px rgba(240, 215, 140, 0.72),
     0 18px 40px rgba(0, 0, 0, 0.45);
@@ -460,7 +457,7 @@
   z-index: 3;
   border-radius: 50%;
   pointer-events: none;
-  background: radial-gradient(circle at 40% 35%, #3a2a1c, #120e0b 72%);
+  background: #152329;
   box-shadow: inset 0 0 0 2px rgba(240, 215, 140, 0.45);
 }
 
@@ -499,7 +496,7 @@
   gap: 0.1rem;
   width: 100%;
   height: 100%;
-  font-family: Palatino, Georgia, serif;
+  font-family: 'VT323', monospace;
   font-size: 0.98rem;
   font-weight: 800;
   line-height: 1;
@@ -524,7 +521,7 @@
   border-radius: 50%;
   background: #1a120c;
   color: #f0d78c;
-  font-family: Impact, "Arial Black", sans-serif;
+  font-family: 'VT323', monospace;
   letter-spacing: 0.08em;
   cursor: pointer;
 }
@@ -536,7 +533,7 @@
 
 .elementName {
   margin: 0.7rem 0 0;
-  font-family: Impact, "Arial Black", sans-serif;
+  font-family: 'VT323', monospace;
   font-size: clamp(1.8rem, 4vh, 2.6rem);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -613,7 +610,7 @@
 
 .micLabel {
   margin: 0;
-  font-family: Impact, "Arial Black", sans-serif;
+  font-family: 'VT323', monospace;
   letter-spacing: 0.14em;
   font-size: 1.05rem;
 }
@@ -635,7 +632,7 @@
   margin-left: 0.35rem;
   padding: 0.05rem 0.4rem;
   border-radius: 999px;
-  font-family: Impact, "Arial Black", sans-serif;
+  font-family: 'VT323', monospace;
   letter-spacing: 0.08em;
   font-size: 0.85rem;
   vertical-align: middle;
@@ -674,20 +671,15 @@
 }
 
 .overlay[data-attack='low_sweep'] {
-  background:
-    linear-gradient(90deg, rgba(232, 60, 20, 0.62), transparent 30% 70%, rgba(232, 60, 20, 0.62)),
-    rgba(18, 4, 2, 0.62);
+  background: #152329;
 }
 
 .overlay[data-attack='high_swing'] {
-  background:
-    linear-gradient(180deg, rgba(255, 196, 40, 0.55), transparent 48%),
-    rgba(16, 10, 2, 0.58);
+  background: #152329;
 }
 
 .overlay[data-attack='projectile'] {
-  background:
-    radial-gradient(circle at 50% calc(20% + var(--p) * 38%), rgba(76, 201, 240, 0.42), rgba(5, 8, 16, 0.78) 58%);
+  background: #152329;
 }
 
 .sweep,
@@ -750,7 +742,7 @@
 }
 
 .kicker {
-  font-family: Impact, "Arial Black", sans-serif;
+  font-family: 'VT323', monospace;
   letter-spacing: 0.22em;
   font-size: clamp(1rem, 2vw, 1.4rem);
   color: #ffe9a8;
@@ -759,7 +751,7 @@
 .command {
   display: block;
   margin: 0.15rem 0;
-  font-family: Impact, "Arial Black", Haettenschweiler, sans-serif;
+  font-family: 'VT323', monospace;
   font-size: clamp(4rem, 10vw, 8.2rem);
   line-height: 0.88;
   letter-spacing: 0.03em;
@@ -771,7 +763,7 @@
 
 .countdown {
   display: block;
-  font-family: Impact, "Arial Black", sans-serif;
+  font-family: 'VT323', monospace;
   font-size: clamp(2.8rem, 7vw, 5.2rem);
   font-variant-numeric: tabular-nums;
   color: #ffe14a;
@@ -781,7 +773,7 @@
 .millis {
   display: block;
   margin-bottom: 0.35rem;
-  font-family: "Arial Narrow", Impact, sans-serif;
+  font-family: 'VT323', monospace;
   font-size: clamp(1.1rem, 2vw, 1.6rem);
   letter-spacing: 0.16em;
   color: #fff6e8;
@@ -813,7 +805,7 @@
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 32%, #fff, #bff4ff 18%, #4cc9f0 40%, #12384a 74%, #05070c);
+  background: #152329;
   box-shadow:
     0 0 30px #4cc9f0,
     0 0 70px rgba(76, 201, 240, 0.65);
@@ -866,7 +858,7 @@
   background: #ffe14a;
   color: #1a1200;
   text-align: center;
-  font-family: Impact, "Arial Black", sans-serif;
+  font-family: 'VT323', monospace;
   font-size: clamp(1.25rem, 2.8vw, 2rem);
   letter-spacing: 0.04em;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
@@ -941,3 +933,37 @@
     transition: none;
   }
 }
+
+/* Keep the stage usable on laptop-height displays and small screens. */
+.root { position: relative; min-height: 100svh; overflow: visible; grid-template-rows: auto auto minmax(520px, 1fr) auto; padding: 20px; gap: 16px; background: #152329; }
+.ribbon { padding: 8px 12px 18px; border-bottom: 1px solid #d1bf7d40; }
+.round, .phases li, .elementName, .wardCopy { font-family: 'VT323', monospace; font-weight: 600; }
+.phases li { font-size: 11px; padding: 9px 13px; }
+.round { font-size: 17px; }
+.heartOn, .heartOff { width: 30px; filter: none; }
+.heartCount { font: 16px 'VT323', monospace; }
+.foe, .rail { overflow: visible; padding: 20px; border: 1px solid #d1bf7d30; border-radius: 16px; background: #ffffff04; }
+.portraitFrame { max-height: 30vh; }
+.vision { margin: 0; min-height: 500px; box-shadow: inset 0 0 0 1px #d1bf7d40; }
+.housing { width: 260px; flex-shrink: 0; margin: 22px 0 12px; }
+.sigil, .sigilOn { width: 68px; height: 68px; margin: -34px 0 0 -34px; font: 600 13px 'VT323', monospace; text-transform: capitalize; }
+.caption { border-top: 1px solid #d1bf7d50; border-radius: 12px; background: #0b1513; }
+.captionText { font-size: 20px; font-weight: 400; }
+.castActions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.root :global(.ouam-button) { min-height: 44px; border: 1px solid #d4bc79; border-radius: 8px; background: #e0cb91; color: #18241f; padding: 10px 16px; cursor: pointer; }
+.root button:disabled { opacity: .45; cursor: not-allowed; }
+.root button:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+@media (max-width: 980px) { .root { grid-template-columns: minmax(0,1fr) minmax(0,1fr); grid-template-rows: auto; } .vision { min-height: 400px; } }
+@media (max-width: 600px) { .root { padding: 12px; grid-template-columns: minmax(0,1fr); grid-template-areas: "ribbon" "hearts" "vision" "foe" "rail" "caption"; } .ribbon { display: flex; flex-wrap: wrap; } .housing { width: 260px; } .command { font-size: 3rem; } }
+
+.root { background: #152329; }
+.foe, .rail { background: #2c213a66; border-color: #af87ce45; border-radius: 22px; }
+.vision { background: #152329; box-shadow: inset 0 0 0 1px #bc97d460; }
+.housing { background: #152329; }
+.caption { background: #1c142a; border-color: #ae83ca60; }
+.root :global(.ouam-button) { background: #152329; color: #30213f; border-color: #e7d0f5; border-radius: 14px; box-shadow: 0 3px 0 #70518c; }
+.silhouette { color: #e1b9ff; filter: drop-shadow(0 0 14px #bb7bef80); }
+
+.root { background: #101c22; font-family: 'VT323', monospace; }
+.foe, .rail, .vision, .caption { border-radius: 0; background: #13262b; }
+.root :global(.ouam-button) { border-radius: 0; background: #29473c; color: #e5dbaf; font: 23px 'VT323', monospace; border-color: #8ea08a; }

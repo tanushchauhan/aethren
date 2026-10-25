@@ -12,7 +12,6 @@ import {
 
 export const MOCK_PLAYER_IDS: Record<PlayerRole, string> = {
   spellbearer: 'player-spellbearer',
-  partner: 'player-partner',
 };
 
 export function mockPlayerId(role: PlayerRole): string {
@@ -106,14 +105,14 @@ export function buildMockWorld(): WorldSchema {
   };
 }
 
-function makePlayer(name: string, role: PlayerRole): PlayerPublic {
+function makePlayer(name: string, role: PlayerRole, id = mockPlayerId(role)): PlayerPublic {
   return {
-    id: mockPlayerId(role),
+    id,
     name,
     role,
     inZone: true,
     connected: true,
-    selectedElement: role === 'spellbearer' ? 'ember' : 'frost',
+    selectedElement: id === 'player-teammate' ? 'frost' : 'ember',
     elementLocked: false,
     fistCharged: false,
   };
@@ -147,8 +146,8 @@ export function buildMockGameState(input: {
     teamHearts: MAX_TEAM_HEARTS,
     maxTeamHearts: MAX_TEAM_HEARTS,
     players: [
-      makePlayer(input.role === 'spellbearer' ? playerName : 'Spellbearer', 'spellbearer'),
-      makePlayer(input.role === 'partner' ? playerName : 'Partner', 'partner'),
+      makePlayer(playerName, 'spellbearer'),
+      makePlayer('Fellow spellbearer', 'spellbearer', 'player-teammate'),
     ],
     encounter,
     boss: world.boss,

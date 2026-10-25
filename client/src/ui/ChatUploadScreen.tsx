@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import { ColorBadge } from './components/ColorBadge';
 import { ParchmentPanel } from './components/ParchmentPanel';
@@ -15,22 +15,11 @@ const EXPORT_HELP = 'Accounts Center -> Your information -> Export, JSON, messag
 
 export function ChatUploadScreen() {
   const gameState = useUiStore((state) => state.gameState);
-  const mockMode = useUiStore((state) => state.mockMode);
   const [dragging, setDragging] = useState(false);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState('');
   const [holdLocal, setHoldLocal] = useState(false);
-  const skipped = useRef(false);
 
-  useEffect(() => {
-    if (!mockMode || skipped.current) return;
-    skipped.current = true;
-    const moved = advancePhase('opening');
-    if (!moved) {
-      setHoldLocal(true);
-      setMessage('These demo memories are ready, but the tale cannot open from this screen yet.');
-    }
-  }, [mockMode]);
 
   function openDemoMemories() {
     const moved = advancePhase('opening');
@@ -59,11 +48,7 @@ export function ChatUploadScreen() {
         return;
       }
       if (!outcome.ok) {
-        const moved = advancePhase('opening');
-        if (!moved) {
-          setHoldLocal(true);
-          setMessage('The storyteller is away, so these demo memories stay on this page until the tale can open.');
-        }
+        setMessage('The upload service is unavailable. Retry, or choose demo memories below.');
         return;
       }
       if (outcome.cardsApplied) {

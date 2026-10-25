@@ -10,7 +10,7 @@ export type Element = ElementP0 | 'storm' | 'moon' | 'starlight';
 export type AttackTypeP0 = 'low_sweep' | 'high_swing' | 'projectile';
 export type AttackType = AttackTypeP0 | 'ground_wave' | 'stare';
 export type Gesture = 'swipe' | 'thrust';
-export type PlayerRole = 'spellbearer' | 'partner';
+export type PlayerRole = 'spellbearer';
 
 export type RoomPhase =
   | 'lobby'
@@ -145,6 +145,8 @@ export interface CastEvent {
 }
 
 export interface HardwareEvent {
+  /** Server relays must identify the glove owner. Local bridge inputs may omit it. */
+  playerId?: string;
   dialSlot: 0 | 1 | 2;
   buttonPressed: boolean;
   fistCharged: boolean;
@@ -155,6 +157,8 @@ export interface HardwareEvent {
 }
 
 export interface HardwareCommand {
+  /** Omit only when the server sends directly to the owning socket. */
+  playerId?: string;
   type: 'buzz' | 'servo';
   pattern?: 'tick' | 'cast' | 'fizzle' | 'hit';
   servoOpen?: boolean;
@@ -177,6 +181,7 @@ export interface NarratorLine {
 }
 
 export interface ServerToClientEvents {
+  'room:joined': { playerId: string };
   'clock:pong': ClockPong;
   'room:state': GameState;
   'combat:telegraph': TelegraphEvent;
@@ -190,6 +195,7 @@ export interface ServerToClientEvents {
 }
 
 export interface ClientToServerEvents {
+  'room:advance': { phase: RoomPhase };
   'clock:ping': ClockPing;
   'room:create': { playerName: string; role: PlayerRole };
   'room:join': { code: string; playerName: string; role: PlayerRole };

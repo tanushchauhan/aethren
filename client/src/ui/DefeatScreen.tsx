@@ -52,6 +52,6 @@ export function DefeatScreen() {
   );
 }
 
-function roleLabel(role: PlayerRole): string {
-  return role === 'spellbearer' ? 'Spellbearer' : 'Partner';
+function roleLabel(_role: PlayerRole): string {
+  return 'Spellbearer';
 }

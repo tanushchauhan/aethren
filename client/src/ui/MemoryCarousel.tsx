@@ -32,10 +32,14 @@ export function MemoryCarousel() {
   const ready = canBeginTale(selected, bossId);
   const keptCount = selected.filter((id) => id !== bossId).length;
 
+  const previousDial = useRef(hw.dialSlot);
   useEffect(() => {
-    if (role === 'partner') return;
-    setFocus(Math.min(hw.dialSlot, Math.max(cards.length - 1, 0)));
-  }, [hw.dialSlot, role, cards.length]);
+    const previous = previousDial.current;
+    previousDial.current = hw.dialSlot;
+    if (!hw.armed || previous === hw.dialSlot) return;
+    const step = (hw.dialSlot - previous + 3) % 3 === 1 ? 1 : -1;
+    setFocus(current => (current + step + cards.length) % Math.max(1, cards.length));
+  }, [hw.dialSlot, hw.armed, role, cards.length]);
 
   useEffect(() => {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -49,22 +53,23 @@ export function MemoryCarousel() {
   const pressedNow = hw.buttonPressed === true;
   const wasPressed = useRef(pressedNow);
   useEffect(() => {
-    if (pressedNow && !wasPressed.current && role !== 'partner') {
+    if (pressedNow && !wasPressed.current && hw.armed) {
       const card = cards[focusIndex];
       if (card) getUiStore().selectCard(card.id);
     }
     wasPressed.current = pressedNow;
-  }, [pressedNow, role, cards, focusIndex]);
+  }, [pressedNow, role, hw.armed, cards, focusIndex]);
 
   const tokenKey = `${hw.colorToken ?? ''}:${cards.map((card) => `${card.id}:${card.color}`).join('|')}`;
   const lastTokenKey = useRef('');
   useEffect(() => {
+    if (!hw.armed) return;
     if (tokenKey === lastTokenKey.current) return;
     lastTokenKey.current = tokenKey;
     if (!isColorToken(hw.colorToken) || cards.length === 0) return;
     const card = cardForColorToken(cards, hw.colorToken, selected, bossId);
     if (card) getUiStore().lockBoss(card.id);
-  }, [tokenKey, hw.colorToken, cards, selected, bossId]);
+  }, [tokenKey, hw.colorToken, hw.armed, role, cards, selected, bossId]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -85,6 +90,13 @@ export function MemoryCarousel() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [cards, focus]);
+
+  useEffect(() => {
+    if (hw.armed) return;
+    const next = () => setFocus(current => (current + 1) % Math.max(1, cards.length));
+    window.addEventListener('ouam:arm-raise', next);
+    return () => window.removeEventListener('ouam:arm-raise', next);
+  }, [hw.armed, cards.length]);
 
   function keep(card: MemoryCard) {
     setFocus(cards.findIndex((item) => item.id === card.id));
@@ -114,7 +126,7 @@ export function MemoryCarousel() {
         <h1 className="ouam-title">Choose the memories</h1>
         <p className="ouam-subtitle">Keep one for the encounter. Crown another as the boss.</p>
       </header>
-      {role === 'spellbearer' ? (
+      {hardware ? (
         <p className="ouam-hw" aria-live="polite">
           Dial slot {hw.dialSlot + 1}. {hw.colorToken ? `Token: ${hw.colorToken}.` : 'No token in the well.'}{' '}
           {hw.armed ? 'Glove armed.' : 'Glove is quiet.'}

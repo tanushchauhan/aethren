@@ -7,7 +7,7 @@
   --color-ember: #e85d04;
   --color-frost: #4cc9f0;
   --color-bloom: #80b918;
-  --font-story: Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-story: 'VT323', monospace;
 }
 
 :root {
@@ -28,6 +28,12 @@ body {
   margin: 0;
   color: var(--ink);
   background-color: var(--parchment);
-  background-image: radial-gradient(circle at top, #f8efd8 0%, var(--parchment) 42%, #e4d0a4 100%);
-  font-family: var(--font-story);
+  background-image: none;
+  font-family: 'VT323', monospace;
 }
+
+@font-face { font-family: 'VT323'; src: url('/fonts/VT323-Regular.ttf') format('truetype'); font-display: swap; }
+@font-face { font-family: 'Silkscreen'; src: url('/fonts/Silkscreen-Regular.ttf') format('truetype'); font-display: swap; }
+:root { --font-story: 'VT323', monospace; --font-sans: 'VT323', monospace; }
+body { background: #101c22; font-family: 'VT323', monospace; }
+button, input, textarea, select { font-family: inherit; }

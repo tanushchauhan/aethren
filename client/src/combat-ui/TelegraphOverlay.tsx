@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type RefObject } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { getServerNow } from '../net/clock';
 import { ROUND_TIMINGS, type AttackTypeP0, type PlayerPublic } from '../net/contract';
 import { useGameStore } from '../net/store';
@@ -83,7 +83,6 @@ export function TelegraphOverlay() {
       frame = requestAnimationFrame(tick);
     };
     tick();
-    frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [visible, attackId, impactServerMs, windowMs]);
 

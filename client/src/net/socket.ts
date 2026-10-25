@@ -6,6 +6,7 @@ import {
   type DodgeResult,
   type GameState,
   type HardwareEvent,
+  type HardwareCommand,
   type NarratorLine,
   type PoseEvent,
   type TelegraphEvent,
@@ -15,6 +16,7 @@ import type { ClientEmitters, ServerListeners } from './socketTypes';
 export type GameSocket = Socket<ServerListeners, ClientEmitters>;
 
 export interface SocketBridge {
+  onJoined: (playerId: string) => void;
   onConnected: () => void;
   onDisconnected: (willReconnect: boolean) => void;
   onConnectError: (message: string) => void;
@@ -25,6 +27,7 @@ export interface SocketBridge {
   onDodge: (event: DodgeResult) => void;
   onCast: (event: CastEvent) => void;
   onHardware: (event: HardwareEvent) => void;
+  onHardwareCommand: (command: HardwareCommand) => void;
   onNarrator: (line: NarratorLine) => void;
   onRoomError: (message: string) => void;
 }
@@ -74,6 +77,8 @@ function bindSocket(socket: GameSocket): void {
     bridge?.onClockOffset(noteClockPong(pong));
   });
 
+  socket.on('room:joined', ({ playerId }) => bridge?.onJoined(playerId));
+
   socket.on('room:state', (state) => {
     bridge?.onRoomState(state);
   });
@@ -97,6 +102,8 @@ function bindSocket(socket: GameSocket): void {
   socket.on('hardware:event', (event) => {
     bridge?.onHardware(event);
   });
+
+  socket.on('hardware:command', command => bridge?.onHardwareCommand(command));
 
   socket.on('narrator:line', (line) => {
     bridge?.onNarrator(line);

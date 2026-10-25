@@ -3,7 +3,7 @@ import { serverUrl } from './serverUrl';
 /**
  * Narration for every combat screen.
  * Laptop A should use the Google Home Mini as its Bluetooth speaker.
- * Playing on all clients is fine for P0. This module never calls Muse or
+ * Only the Spellbearer client invokes playback; the Partner sees captions. This module never calls Muse or
  * ElevenLabs and holds no API keys — it only asks our server at /api/tts.
  */
 

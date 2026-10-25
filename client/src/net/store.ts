@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { serverUrl } from '../combat-ui/audio/serverUrl';
 import { getServerNow } from './clock';
 import type {
   CastEvent,
@@ -8,6 +9,7 @@ import type {
   GameState,
   HardwareEvent,
   NarratorLine,
+  MemoryCard,
   NormalizedLandmark,
   PlayerRole,
   PoseEvent,
@@ -24,6 +26,7 @@ import {
 } from './socket';
 
 const EVENT_HISTORY = 20;
+let lastPoseSentMs = 0;
 
 export interface GameStoreState {
   connection: ConnectionStatus;
@@ -51,11 +54,12 @@ export interface GameStoreActions {
   quickStart: (name: string, role: PlayerRole) => void;
   selectCard: (cardId: string) => void;
   lockBoss: (cardId: string) => void;
-  sendQuestPrompt: (prompt: string) => void;
+  sendQuestPrompt: (prompt: string) => Promise<void>;
   sendCast: (input: Omit<CastEvent, 'playerId'>) => void;
   sendDodge: (input: Omit<DodgeResult, 'playerId'>) => void;
   sendHardware: (event: HardwareEvent) => void;
   sendPose: (landmarks: NormalizedLandmark[], inZone: boolean) => void;
+  applyMemoryCards: (cards: MemoryCard[]) => void;
   applyRoomState: (state: GameState) => void;
   applyTelegraph: (event: TelegraphEvent) => void;
   applyNarrator: (line: NarratorLine) => void;
@@ -124,7 +128,7 @@ export const useGameStore = create<GameStore>((set, get) => {
   lastNarrator: null,
 
   connect: (url) => {
-    set({ connection: 'connecting', lastError: null });
+    set({ connection: 'connecting', mockMode: false, lastError: null });
     const socket = connectSocket(url);
     if (!socket) {
       set((state) => ({
@@ -145,6 +149,7 @@ export const useGameStore = create<GameStore>((set, get) => {
   },
 
   createRoom: (name, role) => {
+    if (!get().mockMode && !live()) { set({ lastError: 'Reconnect before continuing your online quest.' }); return; }
     if (live()) {
       set({ playerName: name, localRole: role, lastError: null });
       getSocket()?.emit('room:create', { playerName: name, role });
@@ -153,11 +158,12 @@ export const useGameStore = create<GameStore>((set, get) => {
     set({
       ...localIdentity(name, role, null),
       lastError: null,
-      gameState: buildMockGameState({ playerName: name, role, phase: 'lobby' }),
+      gameState: buildMockGameState({ playerName: name, role, phase: 'upload' }),
     });
   },
 
   joinRoom: (code, name, role) => {
+    if (!get().mockMode && !live()) { set({ lastError: 'Reconnect before continuing your online quest.' }); return; }
     const roomCode = code.trim().toUpperCase();
     if (live()) {
       set({ playerName: name, localRole: role, lastError: null });
@@ -167,11 +173,12 @@ export const useGameStore = create<GameStore>((set, get) => {
     set({
       ...localIdentity(name, role, null),
       lastError: null,
-      gameState: buildMockGameState({ playerName: name, role, roomCode, phase: 'lobby' }),
+      gameState: buildMockGameState({ playerName: name, role, roomCode, phase: 'upload' }),
     });
   },
 
   quickStart: (name, role) => {
+    if (!get().mockMode && !live()) { set({ lastError: 'Reconnect before continuing your online quest.' }); return; }
     if (live()) {
       set({ playerName: name, localRole: role, lastError: null });
       getSocket()?.emit('room:quick_start', { playerName: name, role });
@@ -190,6 +197,7 @@ export const useGameStore = create<GameStore>((set, get) => {
   },
 
   selectCard: (cardId) => {
+    if (!get().mockMode && !live()) { set({ lastError: 'Reconnect before continuing your online quest.' }); return; }
     if (live()) {
       getSocket()?.emit('opening:select_card', { cardId });
       return;
@@ -207,6 +215,7 @@ export const useGameStore = create<GameStore>((set, get) => {
   },
 
   lockBoss: (cardId) => {
+    if (!get().mockMode && !live()) { set({ lastError: 'Reconnect before continuing your online quest.' }); return; }
     if (live()) {
       getSocket()?.emit('opening:lock_boss', { cardId });
       return;
@@ -224,9 +233,15 @@ export const useGameStore = create<GameStore>((set, get) => {
     });
   },
 
-  sendQuestPrompt: (prompt) => {
-    if (live()) {
-      getSocket()?.emit('quest:prompt', { prompt });
+  sendQuestPrompt: async (prompt) => {
+    if (!get().mockMode) {
+      if (!live()) throw new Error('Reconnect to ask Muse.');
+      const response = await fetch(`${serverUrl()}/api/quest-chat`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, roomCode: get().gameState?.roomCode }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error('Quest request failed.');
       return;
     }
     const { playerName, localRole, localPlayerId, gameState } = get();
@@ -264,21 +279,31 @@ export const useGameStore = create<GameStore>((set, get) => {
   },
 
   sendHardware: (event) => {
-    set({ hardware: event });
-    if (live()) getSocket()?.emit('hardware:event', event);
+    const playerId = get().localPlayerId;
+    if (!playerId) return;
+    const ownedEvent = { ...event, playerId };
+    set({ hardware: ownedEvent });
+    if (live()) getSocket()?.emit('hardware:event', ownedEvent);
   },
 
   sendPose: (landmarks, inZone) => {
     if (!live()) return;
+    const now = performance.now();
+    if (now - lastPoseSentMs < 1000 / 15) return;
+    lastPoseSentMs = now;
     getSocket()?.emit('player:pose', { landmarks, inZone });
   },
 
+  applyMemoryCards: (cards) => {
+    const current = get().gameState;
+    if (current) set({ gameState: { ...current, memoryCards: cards, selectedMemoryIds: [], bossMemoryId: undefined } });
+  },
+
   applyRoomState: (state) => {
-    const { playerName, localRole } = get();
-    const me =
-      state.players.find((player) => player.name === playerName && (localRole === null || player.role === localRole)) ??
-      state.players.find((player) => localRole !== null && player.role === localRole) ??
-      null;
+    const { playerName, localRole, localPlayerId } = get();
+    const matchingNames = state.players.filter(player => player.name === playerName);
+    const me = state.players.find(player => player.id === localPlayerId) ??
+      (matchingNames.length === 1 ? matchingNames[0] : null);
     set({
       gameState: state,
       localPlayerId: me?.id ?? get().localPlayerId,
@@ -300,6 +325,10 @@ export const useGameStore = create<GameStore>((set, get) => {
   },
 
   setPhase: (phase, combatPhase) => {
+    if (!get().mockMode) {
+      if (live()) getSocket()?.emit('room:advance', { phase });
+      return;
+    }
     const { playerName, localRole, localPlayerId, gameState } = get();
     const role = localRole ?? 'spellbearer';
     const current = ensureMockBase(gameState, playerName, role);
@@ -321,6 +350,7 @@ export const useGameStore = create<GameStore>((set, get) => {
     set({
       ...localIdentity(name, role, localPlayerId),
       latestTelegraph: null,
+      hardware: null, lastCasts: [], lastDodges: [], teammatePoses: {}, lastNarrator: null,
       gameState: {
         ...current,
         phase: 'lobby',
@@ -336,19 +366,18 @@ export const useGameStore = create<GameStore>((set, get) => {
 });
 
 registerSocketBridge({
+  onJoined: (playerId) => useGameStore.setState({ localPlayerId: playerId, localRole: 'spellbearer' }),
   onConnected: () => {
     useGameStore.setState({ connection: 'connected', mockMode: false, lastError: null });
   },
   onDisconnected: (willReconnect) => {
     useGameStore.setState({
       connection: willReconnect ? 'connecting' : 'disconnected',
-      mockMode: true,
     });
   },
   onConnectError: (message) => {
     useGameStore.setState({
       connection: 'connecting',
-      mockMode: true,
       lastError: message,
     });
   },
@@ -379,7 +408,12 @@ registerSocketBridge({
     }));
   },
   onHardware: (event) => {
-    useGameStore.setState({ hardware: event });
+    const localId = useGameStore.getState().localPlayerId;
+    if (localId && event.playerId === localId) useGameStore.setState({ hardware: event });
+  },
+  onHardwareCommand: (command) => {
+    const localId = useGameStore.getState().localPlayerId;
+    if (localId && (!command.playerId || command.playerId === localId)) window.dispatchEvent(new CustomEvent('ouam:hardware-command', { detail: command }));
   },
   onNarrator: (line) => {
     useGameStore.getState().applyNarrator(line);
