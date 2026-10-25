@@ -14,11 +14,6 @@ interface WolfTutorialState {
   /** True while the wolf attack is suspended mid-lunge for the parry lesson. */
   attackFrozen: boolean;
   startTurnTutorial: (encounterId: string, turnNumber: number) => void;
-  /**
-   * False until the turn-1 glove lessons reach the cast lesson, so a stray B1 / Enter carried over from the
-   * dialogue cannot open a ritual (and the ritual lesson) before the earlier lessons have shown.
-   */
-  castUnlocked: (encounterId: string) => boolean;
   /** Triggered the very first time the player enters the spell-casting ritual stage. */
   triggerFirstRitualTutorial: () => boolean;
   notifyAction: (action: TutorialStep) => void;
@@ -66,17 +61,10 @@ export const useWolfTutorial = create<WolfTutorialState>((set, get) => {
       set({ activeStep: 'dial' });
     },
 
-    castUnlocked(encounterId) {
-      const { enabled, completed, activeStep } = get();
-      return !enabled || encounterId !== TUTORIAL_ENCOUNTER || !!completed.cast || activeStep === 'cast';
-    },
-
     triggerFirstRitualTutorial() {
       const { enabled, completed, activeStep } = get();
       if (!enabled || completed.ritual || activeStep === 'ritual') return false;
-      // Stay off the wheel-browsing lessons (dial / element / target / cast). Those are 1–4 of 6.
-      if (!completed.cast && activeStep !== 'cast') return false;
-      set({ activeStep: 'ritual' });
+      set({ completed: { ...completed, dial: true, element: true, target: true, cast: true }, activeStep: 'ritual' });
       return true;
     },
 

@@ -139,16 +139,3 @@
   .defense-banner[data-urgent='true'], .defense-flash { animation: none; }
 }
 .glove-target { filter: drop-shadow(0 0 14px #ffe5a1) drop-shadow(0 0 4px #ffe5a1); }
-
-/* Pieces the glove-labelled prompts and the ritual stage still use. */
-.wheel-prompts b { margin-right: 4px; font: 400 18px 'Pixelify Sans', monospace; color: #ffe5a1; }
-.wheel-prompts .wheel-rest-hint { padding: 2px 8px; border: 1px solid #ffd479; background: #2a2410cc; color: #fff3c4; animation: rest-hint-pulse 1.6s ease-in-out infinite; }
-.wheel-prompts .wheel-rest-hint b { color: #ffe27a; }
-@keyframes rest-hint-pulse { 0%, 100% { box-shadow: 0 0 0 #ffd47900; } 50% { box-shadow: 0 0 12px #ffd47988; } }
-.ritual-stage-heading { flex: 1; min-width: 0; }
-.ritual-last-grade[data-grade='missed'] { border-color: #ff4b3a; background: rgba(70, 14, 14, 0.88); color: #ffc2b8; }
-.ritual-command-card[data-grade='missed'] { border-color: #ff4b3a; background: rgba(70, 14, 14, 0.85); box-shadow: inset 0 0 14px #ff4b3a55; opacity: 1; }
-.ritual-card-glyph { max-width: 100%; font: 700 clamp(16px, 2vw, 22px)/1.15 'Pixelify Sans', monospace; color: #fff7d6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ritual-command-card[data-kind='pose'] .ritual-card-glyph { color: #c4f4ff; }
-.ritual-command-card[data-grade='missed'] .ritual-card-sub,
-.ritual-command-card[data-grade='missed'] .ritual-card-glyph { color: #ff9a8a; }
