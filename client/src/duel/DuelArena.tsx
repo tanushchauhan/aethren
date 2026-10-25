@@ -12,6 +12,26 @@ import './duel.css';
 /** nose, shoulders, elbows, wrists, hips: the nine points sent to the rival. */
 const PICK = [0, 11, 12, 13, 14, 15, 16, 23, 24] as const;
 const BONES: ReadonlyArray<readonly [number, number]> = [[1, 2], [1, 3], [3, 5], [2, 4], [4, 6], [1, 7], [2, 8], [7, 8]];
+const AVATARS: Record<'male' | 'female', HTMLImageElement> = { male: new Image(), female: new Image() };
+AVATARS.male.src = '/art/spellbearer-male.png';
+AVATARS.female.src = '/art/spellbearer-female.png';
+/** Where the shoulders sit in the 1024x1536 art, and how wide they are, so the figure can be fitted onto a real body. */
+const ART = { shoulderX: 520, shoulderY: 430, shoulderWidth: 320 };
+
+/** The rival, drawn as a spellbearer from the game's art and lined up with their shoulders. */
+function drawAvatar(ctx: CanvasRenderingContext2D, points: { x: number; y: number }[], w: number, h: number, avatar: 'male' | 'female') {
+  const img = AVATARS[avatar];
+  if (points.length < 3 || !img.complete || !img.naturalWidth) return;
+  const [l, r] = [points[1]!, points[2]!];
+  const widthPx = Math.max(Math.abs(l.x - r.x) * w, h * 0.08);
+  const scale = widthPx / ART.shoulderWidth;
+  const cx = ((l.x + r.x) / 2) * w, cy = ((l.y + r.y) / 2) * h;
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  ctx.globalAlpha = 0.95;
+  ctx.drawImage(img, cx - ART.shoulderX * scale, cy - ART.shoulderY * scale, img.naturalWidth * scale, img.naturalHeight * scale);
+  ctx.restore();
+}
 const mirror = (l: NormalizedLandmark) => ({ x: 1 - l.x, y: l.y });
 
 function drawBody(ctx: CanvasRenderingContext2D, points: { x: number; y: number }[], w: number, h: number, color: string, alpha: number) {
@@ -158,7 +178,7 @@ export function DuelArena() {
       if (el.width !== w || el.height !== h) { el.width = w; el.height = h; }
       ctx.clearRect(0, 0, w, h);
       const now = performance.now();
-      if (duelLive.foe) drawBody(ctx, duelLive.foe, w, h, '#ff5fa8', 0.55);
+      if (duelLive.foe) { drawAvatar(ctx, duelLive.foe, w, h, useDuel.getState().foeAvatar); drawBody(ctx, duelLive.foe, w, h, '#ff5fa8', 0.22); }
       if (duelLive.body) drawBody(ctx, duelLive.body, w, h, '#4fe3ff', 0.8);
       const state = useDuel.getState();
       for (const zone of state.outgoing) drawZone(ctx, zone, w, h, now, true);

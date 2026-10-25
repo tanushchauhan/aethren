@@ -10,13 +10,14 @@ import {
  * the spells aimed at it (so a dodge never waits on the network), then tells the caster what happened.
  */
 export type DuelStatus = 'off' | 'seeking' | 'unavailable' | 'paired' | 'countdown' | 'fighting' | 'over';
+export type Avatar = 'male' | 'female';
 export type DuelResult = 'hit' | 'dodged' | 'blocked';
 
 export interface Zone { id: number; spell: DuelSpell; x: number; y: number; startAt: number; impactAt: number }
 type Point = { x: number; y: number };
 
 type Message =
-  | { kind: 'duel-seek'; name: string }
+  | { kind: 'duel-seek'; name: string; avatar?: Avatar }
   | { kind: 'duel-ready' }
   | { kind: 'duel-pose'; p: number[] }
   | { kind: 'duel-cast'; id: number; spell: string; x: number; y: number }
@@ -28,6 +29,8 @@ interface DuelState {
   active: boolean;
   status: DuelStatus;
   foeName: string;
+  /** The rival's randomly chosen look, from the game's own spellbearer art. */
+  foeAvatar: Avatar;
   health: number;
   foeHealth: number;
   mana: number;
@@ -50,7 +53,7 @@ interface DuelState {
 }
 
 const initial = (): Omit<DuelState, 'active'> => ({
-  status: 'off', foeName: '', health: DUEL_HEALTH, foeHealth: DUEL_HEALTH, mana: DUEL_MANA, guard: GUARD_MAX, spellIndex: 0,
+  status: 'off', foeName: '', foeAvatar: 'male', health: DUEL_HEALTH, foeHealth: DUEL_HEALTH, mana: DUEL_MANA, guard: GUARD_MAX, spellIndex: 0,
   incoming: [], outgoing: [], message: '', hurtTick: 0, strikeTick: 0, winner: null,
   readyMine: false, readyFoe: false, rematchMine: false, rematchFoe: false, countdownEnd: 0,
 });
@@ -78,6 +81,7 @@ let socket: WebSocket | null = null;
 let clientId: string | null = null;
 let foeId: string | null = null;
 let myName = '';
+let myAvatar: Avatar = 'male';
 let castId = 0;
 let lastHeard = 0;
 const timers = new Set<number>();
@@ -128,8 +132,8 @@ function receive(from: string, data: Message) {
     if (state.status !== 'seeking') return;
     foeId = from; lastHeard = performance.now();
     clearTimers();
-    set({ status: 'paired', foeName: data.name || 'Your rival' });
-    send({ kind: 'duel-seek', name: myName }, from);
+    set({ status: 'paired', foeName: data.name || 'Your rival', foeAvatar: data.avatar === 'female' ? 'female' : 'male' });
+    send({ kind: 'duel-seek', name: myName, avatar: myAvatar }, from);
     return;
   }
   if (from !== foeId) return;
@@ -249,13 +253,14 @@ function maybeRematch() {
 /** Opens the duel screen and starts looking for a rival on the same glove hub. */
 export function openDuel(name: string) {
   myName = name.trim() || 'Spellbearer';
+  myAvatar = Math.random() < 0.5 ? 'male' : 'female';
   foeId = null;
   clearTimers();
   duelLive.body = null; duelLive.foe = null; duelLive.aim = null; duelLive.blockSince = 0;
   set({ ...initial(), active: true, status: 'seeking' });
   connect();
   every(SEEK_MS, () => {
-    if (socket?.readyState === WebSocket.OPEN && clientId) send({ kind: 'duel-seek', name: myName }, null);
+    if (socket?.readyState === WebSocket.OPEN && clientId) send({ kind: 'duel-seek', name: myName, avatar: myAvatar }, null);
     else { if (get().status === 'seeking') set({ status: 'unavailable' }); connect(); }
   });
 }
