@@ -1,0 +1,8 @@
+.status-effects { display: flex; align-items: flex-start; gap: 6px; margin-top: 8px; }
+.status-effects-list { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 0; }
+.status-effect-icon { display: inline-flex; position: relative; align-items: center; justify-content: center; width: 30px; height: 30px; border: 1px solid currentColor; background: #101c2aca; cursor: help; }
+.status-effect-icon svg { stroke-width: 2; }
+.status-effect-tooltip { position: absolute; bottom: calc(100% + 10px); left: 0; width: 190px; padding: 8px; color: #fff; background: #101c2af5; border: 1px solid #ffffff80; font: 13px 'Pixelify Sans', monospace; visibility: hidden; pointer-events: none; z-index: 12; }
+.status-effect-icon:hover .status-effect-tooltip, .status-effect-icon:focus .status-effect-tooltip { visibility: visible; }
+.status-effects-toggle, .status-effects-more { height: 32px; min-width: 25px; padding: 3px; border: 1px solid #ffffff50; border-radius: 0; background: #14253470; color: #fff; font: 14px 'Pixelify Sans', monospace; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.status-effects-toggle:focus-visible, .status-effects-more:focus-visible, .status-effect-icon:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }

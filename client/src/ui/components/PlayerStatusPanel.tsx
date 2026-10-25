@@ -4,12 +4,14 @@ import { buildSpell, type SpellElement, type SpellForm } from '../../combat/spel
 import { useSpellBattle, type DodgeMode } from '../../combat/spellBattle';
 import { combatants } from '../../combat/encounter';
 import { useStoryStore } from '../../net/storyStore';
+import { StatusEffects } from './StatusEffects';
 import './player-status-panel.css';
 
 export function PlayerStatusPanel() {
   const player = usePlayerState(state => state);
   const name = useStoryStore(state => state.playerName);
   const battle = useSpellBattle();
+  const [diagnostics, setDiagnostics] = useState(false);
   const [element, setElement] = useState<SpellElement>('fire');
   const [form, setForm] = useState<SpellForm>('bolt');
   const [targetId, setTargetId] = useState('left');
@@ -17,8 +19,8 @@ export function PlayerStatusPanel() {
   const targets = combatants.filter(actor => actor.side === 'enemy' && !battle.opponents[actor.id].defeated);
   const target = targets.some(actor => actor.id === targetId) ? targetId : targets[0]?.id ?? '';
   const spell = buildSpell({ element, form })!;
-  const canCast = battle.activeId === 'player' && battle.status === 'active' && !battle.pending && player.health > 0 && ['balanced', 'guarding'].includes(player.stance) && player.magicPower >= spell.cost && !!target;
-  const hints = { balanced: 'Hands centered', casting: 'Channel your spell', guarding: 'Hold your guard', staggered: 'Regain your balance' };
+  const canCast = battle.activeId === 'player' && battle.status === 'active' && !battle.pending && player.health > 0 && ['balanced', 'guarding', 'shaken'].includes(player.stance) && player.magicPower >= spell.cost && !!target;
+  const hints = { balanced: 'Hands centered', shaken: 'Balance weakened', casting: 'Channel your spell', guarding: 'Hold your guard', staggered: 'Regain your balance' };
   const resources = [
     { id: 'health', label: 'Health', current: player.health, max: player.maxHealth, icon: '/art/resources/health.png' },
     { id: 'magic', label: 'Magic Power', current: player.magicPower, max: player.maxMagicPower, icon: '/art/resources/mana.png' },
@@ -35,6 +37,7 @@ export function PlayerStatusPanel() {
           aria-valuemin={0} aria-valuemax={resource.max} aria-valuenow={resource.current}>
           <span style={{ width: `${resource.current / resource.max * 100}%` }} />
         </div>
+        {resource.id === 'health' && <StatusEffects effects={player.statuses} />}
       </div>)}
       <div className="player-stance" aria-label="Stance">
         <span className="player-stance-label">Stance</span>
@@ -42,7 +45,7 @@ export function PlayerStatusPanel() {
         <small>{player.health > 0 ? hints[player.stance] : 'Recover your health'}</small>
       </div>
     </div>
-    <div className="spell-builder" role="group" aria-label="Diagnostic spell builder">
+    {diagnostics && <div id="diagnostic-spells" className="spell-builder" role="group" aria-label="Diagnostic spell builder">
       <label>Element<select aria-label="Element" value={element} onChange={event => setElement(event.target.value as SpellElement)} disabled={!!battle.pending || battle.activeId !== 'player'}>
         <option value="fire">Fire</option><option value="frost">Frost</option><option value="storm">Storm</option>
       </select></label>
@@ -59,12 +62,15 @@ export function PlayerStatusPanel() {
         onClick={() => battle.castSpell({ element, form, targetId: target }, 'diagnostic', dodgeMode)}>
         Diagnostic attack <small>{spell.name}</small>
       </button>
-    </div>
+    </div>}
     <footer className="player-panel-footer">
       <button type="button" className="diagnostic-end-turn" disabled={!!battle.pending || battle.activeId !== 'player' || battle.status !== 'active'} onClick={() => battle.endTurn()}>End turn</button>
-      <p role="status" aria-live="polite">{!targets.length ? 'The clearing is safe.' : player.magicPower < spell.cost && !battle.pending ? 'Not enough Magic Power — refill to continue testing.' : battle.message}</p>
+      <button type="button" className="player-rest" title="Recover 45 stance and 3 Magic Power, then end your turn."
+        disabled={!!battle.pending || battle.activeId !== 'player' || battle.status !== 'active'} onClick={() => battle.rest()}>Rest</button>
+      {diagnostics && <><p role="status" aria-live="polite">{!targets.length ? 'The clearing is safe.' : player.magicPower < spell.cost && !battle.pending ? 'Not enough Magic Power — refill to continue testing.' : battle.message}</p>
       <button type="button" disabled={!!battle.pending || battle.activeId !== 'player'} onClick={() => playerStore.getState().setMagicPower(player.maxMagicPower)}>Refill magic</button>
-      <button type="button" onClick={() => { battle.reset(); playerStore.getState().reset(); }}>Reset encounter</button>
+      <button type="button" onClick={() => { battle.reset(); playerStore.getState().reset(); }}>Reset encounter</button></>}
+      <label className="diagnostics-toggle"><input type="checkbox" checked={diagnostics} onChange={event => setDiagnostics(event.target.checked)} />Enable diagnostics</label>
     </footer>
   </section>;
 }

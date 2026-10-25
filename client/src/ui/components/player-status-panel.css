@@ -26,3 +26,12 @@
 .player-status-panel button:disabled, .spell-builder select:disabled { opacity: .45; cursor: default; }
 .player-status-panel button:focus-visible, .spell-builder select:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .player-resource-track > span { transition: none; } }
+
+.player-status-effects { margin-top: 8px; color: #ffc4c9; font-size: 14px; }
+.player-stance strong[data-stance="shaken"] { border-color: #efc278; color: #ffe0a0; }
+.player-stance strong[data-stance="staggered"] { border-color: #ec8193; color: #ffc4c9; }
+
+.diagnostics-toggle { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; white-space: nowrap; font-size: 13px; color: #e6f2ff; cursor: pointer; }
+.diagnostics-toggle input { accent-color: #cbe7ff; }
+.player-panel-footer { flex-wrap: wrap; gap: 10px 18px; }
+.player-resource-grid { align-items: start; }

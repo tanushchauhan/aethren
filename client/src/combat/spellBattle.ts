@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { combatants, createEncounter, armorValue, encounterReducer, type EncounterState, type ActorState } from './encounter';
-import { playerStore, type PlayerStance } from './playerState';
+import { playerStore, stanceFromValue, type PlayerStance } from './playerState';
 import { buildSpell, type Spell, type SpellInput } from './spells';
 export type DodgeMode = 'natural' | 'hit' | 'dodge';
 export type Cast = { id: number; spell: Spell; targetId: string; dodgeMode: DodgeMode; previousStance: PlayerStance; resolved: boolean };
@@ -10,8 +10,9 @@ interface SpellBattle {
   enemyTurn: EncounterState | null;
   activeId: string;
   turnNumber: number;
-  status: 'active' | 'won';
+  status: 'active' | 'won' | 'lost';
   endTurn: () => void;
+  rest: () => void;
   beginEnemy: () => void;
   enemyStep: (type: 'play' | 'impact' | 'return' | 'finish', actionId: number) => void;
   pending: Cast | null;
@@ -37,7 +38,7 @@ export const useSpellBattle = create<SpellBattle>((set, get) => ({
     const fail = (message: string) => { set({ message }); return false; };
     if (battle.pending || battle.activeId !== 'player' || battle.status !== 'active') return false;
     if (!spell || !target || target.defeated) return fail('Choose a living opponent.');
-    if (player.health <= 0 || !['balanced', 'guarding'].includes(player.stance)) return fail('Return to a balanced or guarding stance to cast.');
+    if (player.health <= 0 || !['balanced', 'guarding', 'shaken'].includes(player.stance)) return fail('Staggered — end your turn to recover your stance.');
     if (player.magicPower < spell.cost) return fail('Not enough Magic Power. Refill it to keep testing.');
     const id = ++nextCastId;
     // Lock the action before notifying external subscribers, preventing duplicate casts.
@@ -62,8 +63,18 @@ export const useSpellBattle = create<SpellBattle>((set, get) => ({
   finishCast(id) {
     const { pending } = get();
     if (!pending || pending.id !== id || !pending.resolved) return;
-    if (playerStore.getState().stance === 'casting') playerStore.getState().setStance(pending.previousStance);
+    if (playerStore.getState().stance === 'casting') playerStore.setState({ stance: pending.previousStance === 'guarding' ? 'guarding' : stanceFromValue(playerStore.getState().stanceValue) });
     set({ pending: null, status: Object.values(get().opponents).every(actor => actor.defeated) ? 'won' : 'active' });
+  },
+  rest() {
+    const state = get(), player = playerStore.getState();
+    if (state.pending || state.enemyTurn || state.activeId !== 'player' || state.status !== 'active' || player.health <= 0) return;
+    // Advance first to lock the action against repeat clicks/subscriber requests.
+    get().endTurn();
+    if (!get().enemyTurn) return;
+    player.setStanceValue(player.stanceValue + 45);
+    player.setMagicPower(player.magicPower + 3);
+    set({ message: 'You rest, recovering stance and Magic Power.' });
   },
   endTurn() {
     const state = get();
@@ -83,10 +94,19 @@ export const useSpellBattle = create<SpellBattle>((set, get) => ({
   },
   enemyStep(type, actionId) {
     const state = get(), engine = state.enemyTurn;
-    if (!engine) return;
+    if (!engine || state.status !== 'active') return;
     const next = encounterReducer(engine, { type, actionId });
     if (next === engine) return;
+    // Consume only a newly emitted attack, including the media-failure return path.
+    if (next.lastAttack && next.lastAttack !== engine.lastAttack) {
+      playerStore.getState().receiveAttack(next.lastAttack.damage, next.lastAttack.stanceDamage);
+    }
     const activeId = next.queue[0];
+    if (activeId === 'player' && state.activeId !== 'player') playerStore.getState().startTurn();
+    if (playerStore.getState().health <= 0) {
+      set({ enemyTurn: null, status: 'lost', message: 'You have fallen. Try the encounter again.' });
+      return;
+    }
     set({ enemyTurn: activeId === 'player' ? null : next, activeId,
       turnNumber: state.turnNumber + (activeId !== state.activeId ? 1 : 0),
       opponents: Object.fromEntries(Object.entries(next.actors).filter(([id]) => id !== 'player')),
@@ -94,7 +114,7 @@ export const useSpellBattle = create<SpellBattle>((set, get) => ({
   },
   cancelCast() {
     const pending = get().pending;
-    if (pending && playerStore.getState().stance === 'casting') playerStore.getState().setStance(pending.previousStance);
+    if (pending && playerStore.getState().stance === 'casting') playerStore.setState({ stance: pending.previousStance === 'guarding' ? 'guarding' : stanceFromValue(playerStore.getState().stanceValue) });
     set({ pending: null, feedback: null });
   },
   reset() {

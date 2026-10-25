@@ -43,7 +43,7 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onCo
     const finish = () => { if (!done) { done = true; impact(); callbacks.current.onComplete(); } };
     const track = document.createElement('video');
     video.current = track;
-    track.muted = mutedRef.current; track.volume = .65; track.playsInline = true; track.preload = 'auto';
+    track.playbackRate = 1.35; track.muted = mutedRef.current; track.volume = .65; track.playsInline = true; track.preload = 'auto';
     const ctx = canvas.current?.getContext('2d', { willReadFrequently: true });
     const width = 768, height = 512;
     const visited = new Uint8Array(width * height), queue = new Int32Array(width * height);
@@ -78,7 +78,7 @@ export function WolfMoveAnimation({ move, sprite, muted, reduced, onImpact, onCo
             if (track.currentTime >= move.end) finish();
           }
           // Finite, visible-time fallback covers loading errors and stalled media.
-          if (elapsed > (move.end - move.start) * 1000 + 6000) finish();
+          if (elapsed > (move.end - move.start) / 1.35 * 1000 + 6000) finish();
         }
       }
       if (!done) raf = requestAnimationFrame(tick);
