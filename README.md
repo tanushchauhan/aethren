@@ -5,7 +5,7 @@
 <p align="center">
   <b>A pixel-art fantasy adventure you play with a homemade enchanted glove.</b><br>
   Turn the dial to pick a spell, weave it with button taps, swings and your own body,<br>
-  and fight a wolf pack and a ruined knight alone or with a friend on another laptop.
+  fight a wolf pack and a ruined knight alone or with a friend, or face that friend in a real-time duel.
 </p>
 
 <p align="center">
@@ -26,6 +26,7 @@
 - [Casting a spell](#casting-a-spell)
 - [Combat](#combat)
 - [Co-op on two screens](#co-op-on-two-screens)
+- [Duel mode (PvP)](#duel-mode-pvp)
 - [How it fits together](#how-it-fits-together)
 - [Getting started](#getting-started)
 - [Repository layout](#repository-layout)
@@ -180,6 +181,31 @@ There is no extra server: the glove hub both laptops already use relays the co-o
 
 ---
 
+## Duel mode (PvP)
+
+Pick **Duel (PvP)** on the title screen to fight another player instead of fighting beside them. Duels are **real time**, with no turns. Each player stands in front of their own webcam, and both bodies appear in the arena as glowing silhouettes.
+
+- **Aim with your hand.** The spell lands wherever your raised hand is when you cast. Its target zone glows on your rival's screen first, as a warning.
+- **Dodge by moving.** A spell only hits if its zone touches your head, shoulders or hips when it lands. Step out of the circle before it lands and it misses.
+- **Block by raising your right arm.** Your arm has to be up at least 280 ms before the impact, so a last-moment flinch doesn't count. Each block uses 40 of your 100 guard, which refills slowly. A big blast still pushes some damage through.
+
+| Spell | Cost | Damage | Warning | Zone | Damage blocked |
+| --- | --- | --- | --- | --- | --- |
+| 🔥 Ember | 18 MP | 12 | 1.4 s | small | 70% |
+| ⚡ Bolt | 30 MP | 15 | 0.85 s | smallest | 50% |
+| ❄️ Frost | 28 MP | 18 | 1.9 s | medium | 60% |
+| 🔮 Nova | 45 MP | 26 | 2.3 s | huge | 25% |
+
+A quick, small spell is hard to see coming but easy to step out of. A slow, wide one is easy to read but hard to escape.
+
+Each player has 100 health and 100 Magic Power, which refills at 14 per second. There's a short cooldown between casts.
+
+**Controls.** Turn the dial or tap B2 to change spell, and press B1 or T to cast. On a keyboard, press 1–4 to pick a spell and Space or Enter to cast. Without a camera, the mouse moves your body and aim, and Shift holds your guard.
+
+The duel finds its rival through the same glove hub as co-op, so both screens need to be connected to it. There is no host: each screen keeps track of its own health and decides whether the spells aimed at it hit, so a dodge never waits on the network. The caster's screen is then told the result. Both players calibrate by standing still with their arms down. A three-second countdown starts the fight, and both players have to agree before a rematch begins.
+
+---
+
 ## How it fits together
 
 <p align="center"><img src="docs/readme/architecture.svg" alt="Architecture: gloves send UDP to the glove hub, which bridges to the browser game over WebSocket and relays co-op; a story server serves the client and room codes" width="100%"></p>
@@ -187,7 +213,7 @@ There is no extra server: the glove hub both laptops already use relays the co-o
 | Piece | Tech | What it does |
 | --- | --- | --- |
 | **Firmware** (`firmware/enchanted_glove`) | Arduino C++ | Streams JSON sensor frames over UDP. Plays buzzer patterns without blocking. Shows status on the LCD. |
-| **Glove hub** (`firmware/glove-hub.ts`) | Node, built-ins only | Bridges UDP :4211 to WebSocket :8765. Says hello to each glove, lets one player claim each glove, and relays co-op messages. Nagle's algorithm is turned off to keep input latency low. |
+| **Glove hub** (`firmware/glove-hub.ts`) | Node, built-ins only | Bridges UDP :4211 to WebSocket :8765. Says hello to each glove, lets one player claim each glove, and relays co-op and duel messages. Nagle's algorithm is turned off to keep input latency low. |
 | **Client** (`client/`) | React 19 · Vite · zustand · motion · MediaPipe | Runs the story, spell wheel, rituals, combat stores, VFX, audio, webcam defense and the debug labs. |
 | **Server** (`server/`) | Express · Socket.IO | Serves the built client and four-letter room codes, and hosts the round-based combat engine used by the labs. |
 | **Shared** (`packages/shared`) | TypeScript | The contract types and constants the client and server both use. |
@@ -253,6 +279,7 @@ pnpm demo
 │   ├── public/audio/       Music, ambience and sound effects
 │   └── src/
 │       ├── combat/         Spells, rituals, battle store, status effects, boss AI
+│       ├── duel/           Real-time PvP duel arena and its spells
 │       ├── glove/          Glove input tracking, combat and menu controls
 │       ├── hardware/       Hub connection, glove simulator, wiring map
 │       ├── vision/         MediaPipe pose service and pose classifiers
