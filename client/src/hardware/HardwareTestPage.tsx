@@ -232,8 +232,18 @@ function GloveCard({ glove, hub }: { glove: GloveSummary; hub: GloveHub }) {
       </dl>
 
       <div className="mt-4 flex flex-wrap items-end gap-3">
-        <Chip label="D3 touch" on={!!last?.d3} count={counts.hits.d3} />
-        <Chip label="D7 touch" on={!!last?.d7} count={counts.hits.d7} />
+        {glove.touchPin === 3 || glove.touchPin === 7 ? (
+          <Chip
+            label={`D${glove.touchPin} touch`}
+            on={!!last?.[glove.touchPin === 3 ? 'd3' : 'd7']}
+            count={counts.hits[glove.touchPin === 3 ? 'd3' : 'd7']}
+          />
+        ) : (
+          <>
+            <Chip label="D3 touch" on={!!last?.d3} count={counts.hits.d3} />
+            <Chip label="D7 touch" on={!!last?.d7} count={counts.hits.d7} />
+          </>
+        )}
         <Chip label="D4 button" on={!!last?.d4} count={counts.hits.d4} />
         <Chip label="D8 button" on={!!last?.d8} count={counts.hits.d8} />
         <div className="min-w-48 flex-1">

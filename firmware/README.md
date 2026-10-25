@@ -9,13 +9,13 @@ Arduino **Uno R4 WiFi** plus a **Grove Base Shield V2** (VCC switch at **5V**). 
 3. Flash each glove with the script, one build per LCD:
 
 ```sh
-./flash.sh v4          # glove 1, Grove LCD v4: readable text, green-only backlight
-./flash.sh v2          # glove 2, Grove LCD v2: backlight colors, unreadable text
+./flash.sh v4          # glove 1, Grove LCD v4: readable text, green-only backlight, touch sensor on D7
+./flash.sh v2          # glove 2, Grove LCD v2: backlight colors, unreadable text, touch sensor on D3
 ./flash.sh v4 3        # same build with another glove id
 ./flash.sh v2 2 compile  # build without flashing
 ```
 
-Both builds are the same code. `GLOVE_ID` and `LCD_VARIANT` are compile flags (defaults at the top of the `.ino` if you flash from the Arduino IDE instead). Give every glove a different id.
+Both builds are the same code. `GLOVE_ID`, `LCD_VARIANT` and `TOUCH_PIN` (D7 for v4, D3 for v2; override with `TOUCH_PIN=3 ./flash.sh v4`) are compile flags (defaults at the top of the `.ino` if you flash from the Arduino IDE instead). Give every glove a different id.
 
 4. On the laptop, join the same hotspot, then run the hub and the client:
 
@@ -29,7 +29,7 @@ pnpm --dir firmware hub:simulate  # two fake gloves, to try the page without har
 
 | Socket | Part | Reported as |
 | --- | --- | --- |
-| D3, D7 | Grove Touch Sensor (either socket) | `d3`, `d7` (1 = touched) |
+| D3 (v2 glove) or D7 (v4 glove) | Grove Touch Sensor | `d3` / `d7` (1 = touched); the info packet's `tp` says which pin is the touch sensor |
 | D4 | Button 1 | `d4` |
 | D8 | Button 2 | `d8` |
 | D5 | Buzzer | `beep` and `ident` commands |

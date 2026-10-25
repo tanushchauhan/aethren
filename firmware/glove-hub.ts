@@ -50,6 +50,7 @@ interface Glove {
   ssid: string;
   rssi: number;
   acc: string;
+  touchPin: number | null;
   hubSeen: boolean;
   uptimeS: number;
   gloveFps: number;
@@ -76,6 +77,7 @@ function summary(g: Glove) {
     ssid: g.ssid,
     rssi: g.rssi,
     acc: g.acc,
+    touchPin: g.touchPin,
     hubSeen: g.hubSeen,
     uptimeS: g.uptimeS,
     gloveFps: g.gloveFps,
@@ -107,6 +109,7 @@ function gloveFor(id: number, ip: string): Glove {
       ssid: '',
       rssi: 0,
       acc: '',
+      touchPin: null,
       hubSeen: false,
       uptimeS: 0,
       gloveFps: 0,
@@ -174,6 +177,7 @@ function handlePacket(text: string, ip: string): void {
     g.ssid = typeof data.ssid === 'string' ? data.ssid : g.ssid;
     g.rssi = num(data.rssi, g.rssi);
     g.acc = typeof data.acc === 'string' ? data.acc : g.acc;
+    g.touchPin = typeof data.tp === 'number' ? data.tp : g.touchPin;
     g.hubSeen = data.hub === 1;
     g.uptimeS = num(data.up);
     g.gloveFps = num(data.fps);
@@ -334,8 +338,8 @@ if (simulate) {
       ax: Math.round(Math.sin(t * 9) * 900 * swing + Math.sin(t * 2.1) * 30),
       ay: Math.round(Math.cos(t * 7) * 700 * swing + Math.cos(t * 1.3) * 30),
       az: Math.round(1000 + Math.sin(t * 5) * 400 * swing),
-      d3: Math.sin(t * 0.6) > 0.8 ? 1 : 0,
-      d7: 0,
+      d3: id === 2 && Math.sin(t * 0.6) > 0.8 ? 1 : 0,
+      d7: id === 1 && Math.sin(t * 0.6) > 0.8 ? 1 : 0,
       d4: Math.sin(t * 0.4 + 1) > 0.85 ? 1 : 0,
       d8: Math.sin(t * 0.5 + 2) > 0.85 ? 1 : 0,
       dial: Math.round(512 + Math.sin(t * 0.3) * 500),
@@ -360,7 +364,7 @@ if (simulate) {
   setInterval(() => {
     for (const [id, variant] of [[1, 4], [2, 2]] as const) {
       handlePacket(
-        JSON.stringify({ t: 'i', id, v: variant, fw: 'simulated', ip: `172.20.10.${id + 3}`, ssid: 'iPhone', rssi: -48 - id * 4, acc: 'MMA7660', hub: 1, up: Math.round((Date.now() - started) / 1000), fps: 40, i2c: [62, 76, 98] }),
+        JSON.stringify({ t: 'i', id, v: variant, fw: 'simulated', ip: `172.20.10.${id + 3}`, ssid: 'iPhone', rssi: -48 - id * 4, acc: 'MMA7660', tp: id === 1 ? 7 : 3, hub: 1, up: Math.round((Date.now() - started) / 1000), fps: 40, i2c: [62, 76, 98] }),
         `172.20.10.${id + 3}`,
       );
     }

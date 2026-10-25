@@ -16,10 +16,10 @@ interface PinInfo {
 
 const DIGITAL_INFO: Record<DigitalPin, PinInfo> = {
   d2: { socket: 'D2', role: 'Not used by the firmware', expected: false },
-  d3: { socket: 'D3', role: 'Touch sensor (either D3 or D7 works)', expected: true },
+  d3: { socket: 'D3', role: 'Touch sensor (D3 or D7, depending on the build)', expected: true },
   d4: { socket: 'D4', role: 'Button 1', expected: true },
   d6: { socket: 'D6', role: 'Not used by the firmware', expected: false },
-  d7: { socket: 'D7', role: 'Touch sensor (either D3 or D7 works)', expected: true },
+  d7: { socket: 'D7', role: 'Touch sensor (D3 or D7, depending on the build)', expected: true },
   d8: { socket: 'D8', role: 'Button 2', expected: true },
   d9: { socket: 'D8 (second signal pin)', role: 'Not used by the firmware', expected: false },
 };
@@ -68,6 +68,16 @@ function Th({ children }: { children: React.ReactNode }) {
   return <th className="px-2 py-1 text-left text-[11px] font-medium uppercase tracking-wide text-stone-500">{children}</th>;
 }
 
+/** Pin roles for one glove: the touch sensor is on D3 or D7 depending on the build. */
+function pinInfo(pin: DigitalPin, touchPin: number | null): PinInfo {
+  const base = DIGITAL_INFO[pin];
+  if (touchPin === null || (pin !== 'd3' && pin !== 'd7')) return base;
+  const isTouch = pin === `d${touchPin}`;
+  return isTouch
+    ? { ...base, role: 'Touch sensor', expected: true }
+    : { ...base, role: `Not used (this glove's touch sensor is on D${touchPin})`, expected: false };
+}
+
 function GloveWiring({ glove, hub }: { glove: GloveSummary; hub: GloveHub }) {
   const now = performance.now();
   const list = hub.samples.current.get(glove.id) ?? [];
@@ -109,7 +119,7 @@ function GloveWiring({ glove, hub }: { glove: GloveSummary; hub: GloveHub }) {
           Last input:{' '}
           {recent ? (
             <b className="text-amber-200">
-              {recent.pin.toUpperCase()} ({DIGITAL_INFO[recent.pin].role}) {ago(now, recent.at)}
+              {recent.pin.toUpperCase()} ({pinInfo(recent.pin, glove.touchPin).role}) {ago(now, recent.at)}
             </b>
           ) : (
             <span className="text-stone-500">press a button or touch a sensor</span>
@@ -142,7 +152,7 @@ function GloveWiring({ glove, hub }: { glove: GloveSummary; hub: GloveHub }) {
         </thead>
         <tbody>
           {DIGITAL_PINS.map((pin) => {
-            const info = DIGITAL_INFO[pin];
+            const info = pinInfo(pin, glove.touchPin);
             const level = last?.[pin];
             const hits = edges.hits[pin];
             const unexpectedActivity = !info.expected && (hits > 0 || level === 1);

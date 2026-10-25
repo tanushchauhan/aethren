@@ -35,6 +35,8 @@ export interface GloveSummary {
   ssid: string;
   rssi: number;
   acc: string;
+  /** Arduino pin the touch sensor is on (3 or 7); null for firmware older than wifi-diag-3. */
+  touchPin: number | null;
   hubSeen: boolean;
   uptimeS: number;
   gloveFps: number;
