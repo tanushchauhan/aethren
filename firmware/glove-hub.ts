@@ -66,6 +66,10 @@ interface Glove {
 
 const gloves = new Map<number, Glove>();
 const clients = new Set<Socket>();
+/** Which browser connection has each glove claimed. A glove can be used by one player at a time. */
+const owners = new Map<number, string>();
+const clientIds = new WeakMap<Socket, string>();
+let nextClient = 1;
 
 function summary(g: Glove) {
   const now = Date.now();
@@ -88,6 +92,7 @@ function summary(g: Glove) {
     dropped: g.dropped,
     rxRate: g.rxRate,
     conflict: now < g.conflictUntil,
+    claimedBy: owners.get(g.id) ?? null,
   };
 }
 
@@ -270,14 +275,39 @@ function decodeWs(buffer: Buffer): { opcode: number; text: string; used: number 
   return { opcode, text: payload.toString('utf8'), used: offset + maskBytes + length };
 }
 
-function handleClientMessage(text: string): void {
+function reply(socket: Socket, message: unknown): void {
+  socket.write(encodeWs(JSON.stringify(message)));
+}
+
+function handleClientMessage(socket: Socket, text: string): void {
   let message: Record<string, unknown>;
   try {
     message = JSON.parse(text) as Record<string, unknown>;
   } catch {
     return;
   }
-  if (message.type !== 'cmd' || typeof message.id !== 'number') return;
+  if (typeof message.id !== 'number') return;
+  const me = clientIds.get(socket);
+  if (message.type === 'claim') {
+    const g = gloves.get(message.id);
+    const owner = owners.get(message.id);
+    if (!g || !me) return reply(socket, { type: 'claim', id: message.id, ok: false, reason: 'unknown' });
+    if (owner && owner !== me) return reply(socket, { type: 'claim', id: message.id, ok: false, reason: 'in-use' });
+    if (Date.now() - g.lastSeen >= ONLINE_MS) return reply(socket, { type: 'claim', id: message.id, ok: false, reason: 'offline' });
+    owners.set(message.id, me);
+    reply(socket, { type: 'claim', id: message.id, ok: true });
+    broadcast({ type: 'glove', glove: summary(g) });
+    return;
+  }
+  if (message.type === 'release') {
+    if (owners.get(message.id) === me) {
+      owners.delete(message.id);
+      const g = gloves.get(message.id);
+      if (g) broadcast({ type: 'glove', glove: summary(g) });
+    }
+    return;
+  }
+  if (message.type !== 'cmd') return;
   const { type: _type, id, ...payload } = message;
   if (typeof payload.cmd === 'string') sendToGlove(id as number, payload);
 }
@@ -303,6 +333,9 @@ server.on('upgrade', (req, socket: Socket) => {
     `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`,
   );
   clients.add(socket);
+  const clientId = `c${nextClient++}`;
+  clientIds.set(socket, clientId);
+  reply(socket, { type: 'welcome', clientId });
   socket.write(encodeWs(JSON.stringify({ type: 'snapshot', gloves: [...gloves.values()].sort((a, b) => a.id - b.id).map(summary) })));
   let pending: Buffer = Buffer.alloc(0);
   socket.on('data', (chunk: Buffer) => {
@@ -311,10 +344,18 @@ server.on('upgrade', (req, socket: Socket) => {
       pending = pending.subarray(msg.used);
       if (msg.opcode === 0x8) socket.end();
       else if (msg.opcode === 0x9) socket.write(Buffer.from([0x8a, 0x00]));
-      else if (msg.opcode === 0x1) handleClientMessage(msg.text);
+      else if (msg.opcode === 0x1) handleClientMessage(socket, msg.text);
     }
   });
-  const drop = () => clients.delete(socket);
+  const drop = () => {
+    clients.delete(socket);
+    for (const [gloveId, owner] of [...owners]) {
+      if (owner !== clientId) continue;
+      owners.delete(gloveId);
+      const g = gloves.get(gloveId);
+      if (g) broadcast({ type: 'glove', glove: summary(g) });
+    }
+  };
   socket.on('close', drop);
   socket.on('error', drop);
 });

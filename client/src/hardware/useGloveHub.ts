@@ -47,6 +47,8 @@ export interface GloveSummary {
   dropped: number;
   rxRate: number;
   conflict: boolean;
+  /** Hub connection id of the player using this glove; null when it is free. */
+  claimedBy?: string | null;
 }
 
 export const DIGITAL_PINS = ['d2', 'd3', 'd4', 'd6', 'd7', 'd8', 'd9'] as const;
@@ -77,6 +79,11 @@ export interface GloveHub {
   /** Bumps about 5 times a second so cards re-read the refs. */
   tick: number;
   send: (id: number, command: Record<string, unknown>) => void;
+  /** This browser connection's id, set once the hub says welcome. Compare with `GloveSummary.claimedBy`. */
+  clientId: string | null;
+  /** Resolves true when this connection now owns the glove, false when it is in use or offline. */
+  claim: (id: number) => Promise<boolean>;
+  release: (id: number) => void;
   clear: (id?: number) => void;
 }
 
@@ -86,7 +93,9 @@ export function useGloveHub(url: string = GLOVE_HUB_URL): GloveHub {
   const [tick, setTick] = useState(0);
   const samples = useRef(new Map<number, GloveSample[]>());
   const edges = useRef(new Map<number, GloveEdgeCounts>());
+  const [clientId, setClientId] = useState<string | null>(null);
   const socket = useRef<WebSocket | null>(null);
+  const pendingClaims = useRef(new Map<number, (ok: boolean) => void>());
 
   useEffect(() => {
     let closed = false;
@@ -99,6 +108,9 @@ export function useGloveHub(url: string = GLOVE_HUB_URL): GloveHub {
       ws.onopen = () => setStatus('open');
       ws.onclose = () => {
         setStatus('closed');
+        setClientId(null);
+        for (const settle of pendingClaims.current.values()) settle(false);
+        pendingClaims.current.clear();
         if (!closed) retry = window.setTimeout(open, 2000);
       };
       ws.onerror = () => ws.close();
@@ -109,7 +121,12 @@ export function useGloveHub(url: string = GLOVE_HUB_URL): GloveHub {
         } catch {
           return;
         }
-        if (message.type === 'snapshot' && Array.isArray(message.gloves)) {
+        if (message.type === 'welcome' && typeof message.clientId === 'string') {
+          setClientId(message.clientId);
+        } else if (message.type === 'claim' && typeof message.id === 'number') {
+          pendingClaims.current.get(message.id)?.(message.ok === true);
+          pendingClaims.current.delete(message.id);
+        } else if (message.type === 'snapshot' && Array.isArray(message.gloves)) {
           setGloves([...(message.gloves as GloveSummary[])].sort((x, y) => x.id - y.id));
         } else if (message.type === 'glove' && message.glove) {
           const next = message.glove as GloveSummary;
@@ -151,6 +168,19 @@ export function useGloveHub(url: string = GLOVE_HUB_URL): GloveHub {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'cmd', id, ...command }));
   }, []);
 
+  const claim = useCallback((id: number) => new Promise<boolean>((resolve) => {
+    const ws = socket.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return resolve(false);
+    pendingClaims.current.get(id)?.(false);
+    pendingClaims.current.set(id, resolve);
+    ws.send(JSON.stringify({ type: 'claim', id }));
+  }), []);
+
+  const release = useCallback((id: number) => {
+    const ws = socket.current;
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'release', id }));
+  }, []);
+
   const clear = useCallback((id?: number) => {
     if (id === undefined) {
       samples.current.clear();
@@ -161,5 +191,5 @@ export function useGloveHub(url: string = GLOVE_HUB_URL): GloveHub {
     }
   }, []);
 
-  return { status, gloves, samples, edges, tick, send, clear };
+  return { status, gloves, samples, edges, tick, send, clientId, claim, release, clear };
 }
