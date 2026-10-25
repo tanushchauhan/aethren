@@ -1,23 +1,28 @@
 /**
- * Enchanted Glove serial bridge.
+ * Enchanted Glove bridge.
  *
- * Rebroadcasts newline-delimited GloveSensorFrame JSON from the Arduino Uno R4
- * WiFi (USB-C, 115200 baud) to ws://127.0.0.1:8765 so a browser without
- * Web Serial can still play Laptop A. Client text messages are GloveCommand
- * lines and are written back to the board.
+ * Rebroadcasts GloveSensorFrame JSON from the Arduino Uno R4 WiFi to
+ * ws://127.0.0.1:8765 so a browser without Web Serial, or a glove on Wi-Fi,
+ * can still play Laptop A. Client text messages are GloveCommand lines and
+ * are written back to the board.
  *
- * If no /dev/ttyACM* or /dev/cu.usbmodem* port is present, or --simulate is
- * passed, the bridge emits a 50 Hz simulated glove instead.
+ * Links (one per run):
+ *   - USB serial (/dev/ttyACM*, /dev/cu.usbmodem*), 115200 baud, newline JSON.
+ *   - Wi-Fi UDP: `--udp <arduino-ip>` sends {"cmd":"hello"} to <ip>:4210 and
+ *     keeps re-sending it, so the board streams frames back to this socket.
+ *     `--udp-listen` binds :4210, waits for the board's 1 Hz broadcast beacon,
+ *     then subscribes to whichever board sent it.
+ *   - Neither (no port found, or --simulate): a 50 Hz simulated glove.
  *
  *   node --experimental-strip-types firmware/serial-bridge.ts
- *   node --experimental-strip-types firmware/serial-bridge.ts --port /dev/ttyACM0
- *   node --experimental-strip-types firmware/serial-bridge.ts --simulate
+ *   node --experimental-strip-types firmware/serial-bridge.ts --port /dev/cu.usbmodem1101
  *   node --experimental-strip-types firmware/serial-bridge.ts --udp 172.20.10.4
+ *   node --experimental-strip-types firmware/serial-bridge.ts --udp-listen
+ *   node --experimental-strip-types firmware/serial-bridge.ts --simulate
  *   node --experimental-strip-types firmware/serial-bridge.ts --self-test
  *
  * The frame shape is GloveSensorFrame / GloveCommand in
- * @once-upon/shared (packages/shared/src/types.ts). `calibrate` is a firmware
- * command that is not part of the socket HardwareCommand union.
+ * @once-upon/shared (packages/shared/src/types.ts).
  */
 
 import { createHash, randomBytes } from 'node:crypto';
@@ -39,35 +44,78 @@ const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const DEFAULT_BAUD = 115200;
 const DEFAULT_WS_PORT = 8765;
 const DEFAULT_UDP_PORT = 4210;
+/** The firmware forgets a UDP peer after 6 s without a packet from it. */
 const UDP_HELLO_MS = 3000;
+const UDP_STALE_MS = 3000;
 const FRAME_MS = 20;
+const LCD_COLS = 16;
+const WIFI_SSID_MAX = 32;
+const WIFI_PASS_MAX = 63;
 
 type Swipe = GloveSensorFrame['swipe'];
 type TokenColor = GloveSensorFrame['color'];
-type HostCommand = GloveCommand | { cmd: 'calibrate' };
+type BridgeMode = 'serial' | 'simulate' | 'udp';
 
 function isBuzzPattern(value: unknown): value is BuzzPattern {
   return value === 'tick' || value === 'cast' || value === 'fizzle' || value === 'hit';
 }
 
-function parseCommand(value: unknown): HostCommand | null {
+/** Printable ASCII, at most 16 characters: exactly what the LCD can draw. */
+function lcdText(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  let out = '';
+  for (const ch of value) {
+    if (out.length >= LCD_COLS) break;
+    const code = ch.charCodeAt(0);
+    out += ch.length === 1 && code >= 32 && code <= 126 ? ch : '?';
+  }
+  return out;
+}
+
+function byte(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.round(Math.min(255, Math.max(0, value)));
+}
+
+function parseCommand(value: unknown): GloveCommand | null {
   if (!value || typeof value !== 'object') return null;
   const rec = value as Record<string, unknown>;
-  if (rec.cmd === 'calibrate') return { cmd: 'calibrate' };
   if (rec.cmd === 'buzz' && isBuzzPattern(rec.p)) return { cmd: 'buzz', p: rec.p };
   if (rec.cmd === 'servo' && typeof rec.open === 'boolean') return { cmd: 'servo', open: rec.open };
+  if (rec.cmd === 'arm' && typeof rec.open === 'boolean') return { cmd: 'arm', open: rec.open };
+  if (rec.cmd === 'hello') return { cmd: 'hello' };
+  if (rec.cmd === 'wifi') {
+    const ssid = typeof rec.ssid === 'string' ? rec.ssid.trim().slice(0, WIFI_SSID_MAX) : '';
+    if (!ssid) return { cmd: 'wifi' };
+    return { cmd: 'wifi', ssid, pass: typeof rec.pass === 'string' ? rec.pass.slice(0, WIFI_PASS_MAX) : '' };
+  }
+  if (rec.cmd === 'lcd') {
+    const command: Extract<GloveCommand, { cmd: 'lcd' }> = { cmd: 'lcd', l1: lcdText(rec.l1), l2: lcdText(rec.l2) };
+    const r = byte(rec.r);
+    const g = byte(rec.g);
+    const b = byte(rec.b);
+    if (r !== null && g !== null && b !== null) {
+      command.r = r;
+      command.g = g;
+      command.b = b;
+    }
+    if (typeof rec.ms === 'number' && Number.isFinite(rec.ms)) command.ms = Math.max(0, Math.round(rec.ms));
+    return command;
+  }
   return null;
 }
 
-function formatCommand(command: HostCommand): string {
-  if (command.cmd === 'calibrate') return '{"cmd":"calibrate"}';
-  if (command.cmd === 'buzz') return `{"cmd":"buzz","p":"${command.p}"}`;
-  return `{"cmd":"servo","open":${command.open ? 'true' : 'false'}}`;
+function formatCommand(command: GloveCommand): string {
+  return JSON.stringify(command);
 }
 
 interface Options {
   port?: string;
+  /** Arduino IP or host name for Wi-Fi UDP. */
   udpHost?: string;
+  /** Bind the glove port and wait for its broadcast beacon instead of naming an IP. */
+  udpListen: boolean;
+  udpPort: number;
   baud: number;
   wsPort: number;
   host: string;
@@ -80,7 +128,7 @@ interface Options {
 
 interface BridgeHandle {
   port: number;
-  mode: 'serial' | 'simulate' | 'udp';
+  mode: BridgeMode;
   commands: string[];
   stop: () => Promise<void>;
 }
@@ -140,10 +188,12 @@ function parseArgs(argv: string[]): Options {
       portFlag = true;
       i++;
     } else if (arg === '--udp') {
-      opts.udp = take(i, arg);
+      opts.udpHost = take(i, arg);
+      udpFlag = true;
       i++;
     } else if (arg === '--udp-listen') {
       opts.udpListen = true;
+      udpFlag = true;
     } else if (arg === '--udp-port') {
       opts.udpPort = Number(take(i, arg));
       i++;
@@ -153,44 +203,48 @@ function parseArgs(argv: string[]): Options {
     } else if (arg === '--ws-port') {
       opts.wsPort = Number(take(i, arg));
       i++;
-    }     else if (arg === '--host') {
+    } else if (arg === '--host') {
       opts.host = take(i, arg);
-      i++;
-    } else if (arg === '--udp') {
-      opts.udpHost = take(i, arg);
-      udpFlag = true;
       i++;
     } else {
       throw new Error(`Unknown argument: ${arg ?? ''}`);
     }
   }
 
-  if (!portFlag && process.env.GLOVE_PORT) opts.port = process.env.GLOVE_PORT;
-  if (!udpFlag && process.env.GLOVE_UDP_HOST) opts.udpHost = process.env.GLOVE_UDP_HOST;
+  if (!udpFlag && !portFlag && process.env.GLOVE_UDP_HOST) opts.udpHost = process.env.GLOVE_UDP_HOST;
+  const udpWanted = opts.udpHost !== undefined || opts.udpListen;
+  if (!portFlag && !udpWanted && process.env.GLOVE_PORT) opts.port = process.env.GLOVE_PORT;
   opts.simulate = simulateFlag || process.env.GLOVE_SIMULATE === '1';
 
   if (!Number.isInteger(opts.baud) || opts.baud < 1) throw new Error('Invalid --baud');
   if (!Number.isInteger(opts.wsPort) || opts.wsPort < 0 || opts.wsPort > 65535) {
     throw new Error('Invalid --ws-port');
   }
+  if (!Number.isInteger(opts.udpPort) || opts.udpPort < 1 || opts.udpPort > 65535) {
+    throw new Error('Invalid --udp-port');
+  }
+  if (portFlag && udpWanted) throw new Error('Pick one link: --port (USB serial) or --udp / --udp-listen (Wi-Fi)');
+  if (simulateFlag && udpWanted) throw new Error('--simulate cannot be combined with --udp / --udp-listen');
   return opts;
 }
 
 function printHelp(): void {
-  console.log(`Enchanted Glove serial bridge
+  console.log(`Enchanted Glove bridge (USB serial or Wi-Fi UDP -> WebSocket)
 
 Usage:
   node --experimental-strip-types firmware/serial-bridge.ts [options]
 
 Options:
   --port <path>     USB serial device (/dev/ttyACM0, /dev/cu.usbmodem...)
-  --baud <n>        Baud rate (default ${DEFAULT_BAUD}; USB-CDC ignores it)
+  --udp <ip>        Wi-Fi UDP to the Uno R4 (port ${DEFAULT_UDP_PORT}; sends hello every ${UDP_HELLO_MS / 1000}s)
+  --udp-listen      Bind :${DEFAULT_UDP_PORT}, find the glove by its broadcast beacon, then subscribe
+  --udp-port <n>    Glove UDP port (default ${DEFAULT_UDP_PORT})
+  --baud <n>        Baud rate (default ${DEFAULT_BAUD}; must match the sketch on the R4 WiFi)
   --ws-port <n>     WebSocket listen port (default ${DEFAULT_WS_PORT})
   --host <addr>     Bind address (default 127.0.0.1)
   --simulate        50 Hz simulated glove, do not open a serial port
-  --udp <ip>        Wi-Fi UDP to the Uno R4 (port ${DEFAULT_UDP_PORT}; sends hello every 3s)
   --list            Print matching serial ports and exit
-  --self-test       Check the codec, simulator, and WebSocket loopback
+  --self-test       Check the codec, simulator, WebSocket, and UDP loopback
   --quiet           Suppress the periodic status line
   --help            Show this help
 
@@ -201,7 +255,7 @@ Environment:
 
 Browser clients connect to ws://127.0.0.1:${DEFAULT_WS_PORT}.
 Each text message either way is one JSON object (a GloveSensorFrame from the
-bridge, a GloveCommand or {"cmd":"calibrate"} from the browser).
+bridge; a buzz, lcd, wifi, arm, servo, or hello GloveCommand from the browser).
 `);
 }
 
@@ -262,9 +316,12 @@ export function simulateFrame(tick: number): GloveSensorFrame {
   if (noise < 0) noise = 0;
   if (noise > 1023) noise = 1023;
   const color = COLORS[Math.floor(sec / 4) % COLORS.length] ?? 'none';
+  // D8 is clicked once to lock, then held through the charge (fist) window.
+  const btn2: 0 | 1 = (cycle >= 0.4 && cycle < 0.52) || fist ? 1 : 0;
   return {
     dial,
     btn,
+    btn2,
     fist,
     swipe,
     accel: powerFromDynamicG(dyn),
@@ -272,18 +329,28 @@ export function simulateFrame(tick: number): GloveSensorFrame {
     armed: true,
     noise,
     color,
+    d3: parry ? 1 : 0,
+    d4: btn,
+    d8: btn2,
+    rawDial: Math.round(dial * 341 + 170 + 40 * Math.sin(sec * 2)),
   };
 }
 
+/** Same key order as the firmware's publishFrame(). The pin fields are optional. */
 export function formatFrame(frame: GloveSensorFrame): string {
   const accel = Math.min(1.5, Math.max(1, frame.accel)).toFixed(2);
   const fist = frame.fist ? 'true' : 'false';
   const parry = frame.parry ? 'true' : 'false';
   const armed = frame.armed ? 'true' : 'false';
+  const btn2 = frame.btn2 === undefined ? '' : `"btn2":${frame.btn2},`;
+  const pins = (['d3', 'd4', 'd8', 'rawDial'] as const)
+    .filter((key) => frame[key] !== undefined)
+    .map((key) => `,"${key}":${frame[key] ?? 0}`)
+    .join('');
   return (
-    `{"dial":${frame.dial},"btn":${frame.btn},"fist":${fist},` +
+    `{"dial":${frame.dial},"btn":${frame.btn},${btn2}"fist":${fist},` +
     `"swipe":"${frame.swipe}","accel":${accel},"parry":${parry},` +
-    `"armed":${armed},"noise":${frame.noise},"color":"${frame.color}"}`
+    `"armed":${armed},"noise":${frame.noise},"color":"${frame.color}"${pins}}`
   );
 }
 
@@ -411,15 +478,19 @@ function openSerial(path: string): number {
 async function startBridge(opts: Options): Promise<BridgeHandle> {
   const commands: string[] = [];
   const clients = new Set<Socket>();
-  let mode: 'serial' | 'simulate' | 'udp' = opts.simulate
+  let mode: BridgeMode = opts.simulate
     ? 'simulate'
-    : opts.udpHost
+    : opts.udpHost || opts.udpListen
       ? 'udp'
       : opts.port
         ? 'serial'
         : 'simulate';
   let fd: number | null = null;
   let udp: UdpSocket | null = null;
+  /** Where hello and commands go. Null in --udp-listen mode until the beacon arrives. */
+  let udpPeer: string | null = opts.udpHost ?? null;
+  let lastUdpMs = 0;
+  let udpStale = false;
   let helloTimer: ReturnType<typeof setInterval> | null = null;
   let running = true;
   let frames = 0;
@@ -427,9 +498,9 @@ async function startBridge(opts: Options): Promise<BridgeHandle> {
   let statusTimer: ReturnType<typeof setInterval> | null = null;
 
   const sendUdpLine = (line: string): void => {
-    if (!udp || !opts.udpHost) return;
+    if (!udp || !udpPeer) return;
     const payload = Buffer.from(`${line}\n`);
-    udp.send(payload, DEFAULT_UDP_PORT, opts.udpHost, (err) => {
+    udp.send(payload, opts.udpPort, udpPeer, (err) => {
       if (err) log(`UDP send failed (${err.message})`, opts.quiet);
     });
   };
@@ -576,35 +647,60 @@ async function startBridge(opts: Options): Promise<BridgeHandle> {
     throw new Error('WebSocket server did not bind a TCP port');
   }
 
-  if (mode === 'udp' && opts.udpHost) {
-    const arduinoHost = opts.udpHost;
-    udp = createSocket('udp4');
-    udp.on('message', (msg: Buffer) => {
+  if (mode === 'udp') {
+    const sock = createSocket({ type: 'udp4', reuseAddr: true });
+    udp = sock;
+    sock.on('message', (msg: Buffer, rinfo) => {
+      if (!udpPeer) {
+        udpPeer = rinfo.address;
+        log(`found the glove at ${udpPeer}; subscribing`, opts.quiet);
+        sendUdpLine('{"cmd":"hello"}');
+      } else if (opts.udpListen && rinfo.address !== udpPeer) {
+        return;
+      }
+      lastUdpMs = Date.now();
+      if (udpStale) {
+        udpStale = false;
+        log(`UDP frames from ${udpPeer} resumed`, opts.quiet);
+      }
       for (const piece of msg.toString('utf8').split(/\r?\n/)) {
         const line = piece.trim();
         if (line.startsWith('{')) broadcast(line);
       }
     });
-    udp.on('error', (err) => {
+    sock.on('error', (err) => {
       log(`UDP error (${err.message})`, opts.quiet);
     });
+    const bindPort = opts.udpListen ? opts.udpPort : 0;
     await new Promise<void>((resolve, reject) => {
-      udp!.once('error', reject);
-      udp!.bind(0, () => {
-        udp!.off('error', reject);
+      sock.once('error', reject);
+      sock.bind(bindPort, () => {
+        sock.off('error', reject);
         resolve();
       });
     });
-    sendUdpLine('{"cmd":"hello"}');
-    helloTimer = setInterval(() => sendUdpLine('{"cmd":"hello"}'), UDP_HELLO_MS);
-    log(`UDP peer ${arduinoHost}:${DEFAULT_UDP_PORT} (hello every ${UDP_HELLO_MS / 1000}s)`, opts.quiet);
+    const keepAlive = (): void => {
+      if (lastUdpMs && !udpStale && Date.now() - lastUdpMs > UDP_STALE_MS) {
+        udpStale = true;
+        log(`no UDP frames from ${udpPeer ?? 'the glove'} for ${UDP_STALE_MS / 1000}s; still saying hello`, opts.quiet);
+      }
+      sendUdpLine('{"cmd":"hello"}');
+    };
+    keepAlive();
+    helloTimer = setInterval(keepAlive, UDP_HELLO_MS);
+    if (udpPeer) {
+      log(`UDP peer ${udpPeer}:${opts.udpPort} (hello every ${UDP_HELLO_MS / 1000}s)`, opts.quiet);
+    } else {
+      log(`listening on UDP :${sock.address().port} for the glove's broadcast beacon`, opts.quiet);
+    }
   } else if (mode === 'serial' && opts.port) {
     const serialPath = opts.port;
     try {
-      await configurePort(serialPath, opts.baud);
+      // The R4 WiFi's USB-C is the ESP32-S3 bridging a real UART, so the baud rate matters.
+      // macOS resets termios on the last close, so stty must run while this fd holds the port.
       fd = openSerial(serialPath);
+      await configurePort(serialPath, opts.baud);
       log(`opened ${serialPath} at ${opts.baud} baud`, opts.quiet);
-      log('the Uno R4 resets when the port opens; frames follow in about a second', opts.quiet);
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       const hint =
@@ -794,10 +890,32 @@ function testCodec(): void {
   const incomplete = decodeFrames(partial);
   assert(incomplete.events.length === 0 && incomplete.rest.length === 1, 'partial header');
 
-  const masked = decodeFrames(maskClientText('{"cmd":"calibrate"}'));
+  const masked = decodeFrames(maskClientText('{"cmd":"hello"}'));
   assert(
-    masked.events[0]?.type === 'text' && masked.events[0].text === '{"cmd":"calibrate"}',
+    masked.events[0]?.type === 'text' && masked.events[0].text === '{"cmd":"hello"}',
     'masked client frame',
+  );
+
+  assert(formatCommand(parseCommand({ cmd: 'arm', open: false })!) === '{"cmd":"arm","open":false}', 'arm command');
+  assert(
+    formatCommand(parseCommand({ cmd: 'lcd', l1: 'WARD SHATTERED!!!', l2: 'café', r: 300, g: 80, b: -1, ms: 0 })!) ===
+      '{"cmd":"lcd","l1":"WARD SHATTERED!!","l2":"caf?","r":255,"g":80,"b":0,"ms":0}',
+    'lcd command is fitted to the 16x2 screen',
+  );
+  assert(formatCommand(parseCommand({ cmd: 'lcd', l1: 'HI' })!) === '{"cmd":"lcd","l1":"HI","l2":""}', 'lcd without rgb');
+  assert(
+    formatCommand(parseCommand({ cmd: 'wifi', ssid: ' iPhone ', pass: 'pw' })!) ===
+      '{"cmd":"wifi","ssid":"iPhone","pass":"pw"}',
+    'wifi join',
+  );
+  assert(formatCommand(parseCommand({ cmd: 'wifi' })!) === '{"cmd":"wifi"}', 'wifi status');
+  assert(parseCommand({ cmd: 'calibrate' }) === null, 'calibrate is gone with the light sensor');
+  assert(parseCommand({ cmd: 'arm', open: 'yes' }) === null, 'arm needs a boolean');
+
+  const pinned = formatFrame({ ...simulateFrame(0), btn2: 1, d3: 0, d4: 1, d8: 1, rawDial: 512 });
+  assert(
+    pinned.startsWith('{"dial":0,"btn":0,"btn2":1,"fist":') && pinned.endsWith(',"d3":0,"d4":1,"d8":1,"rawDial":512}'),
+    'pin fields follow the firmware key order',
   );
 
   const ping = decodeFrames(encodeFrame(0x9, Buffer.from('zz')));
@@ -819,6 +937,23 @@ function testArgs(): void {
     threw = true;
   }
   assert(threw, 'unknown flag throws');
+
+  const udp = parseArgs(['--udp', '172.20.10.4', '--udp-port', '4211']);
+  assert(udp.udpHost === '172.20.10.4' && udp.udpPort === 4211 && !udp.udpListen, 'udp flags');
+  assert(parseArgs(['--udp-listen']).udpListen, 'udp listen flag');
+  for (const bad of [
+    ['--udp', '1.2.3.4', '--port', '/dev/ttyACM0'],
+    ['--udp-listen', '--simulate'],
+    ['--udp', '1.2.3.4', '--udp-port', '0'],
+  ]) {
+    let rejected = false;
+    try {
+      parseArgs(bad);
+    } catch {
+      rejected = true;
+    }
+    assert(rejected, `rejects ${bad.join(' ')}`);
+  }
 }
 
 function waitFor(predicate: () => boolean, timeoutMs: number, label: string): Promise<void> {
@@ -839,17 +974,118 @@ function waitFor(predicate: () => boolean, timeoutMs: number, label: string): Pr
   });
 }
 
-async function testLoopback(): Promise<void> {
-  const bridge = await startBridge({
+function testOptions(patch: Partial<Options>): Options {
+  return {
+    udpListen: false,
+    udpPort: DEFAULT_UDP_PORT,
     baud: DEFAULT_BAUD,
     wsPort: 0,
     host: '127.0.0.1',
-    simulate: true,
+    simulate: false,
     list: false,
     selfTest: false,
     help: false,
     quiet: true,
+    ...patch,
+  };
+}
+
+/** A raw WebSocket client against the bridge: collects text messages, sends masked ones. */
+async function openTestClient(port: number): Promise<{
+  texts: string[];
+  drain: () => void;
+  send: (text: string) => void;
+  close: () => void;
+}> {
+  const key = randomBytes(16).toString('base64');
+  const socket = connect(port, '127.0.0.1');
+  const received: Buffer[] = [];
+  socket.on('data', (chunk: Buffer) => received.push(Buffer.from(chunk)));
+  await new Promise<void>((resolve, reject) => {
+    socket.once('error', reject);
+    socket.once('connect', () => resolve());
   });
+  socket.write(
+    `GET / HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nUpgrade: websocket\r\n` +
+      `Connection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n\r\n`,
+  );
+  let buffered = Buffer.alloc(0);
+  let upgraded = false;
+  const texts: string[] = [];
+  const drain = (): void => {
+    if (received.length) buffered = Buffer.concat([buffered, ...received.splice(0)]);
+    if (!upgraded) {
+      const marker = buffered.indexOf('\r\n\r\n');
+      if (marker < 0) return;
+      assert(buffered.subarray(0, marker).toString('utf8').startsWith('HTTP/1.1 101'), 'switching protocols');
+      buffered = Buffer.from(buffered.subarray(marker + 4));
+      upgraded = true;
+    }
+    const decoded = decodeFrames(buffered);
+    buffered = bytesFrom(decoded.rest);
+    for (const event of decoded.events) if (event.type === 'text') texts.push(event.text);
+  };
+  await waitFor(
+    () => {
+      drain();
+      return upgraded;
+    },
+    1000,
+    'websocket upgrade',
+  );
+  return { texts, drain, send: (text) => socket.write(maskClientText(text)), close: () => socket.end() };
+}
+
+/** A fake glove on 127.0.0.1: answers hello with frames and records every command line. */
+async function testUdpLoopback(): Promise<void> {
+  const board = createSocket('udp4');
+  const boardLines: string[] = [];
+  let frameTimer: ReturnType<typeof setInterval> | null = null;
+  board.on('message', (msg, rinfo) => {
+    for (const line of msg.toString('utf8').split(/\r?\n/)) if (line.trim()) boardLines.push(line.trim());
+    if (frameTimer) return;
+    let tick = 0;
+    frameTimer = setInterval(() => {
+      board.send(Buffer.from(`${formatFrame(simulateFrame(tick++))}\n`), rinfo.port, rinfo.address);
+    }, FRAME_MS);
+  });
+  await new Promise<void>((resolve) => board.bind(0, '127.0.0.1', () => resolve()));
+  const boardPort = board.address().port;
+
+  const bridge = await startBridge(testOptions({ udpHost: '127.0.0.1', udpPort: boardPort }));
+  try {
+    assert(bridge.mode === 'udp', 'bridge runs in udp mode');
+    await waitFor(() => boardLines.includes('{"cmd":"hello"}'), 1000, 'udp hello');
+    const client = await openTestClient(bridge.port);
+    await waitFor(
+      () => {
+        client.drain();
+        return client.texts.length >= 2;
+      },
+      1000,
+      'udp frames on the websocket',
+    );
+    const frame = JSON.parse(client.texts[0] ?? '') as GloveSensorFrame;
+    assertFrame(frame);
+    assert(typeof frame.rawDial === 'number' && typeof frame.btn2 === 'number', 'pin fields survive the bridge');
+
+    client.send('{"cmd":"lcd","l1":"BRIDGE","l2":"OVER UDP","r":0,"g":200,"b":255}');
+    client.send('{"cmd":"buzz","p":"hit"}');
+    await waitFor(() => boardLines.includes('{"cmd":"buzz","p":"hit"}'), 1000, 'udp commands');
+    assert(
+      boardLines.includes('{"cmd":"lcd","l1":"BRIDGE","l2":"OVER UDP","r":0,"g":200,"b":255}'),
+      'lcd forwarded over udp',
+    );
+    client.close();
+  } finally {
+    if (frameTimer) clearInterval(frameTimer);
+    await bridge.stop();
+    await new Promise<void>((resolve) => board.close(() => resolve()));
+  }
+}
+
+async function testLoopback(): Promise<void> {
+  const bridge = await startBridge(testOptions({ simulate: true }));
   try {
     assert(bridge.mode === 'simulate', 'self-test bridge simulates');
     const key = randomBytes(16).toString('base64');
@@ -902,8 +1138,8 @@ async function testLoopback(): Promise<void> {
     socket.write(maskClientText('{"cmd":"buzz","p":"nope"}'));
     socket.write(maskClientText('{"cmd":"buzz","p":"cast"}'));
     socket.write(maskClientText('{"cmd":"servo","open":true}'));
-    socket.write(maskClientText('{"cmd":"calibrate"}'));
-    await waitFor(() => bridge.commands.includes('{"cmd":"calibrate"}'), 1000, 'commands');
+    socket.write(maskClientText('{"cmd":"wifi","ssid":"iPhone","pass":"pw"}'));
+    await waitFor(() => bridge.commands.includes('{"cmd":"wifi","ssid":"iPhone","pass":"pw"}'), 1000, 'commands');
     assert(!bridge.commands.some((line) => line.includes('nope')), 'bad pattern dropped');
     assert(bridge.commands.includes('{"cmd":"buzz","p":"cast"}'), 'buzz forwarded');
     assert(bridge.commands.includes('{"cmd":"servo","open":true}'), 'servo forwarded');
@@ -940,6 +1176,7 @@ async function runSelfTest(): Promise<void> {
   testCodec();
   testSimulator();
   await testLoopback();
+  await testUdpLoopback();
   console.log('[glove-bridge] self-test passed');
 }
 
@@ -968,7 +1205,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!opts.simulate && !opts.udpHost && !opts.port) {
+  if (!opts.simulate && !opts.udpHost && !opts.udpListen && !opts.port) {
     const found = findPorts();
     if (found.length === 0) {
       opts.simulate = true;
