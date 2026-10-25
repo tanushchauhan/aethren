@@ -1,0 +1,340 @@
+import {
+  ARM_RAISE_HOLD_MS,
+  CALIBRATION_DURATION_MS,
+  DUCK_THRESHOLD,
+  POSE_LANDMARK,
+  POSE_LANDMARK_COUNT,
+  ZONE_WIDTH_MULTIPLIER,
+} from '@once-upon/shared';
+import type { CalibrationBaseline, NormalizedLandmark } from '@once-upon/shared';
+import { describe, expect, it } from 'vitest';
+import {
+  ARM_RAISE_CLEARANCE,
+  ArmRaiseHoldDetector,
+  SWIPE_SPEED_THRESHOLD,
+  THRUST_SPEED_THRESHOLD,
+  WristVelocityTracker,
+  checkInZone,
+  classifyDodgeAndPose,
+  computeCalibrationBaseline,
+  getZoneBounds,
+  judgeTelegraphDefense,
+} from '../poseClassifiers';
+import {
+  SYNTHETIC_BODY,
+  SYNTHETIC_GESTURE_CYCLE_MS,
+  SyntheticPuppet,
+  generateSequence,
+  interpolateSyntheticPose,
+  sampleSyntheticPose,
+} from '../syntheticPoseGenerator';
+
+function standingBaseline(): CalibrationBaseline {
+  const frames = generateSequence('standing_in_zone', CALIBRATION_DURATION_MS, 0, 30, { breathe: false });
+  const baseline = computeCalibrationBaseline(
+    frames.map((frame) => frame.landmarks),
+    CALIBRATION_DURATION_MS,
+  );
+  if (!baseline) throw new Error('standing clip did not produce a baseline');
+  return baseline;
+}
+
+function withLandmark(
+  landmarks: NormalizedLandmark[],
+  index: number,
+  next: Partial<NormalizedLandmark>,
+): NormalizedLandmark[] {
+  return landmarks.map((landmark, landmarkIndex) =>
+    landmarkIndex === index ? { ...landmark, ...next } : landmark,
+  );
+}
+
+describe('computeCalibrationBaseline', () => {
+  it('averages a 3 second standing clip into shoulder, hip, and center', () => {
+    const baseline = standingBaseline();
+    expect(baseline.shoulderY).toBeCloseTo(SYNTHETIC_BODY.shoulderY, 5);
+    expect(baseline.shoulderWidth).toBeCloseTo(SYNTHETIC_BODY.shoulderHalf * 2, 5);
+    expect(baseline.hipY).toBeCloseTo(SYNTHETIC_BODY.hipY, 5);
+    expect(baseline.centerX).toBeCloseTo(SYNTHETIC_BODY.centerX, 5);
+    expect(baseline.calibratedAt).toBe(CALIBRATION_DURATION_MS);
+  });
+
+  it('stays near the standing body when the puppet is breathing', () => {
+    const frames = generateSequence('standing_in_zone', CALIBRATION_DURATION_MS, 0, 30, { breathe: true });
+    const baseline = computeCalibrationBaseline(
+      frames.map((frame) => frame.landmarks),
+      CALIBRATION_DURATION_MS,
+    );
+    expect(baseline).not.toBeNull();
+    expect(baseline?.shoulderY).toBeCloseTo(SYNTHETIC_BODY.shoulderY, 2);
+    expect(baseline?.centerX).toBeCloseTo(SYNTHETIC_BODY.centerX, 2);
+    expect(baseline?.shoulderWidth).toBeCloseTo(SYNTHETIC_BODY.shoulderHalf * 2, 2);
+  });
+
+  it('returns null when no frame has shoulders and hips', () => {
+    expect(computeCalibrationBaseline([], 0)).toBeNull();
+    expect(computeCalibrationBaseline([[]], 10)).toBeNull();
+    const short = Array.from({ length: 5 }, () => ({ x: 0.2, y: 0.2, z: 0, visibility: 1 }));
+    expect(computeCalibrationBaseline([short], 10)).toBeNull();
+  });
+
+  it('skips broken frames and averages the rest', () => {
+    const good = sampleSyntheticPose('standing_in_zone', 0, { breathe: false });
+    const baseline = computeCalibrationBaseline([[], good, good], 42);
+    expect(baseline?.centerX).toBeCloseTo(SYNTHETIC_BODY.centerX, 5);
+    expect(baseline?.calibratedAt).toBe(42);
+  });
+});
+
+describe('zone bounds and overlap', () => {
+  it('places the horizontal zone a little wider than the shoulders', () => {
+    const baseline: CalibrationBaseline = {
+      shoulderY: 0.4,
+      shoulderWidth: 0.2,
+      hipY: 0.62,
+      centerX: 0.5,
+      calibratedAt: 1,
+    };
+    const bounds = getZoneBounds(baseline);
+    const half = (baseline.shoulderWidth * ZONE_WIDTH_MULTIPLIER) / 2;
+    expect(bounds.minX).toBeCloseTo(baseline.centerX - half, 5);
+    expect(bounds.maxX).toBeCloseTo(baseline.centerX + half, 5);
+    expect(bounds.topY).toBeLessThan(baseline.shoulderY);
+    expect(bounds.bottomY).toBeGreaterThan(baseline.hipY);
+  });
+
+  it('fills the silhouette while standing and fades as the body leaves', () => {
+    const baseline = standingBaseline();
+    const standing = sampleSyntheticPose('standing_in_zone', 0, { breathe: false });
+    const partial = sampleSyntheticPose('out_of_zone', 0, { breathe: false });
+    const left = sampleSyntheticPose('side_step_left', 0, { breathe: false });
+    const right = sampleSyntheticPose('side_step_right', 0, { breathe: false });
+
+    const standingZone = checkInZone(standing, baseline);
+    const partialZone = checkInZone(partial, baseline);
+    const leftZone = checkInZone(left, baseline);
+    const rightZone = checkInZone(right, baseline);
+
+    expect(standing).toHaveLength(POSE_LANDMARK_COUNT);
+    expect(standingZone.inZone).toBe(true);
+    expect(standingZone.overlapScore).toBeGreaterThan(0.85);
+    expect(partialZone.inZone).toBe(false);
+    expect(partialZone.overlapScore).toBeLessThan(standingZone.overlapScore);
+    expect(partialZone.overlapScore).toBeGreaterThan(leftZone.overlapScore);
+    expect(leftZone.inZone).toBe(false);
+    expect(rightZone.inZone).toBe(false);
+    expect(leftZone.overlapScore).toBeLessThan(0.2);
+    expect(rightZone.overlapScore).toBeLessThan(0.2);
+  });
+
+  it('keeps a breathing stand inside the zone', () => {
+    const baseline = standingBaseline();
+    const frames = generateSequence('standing_in_zone', 1200, 0, 30, { breathe: true });
+    for (const frame of frames) {
+      expect(checkInZone(frame.landmarks, baseline).inZone).toBe(true);
+    }
+  });
+});
+
+describe('classifyDodgeAndPose', () => {
+  const baseline = standingBaseline();
+
+  it('reads a side step only after both shoulders and both hips clear the box', () => {
+    const left = classifyDodgeAndPose(sampleSyntheticPose('side_step_left', 0, { breathe: false }), baseline);
+    const right = classifyDodgeAndPose(sampleSyntheticPose('side_step_right', 0, { breathe: false }), baseline);
+    const standing = classifyDodgeAndPose(sampleSyntheticPose('standing_in_zone', 0, { breathe: false }), baseline);
+    const partial = classifyDodgeAndPose(sampleSyntheticPose('out_of_zone', 0, { breathe: false }), baseline);
+
+    expect(left.isSideStepLeft).toBe(true);
+    expect(left.isSideStepRight).toBe(false);
+    expect(right.isSideStepRight).toBe(true);
+    expect(right.isSideStepLeft).toBe(false);
+    expect(standing.isSideStepLeft).toBe(false);
+    expect(standing.isSideStepRight).toBe(false);
+    expect(partial.isSideStepLeft).toBe(false);
+    expect(partial.isSideStepRight).toBe(false);
+    expect(left.confidence).toBeGreaterThan(0.9);
+  });
+
+  it('ducks only once the shoulder midpoint drops past the threshold', () => {
+    const standing = sampleSyntheticPose('standing_in_zone', 0, { breathe: false });
+    const exact = withLandmark(
+      withLandmark(standing, POSE_LANDMARK.leftShoulder, {
+        y: baseline.shoulderY + DUCK_THRESHOLD,
+      }),
+      POSE_LANDMARK.rightShoulder,
+      { y: baseline.shoulderY + DUCK_THRESHOLD },
+    );
+    const past = withLandmark(
+      withLandmark(standing, POSE_LANDMARK.leftShoulder, {
+        y: baseline.shoulderY + DUCK_THRESHOLD + 0.01,
+      }),
+      POSE_LANDMARK.rightShoulder,
+      { y: baseline.shoulderY + DUCK_THRESHOLD + 0.01 },
+    );
+
+    expect(classifyDodgeAndPose(standing, baseline).isDucking).toBe(false);
+    expect(classifyDodgeAndPose(exact, baseline).isDucking).toBe(false);
+    expect(classifyDodgeAndPose(past, baseline).isDucking).toBe(true);
+    expect(classifyDodgeAndPose(sampleSyntheticPose('duck', 0, { breathe: false }), baseline).isDucking).toBe(true);
+  });
+
+  it('raises the right arm only when the wrist is above the nose', () => {
+    const standing = sampleSyntheticPose('standing_in_zone', 0, { breathe: false });
+    const nose = standing[POSE_LANDMARK.nose];
+    if (!nose) throw new Error('missing nose');
+    const level = withLandmark(standing, POSE_LANDMARK.rightWrist, { y: nose.y - ARM_RAISE_CLEARANCE });
+    const above = withLandmark(standing, POSE_LANDMARK.rightWrist, { y: nose.y - ARM_RAISE_CLEARANCE - 0.01 });
+
+    expect(classifyDodgeAndPose(standing, baseline).isRightArmRaised).toBe(false);
+    expect(classifyDodgeAndPose(level, baseline).isRightArmRaised).toBe(false);
+    expect(classifyDodgeAndPose(above, baseline).isRightArmRaised).toBe(true);
+    const raisedFrames = generateSequence('arm_raise', 400, 0, 30, { breathe: true });
+    for (const frame of raisedFrames) {
+      expect(classifyDodgeAndPose(frame.landmarks, baseline).isRightArmRaised).toBe(true);
+    }
+  });
+});
+
+describe('ArmRaiseHoldDetector', () => {
+  it('locks the wheel once after a 1 second hold and ignores the rest of that raise', () => {
+    const baseline = standingBaseline();
+    const detector = new ArmRaiseHoldDetector();
+    const frames = generateSequence('arm_raise', 1500, 0, 30, { breathe: true });
+    const locks: number[] = [];
+    for (const frame of frames) {
+      const pose = classifyDodgeAndPose(frame.landmarks, baseline);
+      const state = detector.update(pose.isRightArmRaised, frame.timestampMs);
+      if (frame.timestampMs < ARM_RAISE_HOLD_MS) expect(state.locked).toBe(false);
+      if (state.locked) locks.push(frame.timestampMs);
+    }
+    expect(locks).toHaveLength(1);
+    expect(locks[0]).toBeGreaterThanOrEqual(ARM_RAISE_HOLD_MS);
+    expect(locks[0]).toBeLessThan(ARM_RAISE_HOLD_MS + 40);
+  });
+
+  it('requires the arm to drop and the cooldown to finish before the next slot', () => {
+    const detector = new ArmRaiseHoldDetector();
+    expect(detector.update(true, 0).locked).toBe(false);
+    expect(detector.update(true, 1000)).toMatchObject({ locked: true, heldMs: 1000 });
+    expect(detector.update(true, 1600).locked).toBe(false);
+    expect(detector.update(false, 1700)).toMatchObject({ locked: false, counting: false });
+    expect(detector.update(true, 1800)).toMatchObject({ locked: false, counting: false, heldMs: 0 });
+    expect(detector.update(true, 1950)).toMatchObject({ counting: true, heldMs: 0 });
+    expect(detector.update(true, 2949).locked).toBe(false);
+    expect(detector.update(true, 2950).locked).toBe(true);
+  });
+
+  it('cancels a hold that drops before the second is up', () => {
+    const detector = new ArmRaiseHoldDetector();
+    detector.update(true, 0);
+    expect(detector.update(true, 400).heldMs).toBe(400);
+    detector.update(false, 500);
+    expect(detector.update(true, 800).heldMs).toBe(0);
+    expect(detector.update(true, 1799).locked).toBe(false);
+    expect(detector.update(true, 1800).locked).toBe(true);
+  });
+});
+
+describe('WristVelocityTracker', () => {
+  it('detects a left swipe, a right swipe, and a thrust with power in range', () => {
+    const cases = [
+      { preset: 'swipe_left' as const, action: 'swipe_left' as const },
+      { preset: 'swipe_right' as const, action: 'swipe_right' as const },
+      { preset: 'thrust' as const, action: 'thrust' as const },
+    ];
+
+    for (const entry of cases) {
+      const tracker = new WristVelocityTracker();
+      const frames = generateSequence(entry.preset, SYNTHETIC_GESTURE_CYCLE_MS, 0, 30, { breathe: true });
+      const hits = frames
+        .map((frame) => tracker.update(frame.landmarks, frame.timestampMs))
+        .filter((gesture) => gesture.action === entry.action);
+      expect(hits.length, entry.preset).toBeGreaterThan(0);
+      expect(hits.some((gesture) => gesture.action !== entry.action)).toBe(false);
+      for (const hit of hits) {
+        expect(hit.power).toBeGreaterThanOrEqual(1);
+        expect(hit.power).toBeLessThanOrEqual(1.5);
+        expect(hit.speed).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('does not invent a swipe or thrust from standing, ducking, or an arm raise', () => {
+    for (const preset of ['standing_in_zone', 'duck', 'arm_raise'] as const) {
+      const tracker = new WristVelocityTracker();
+      const frames = generateSequence(preset, SYNTHETIC_GESTURE_CYCLE_MS, 0, 30, { breathe: true });
+      for (const frame of frames) {
+        expect(tracker.update(frame.landmarks, frame.timestampMs).action).toBe('none');
+      }
+    }
+  });
+
+  it('keeps swipe speed above the horizontal threshold and thrust speed above the forward threshold', () => {
+    const swipe = new WristVelocityTracker();
+    const swipeFrames = generateSequence('swipe_left', SYNTHETIC_GESTURE_CYCLE_MS, 0, 30, { breathe: false });
+    const swipeHits = swipeFrames
+      .map((frame) => swipe.update(frame.landmarks, frame.timestampMs))
+      .filter((gesture) => gesture.action === 'swipe_left');
+    expect(Math.max(...swipeHits.map((gesture) => gesture.speed))).toBeGreaterThan(SWIPE_SPEED_THRESHOLD);
+
+    const thrust = new WristVelocityTracker();
+    const thrustFrames = generateSequence('thrust', SYNTHETIC_GESTURE_CYCLE_MS, 0, 30, { breathe: false });
+    const thrustHits = thrustFrames
+      .map((frame) => thrust.update(frame.landmarks, frame.timestampMs))
+      .filter((gesture) => gesture.action === 'thrust');
+    expect(Math.max(...thrustHits.map((gesture) => gesture.speed))).toBeGreaterThan(THRUST_SPEED_THRESHOLD);
+  });
+});
+
+describe('telegraph defense', () => {
+  const baseline = standingBaseline();
+  const poseOf = (preset: 'standing_in_zone' | 'side_step_left' | 'side_step_right' | 'duck') =>
+    classifyDodgeAndPose(sampleSyntheticPose(preset, 0, { breathe: false }), baseline);
+
+  it('matches each P0 telegraph to the body that answers it', () => {
+    const standing = poseOf('standing_in_zone');
+    const left = poseOf('side_step_left');
+    const right = poseOf('side_step_right');
+    const duck = poseOf('duck');
+
+    expect(judgeTelegraphDefense('low_sweep', standing).dodged).toBe(false);
+    expect(judgeTelegraphDefense('low_sweep', duck).dodged).toBe(false);
+    expect(judgeTelegraphDefense('low_sweep', left)).toMatchObject({ dodged: true, action: 'side_step_left' });
+    expect(judgeTelegraphDefense('low_sweep', right)).toMatchObject({ dodged: true, action: 'side_step_right' });
+
+    expect(judgeTelegraphDefense('high_swing', left).dodged).toBe(false);
+    expect(judgeTelegraphDefense('high_swing', duck)).toMatchObject({ dodged: true, action: 'duck' });
+
+    expect(judgeTelegraphDefense('projectile', standing).dodged).toBe(false);
+    expect(judgeTelegraphDefense('projectile', right).dodged).toBe(true);
+    expect(judgeTelegraphDefense('projectile', standing, true)).toMatchObject({ dodged: true });
+  });
+});
+
+describe('synthetic puppet continuity', () => {
+  it('interpolates shoulder height from a stand into a duck', () => {
+    const standing = sampleSyntheticPose('standing_in_zone', 1000, { breathe: false });
+    const duck = sampleSyntheticPose('duck', 1000, { breathe: false });
+    const mid = interpolateSyntheticPose('standing_in_zone', 'duck', 1000, 0.5, { breathe: false });
+    const shoulder = POSE_LANDMARK.leftShoulder;
+    const from = standing[shoulder];
+    const to = duck[shoulder];
+    const blended = mid[shoulder];
+    if (!from || !to || !blended) throw new Error('missing shoulder');
+    expect(blended.y).toBeCloseTo((from.y + to.y) / 2, 4);
+  });
+
+  it('eases the puppet onto the requested preset', () => {
+    const puppet = new SyntheticPuppet(200);
+    puppet.setPreset('duck', 0);
+    const atStart = puppet.sample(0, { breathe: false });
+    const standing = sampleSyntheticPose('standing_in_zone', 0, { breathe: false });
+    const shoulder = POSE_LANDMARK.leftShoulder;
+    expect(atStart[shoulder]?.y).toBeCloseTo(standing[shoulder]?.y ?? 0, 4);
+
+    const atEnd = puppet.sample(200, { breathe: false });
+    const duck = sampleSyntheticPose('duck', 200, { breathe: false });
+    expect(atEnd[shoulder]?.y).toBeCloseTo(duck[shoulder]?.y ?? 0, 4);
+  });
+});
