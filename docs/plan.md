@@ -3,7 +3,7 @@
 ## Current scope
 An authored fantasy visual novel with a rainy forest title, singleplayer or online room setup, a scripted rift introduction, Stay/Run choices, and a first-person wolf encounter.
 
-After the wolf encounter dialogue, the scene fades into a forest combat stage with three wolves. The stage has a local turn queue for the player and each wolf, portrait turn order, active-turn rings, health and energy bars, and battle music. Players can pass; wolves automatically use Roar, Charge and Slash, or Wait with energy costs, recovery, cooldowns, and self buffs. Each wolf moves to the foreground for its supplied action video and returns afterward. Player reactions, player damage resolution, dice, and boss progression are not implemented. See [Opponent combat](opponent-combat.md) for stats, rules, and video cues.
+After the wolf encounter dialogue, the scene fades into a forest battleground with three wolves and a yellow player HUD. Shared player state exposes Health, Magic Power, and Stance to other modules. Stance controls retaliation readiness. A diagnostic attack button records input requests without damage or resource costs. The story screen no longer runs a turn loop; glove-driven spells and attacks will be defined next. The existing opponent move engine and supplied videos remain available for later integration. See [Combat](combat.md) for player state, opponent definitions, and current scope.
 
 The main story and wolf encounter use checked-in dialogue, artwork, video, and sound; they do not depend on runtime generation, chat imports, camera tracking, or glove controls. Main’s separate debug labs retain their audio, vision, and hardware tools, and the server combat engine remains available alongside story rooms.
 

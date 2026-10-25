@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { playerStore } from '../combat/playerState';
 import { io, type Socket } from 'socket.io-client';
 
 interface StoryRoom { code: string; players: { id: string; name: string }[] }
@@ -23,12 +24,16 @@ export const useStoryStore = create<StoryStore>((set, get) => ({
     socket.on('connect', () => set({ connection: 'connected', lastError: null }));
     socket.on('disconnect', () => set({ connection: 'disconnected' }));
     socket.on('connect_error', () => set({ lastError: 'Cannot reach the story server. Retry to connect.' }));
-    socket.on('story:joined', (room: StoryRoom) => set({ room, started: true, lastError: null }));
+    socket.on('story:joined', (room: StoryRoom) => {
+      if (!get().started || get().room?.code !== room.code) playerStore.getState().reset();
+      set({ room, started: true, lastError: null });
+    });
     socket.on('story:room', (room: StoryRoom) => set({ room }));
     socket.on('story:error', ({ message }: { message: string }) => set({ lastError: message }));
   },
   createRoom(name, mode) {
     if (mode === 'singleplayer') {
+      playerStore.getState().reset();
       socket?.disconnect(); socket?.removeAllListeners(); socket = null;
       set({ playerName: name, adventureMode: mode, started: true, room: null, lastError: null, connection: 'disconnected' });
       return;

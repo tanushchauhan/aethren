@@ -1,0 +1,24 @@
+.player-status-panel { position: absolute; z-index: 5; bottom: 28px; left: 5%; right: 5%; box-sizing: border-box; padding: 32px 30px 18px; border: 2px solid #dfb63f; background: #392e0eea; color: #fff0ad; box-shadow: 0 0 0 4px #1b160bd9, 0 0 0 5px #a18032, 0 10px 30px #0006; backdrop-filter: blur(4px); font-family: 'Pixelify Sans', monospace; }
+.player-nameplate { position: absolute; left: 24px; top: -22px; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 8px 22px; margin: 0; border: 1px solid #ffe28b; background: #b68a29; color: #171307; font-size: 21px; font-weight: 500; }
+.player-resource-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 36px; }
+.player-resource-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; font-size: 21px; }
+.player-resource-heading img, .stance-icon { width: 34px; height: 34px; flex-shrink: 0; image-rendering: pixelated; }
+.stance-icon { display: grid; place-items: center; font-size: 29px; color: #f5ce59; }
+.player-resource-numbers { margin-left: auto; font-size: 22px; white-space: nowrap; }
+.player-resource-numbers small { font-size: 16px; color: #c6ac63; }
+.player-resource-track { height: 14px; padding: 2px; border: 2px solid #796025; background: #1c190f; border-radius: 10px; overflow: hidden; }
+.player-resource-track > span { display: block; height: 100%; border-radius: 6px; transition: width .2s ease; }
+.player-resource.health .player-resource-track > span { background: #da7470; }
+.player-resource.magic .player-resource-track > span { background: #8aaff0; }
+.player-resource.stance .player-resource-track > span { background: #f2ca52; }
+.player-panel-footer { display: flex; align-items: center; gap: 18px; border-top: 1px solid #b3913866; margin-top: 20px; padding-top: 14px; }
+.player-panel-footer p { margin: 0; font-size: 16px; }
+.player-retaliation { color: #ffe79a; }
+.player-retaliation.broken { color: #f5a19a; }
+.player-diagnostic-result { color: #c6ac63; margin-left: auto !important; }
+.player-diagnostic-attack { flex-shrink: 0; border: 1px solid #efca66; padding: 10px 18px; background: #dbb34c; color: #231c09; font: 18px 'Pixelify Sans', monospace; cursor: pointer; }
+.player-diagnostic-attack span { margin-left: 14px; }
+.player-diagnostic-attack:hover { background: #f3d17a; }
+.player-diagnostic-attack:focus-visible { outline: 2px solid #fff4bf; outline-offset: 4px; }
+.player-diagnostic-attack:disabled { opacity: .45; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .player-resource-track > span { transition: none; } }

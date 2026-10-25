@@ -3,7 +3,7 @@
 .wolf-combat-heading { position: absolute; top: 9%; left: 0; right: 0; text-align: center; text-shadow: 0 3px 6px #020609; pointer-events: none; }
 .wolf-combat-heading p { margin: 0 0 8px; font-size: 14px; letter-spacing: 4px; text-transform: uppercase; color: #afc0bb; }
 .wolf-combat-heading h1 { margin: 0; font-size: 32px; font-weight: 400; outline: none; }
-.wolf-formation { position: absolute; inset: 34% 12% 24%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 4%; }
+.wolf-formation { position: absolute; inset: 25% 14% 36%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 4%; }
 .wolf-combatant { position: relative; width: 100%; aspect-ratio: 3 / 2; min-width: 0; }
 .wolf-turn-ring { position: absolute; bottom: -5px; left: 9%; right: 9%; height: 13%; border: 2px solid #f17078; border-radius: 50%; background: #b0223233; box-shadow: 0 0 14px #eb3349aa, inset 0 0 12px #eb334977; transition: background .25s, border-color .25s, box-shadow .25s; }
 .wolf-combatant.is-active .wolf-turn-ring { border-color: #a0f3b1; background: #2ba76544; box-shadow: 0 0 20px #55ec8bcc, inset 0 0 14px #55ec8b99; }
