@@ -1,13 +1,13 @@
 {
   "title": "The Wood of Unfinished Roads",
-  "intro": "Once upon a time, two friends set out down a road that would not end. Their old cart groaned, the lanterns of a great stone library flickered behind them, and the trees leaned close to listen. For the wood remembers everything you ever said to each other, and tonight, it has come to collect.",
+  "intro": "Once upon a time, Maya and Dev followed a road that refused to end. Behind them, the lanterns of a great stone library guttered at three in the morning. Ahead, the trees leaned close to listen. For this wood remembers every word friends ever said to each other, and tonight it has come to collect.",
   "incantations": {
     "ember": "forty miles from anything",
     "frost": "the library is closing",
     "bloom": "i am a gardener now",
     "storm": "the car is making the noise",
-    "moon": "nobody has started",
-    "starlight": "the plant survived the week"
+    "moon": "nobody has started the essay",
+    "starlight": "never doing karaoke again"
   },
   "encounters": [
     {
@@ -18,12 +18,13 @@
       "weakness": "frost",
       "tier": 1,
       "lines": [
-        "The Steed lowers its rusted head and paws the road!",
-        "Gears grind; it rears to swing high!",
-        "It coughs a bolt of hot exhaust your way!",
-        "Forty miles from anything, and still it charges."
+        "The Steed paws the road and lowers its rusted head. It means to sweep your feet away!",
+        "Gears grind as it rears up tall. Duck, or be flattened!",
+        "It coughs a bolt of hot exhaust. Send it back where it came from!",
+        "Clank, clatter, rattle. That noise again, and forty miles from anything.",
+        "Its engine light blinks red, red, red, like a cross little eye."
       ],
-      "artPrompt": "A storybook watercolor of a rusted iron horse made from an old road-trip car, steam leaking from its joints, on a moonlit forest road, warm and whimsical"
+      "artPrompt": "A rusted iron horse built from a battered old hatchback, steam hissing from its joints and one headlight glaring, galloping down a moonlit forest road, whimsical ink-and-watercolor picture-book illustration, warm lantern light, no text"
     }
   ],
   "boss": {
@@ -35,11 +36,12 @@
     "tier": 3,
     "ward": "twin_cast",
     "lines": [
-      "Shhh. The library is closing, little ones.",
-      "Overdue! Overdue! The shelves sweep low!",
-      "She hurls a volume heavy with unwritten essays!",
-      "Not one word written, and the clock strikes three."
+      "Shhh. The library is closing, little ones, and you have not even started.",
+      "Overdue! Overdue! Her shelves come sweeping low across the floor!",
+      "She hurls a tome heavy with every essay you never wrote!",
+      "Her hourglass turns over. It is always three in the morning here.",
+      "Maya, Dev, your library cards have expired. Forever."
     ],
-    "artPrompt": "A towering storybook librarian made of bookshelves and candlelight, spectacles glowing, holding a giant hourglass at 3am, ink-and-watercolor fairy tale illustration"
+    "artPrompt": "A towering librarian made of crooked bookshelves and dripping candle wax, round spectacles glowing like moons, cradling a giant hourglass in a vast midnight library, whimsical ink-and-watercolor picture-book illustration, deep blues and candle gold, no text"
   }
 }
