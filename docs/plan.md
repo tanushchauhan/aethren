@@ -19,3 +19,7 @@ Dark teal, charcoal, muted gold, pixel fonts, translucent dialogue panels, slow 
 
 ## Recovery
 Commit `af40c2e` preserves the complete project before cleanup, including retired integrations and combat experiments. Historical implementations can be recovered from Git; they are not part of the active game.
+
+
+## Combat and glove (in progress)
+The round-based combat (telegraph, dodge, parry, team turn, Twin Cast, shared hearts), the glove controller and the debug labs are restored and being adapted to this story. See [combat-design.md](combat-design.md). Run combat at `/combat` and the labs at `/debug`.

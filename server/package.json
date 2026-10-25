@@ -3,18 +3,32 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Online presence rooms for the authored Once in a Memory story",
+  "description": "Authoritative game server, Muse AI pipeline and MCP Quest Master for Once Upon a Memory",
   "scripts": {
-    "dev": "tsx watch src/storyServer.ts",
-    "start": "tsx src/storyServer.ts",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:live": "tsx src/ai/live-check.ts",
+    "check:pipeline": "tsx src/ai/pipeline-check.ts",
+    "sim": "tsx src/engine/sim-two-laptops.ts",
+    "sim:boss": "tsx src/agents/boss-sim.ts",
+    "cache:demo": "tsx src/ai/cache-demo-assets.ts",
+    "bench:ai": "tsx src/ai/bench.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@once-upon/shared": "workspace:*",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
     "express": "^5.1.0",
-    "socket.io": "^4.8.1"
+    "multer": "^2.0.0",
+    "openai": "^5.0.0",
+    "socket.io": "^4.8.1",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
     "@types/multer": "^1.4.12",
     "@types/node": "^22.13.0",
