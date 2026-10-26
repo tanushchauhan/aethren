@@ -171,7 +171,8 @@ export function WolfCombatStage({ muted, onToggleSound, onContinue, onFightAlone
             {targetedId === wolf.id && !stats.defeated && status === 'active' && <span className="wolf-target-badge" role="status">◆ Targeted · <kbd>T</kbd> Switch</span>}
             {acting && enemyMove.phase === 'playing' ? <WolfMoveAnimation key={enemyMove.id} move={moves[enemyMove.moveId]} sprite={wolf.sprite} muted={muted} reduced={!!reduced}
               onProgress={progress => useDefense.getState().setProgress(enemyMove.id, progress)}
-              onImpact={() => useSpellBattle.getState().enemyStep('impact', enemyMove.id)} onComplete={() => useSpellBattle.getState().enemyStep('return', enemyMove.id)} /> : <img className={`wolf-sprite${reaction?.kind === 'hurt' ? ' wolf-hurt' : ''}`} src={wolf.sprite} alt={wolf.name} draggable={false} />}
+              onImpact={() => { if (!guest) useSpellBattle.getState().enemyStep('impact', enemyMove.id); }}
+              onComplete={() => { if (!guest) useSpellBattle.getState().enemyStep('return', enemyMove.id); }} /> : <img className={`wolf-sprite${reaction?.kind === 'hurt' ? ' wolf-hurt' : ''}`} src={wolf.sprite} alt={wolf.name} draggable={false} />}
             <WolfStatusAura statuses={stats.statuses} reduced={!!reduced} />
             {acting && <div className={`wolf-move-label${enemyMove.moveId === 'rest' ? ' is-resting' : ''}`} role="status">
               {moves[enemyMove.moveId].name}

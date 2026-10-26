@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { GLOVE_HUB_URL } from '../hardware/useGloveHub';
 import { allyStore, heroStore, HEROES, localHeroStore, playerStore, resetHeroes, type HeroId, type PlayerState } from '../combat/playerState';
 import { setBattleRemote, useSpellBattle, type BattleIntent, type Cast } from '../combat/spellBattle';
+import { useDefense } from '../combat/defense';
 import { getSpell, type SpellId } from '../combat/spells';
 
 /**
@@ -196,6 +197,14 @@ export function applySnapshot(message: StateMessage) {
   lastSeq = message.seq;
   const { pending, ...battle } = message.battle;
   const spell = pending ? getSpell(pending.spell) : null;
+  // Cue the guest's local webcam defense projection whenever the host starts a new enemy attack!
+  const prevAction = useSpellBattle.getState().enemyTurn?.action;
+  const nextAction = battle.enemyTurn?.action;
+  if (nextAction && nextAction.id !== prevAction?.id) {
+    useDefense.getState().begin(nextAction.id, nextAction.moveId);
+  } else if (!nextAction && prevAction) {
+    useDefense.getState().clear();
+  }
   useSpellBattle.setState({ ...battle, pending: pending && spell ? { ...pending, spell } : null });
   playerStore.setState(message.heroes.player);
   allyStore.setState(message.heroes.ally);
@@ -206,8 +215,10 @@ function handleIntent(intent: BattleIntent) {
   const reply = (ok: boolean, message = '') => send({ kind: 'result', ok, message });
   if (battle.status !== 'active') return reply(false, 'The fight is over.');
   if (intent.type === 'defend') {
-    if (!battle.enemyTurn) return;
-    battle.triggerDefense(intent.mode, intent.label, intent.ms, 'ally');
+    // Allow guest parry/dodge intents even if the host is between enemy actions or in windup,
+    // and pad the hold window by 900ms to absorb two-laptop video/network skew!
+    const paddedMs = (intent.ms ?? 2200) + 900;
+    battle.triggerDefense(intent.mode, intent.label, paddedMs, 'ally');
     if (intent.mode === 'parry') allyStore.getState().setStance('guarding');
     return;
   }

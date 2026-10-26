@@ -178,7 +178,19 @@ function handlePacket(text: string, ip: string): void {
     g.received++;
     g.windowCount++;
     g.rssi = frame.rssi || g.rssi;
-    broadcast({ type: 'frame', id, rx: Date.now(), f: frame });
+    // Only send each glove's 40 Hz frame stream to the browser tab that claimed it (or unclaimed browsers),
+    // cutting Wi-Fi WebSocket traffic to the secondary laptop in half!
+    const claimedOwner = owners.get(id) ?? null;
+    if (clients.size > 0) {
+      const wsFrame = encodeWs(JSON.stringify({ type: 'frame', id, rx: Date.now(), f: frame }));
+      for (const client of clients) {
+        const cid = clientIds.get(client);
+        const ownsAnother = cid ? [...owners.entries()].some(([gid, owner]) => owner === cid && gid !== id) : false;
+        if (!claimedOwner || cid === claimedOwner || !ownsAnother) {
+          client.write(wsFrame);
+        }
+      }
+    }
   } else if (data.t === 'i') {
     g.variant = num(data.v, g.variant ?? 0) || null;
     g.fw = typeof data.fw === 'string' ? data.fw : g.fw;

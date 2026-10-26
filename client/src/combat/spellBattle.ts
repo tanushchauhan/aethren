@@ -9,7 +9,7 @@ export type DodgeMode = 'natural' | 'hit' | 'dodge';
 export type DefenseMode = 'dodge' | 'parry' | 'brace';
 /** An active defensive pose or glove move, valid until `untilMs` (Date.now clock). */
 export type PlayerDefense = { mode: 'none' | DefenseMode; label: string; untilMs: number };
-export const DEFENSE_MS: Record<DefenseMode, number> = { dodge: 1200, parry: 900, brace: 1500 };
+export const DEFENSE_MS: Record<DefenseMode, number> = { dodge: 2000, parry: 2400, brace: 2400 };
 /** Damage a successful parry bounces back at the attacker. */
 export const PARRY_REFLECT_DAMAGE = 6;
 /** The Gatekeeper's health when two heroes face him. */
@@ -222,10 +222,10 @@ export const useSpellBattle = create<SpellBattle>((set, get) => {
     triggerDefense(mode, label, durationMs, heroId = localHeroStore.getState().hero) {
       const state = get();
       if (state.status !== 'active') return;
-      if (remote) { remote({ type: 'defend', mode, label, ms: durationMs }); return; }
       const ms = Number.isFinite(durationMs) && durationMs! > 0 ? durationMs! : DEFENSE_MS[mode];
       const defense = { mode, label: label ?? mode[0].toUpperCase() + mode.slice(1), untilMs: Date.now() + ms };
       set(heroId === 'ally' ? { allyDefense: defense } : { playerDefense: defense });
+      if (remote) { remote({ type: 'defend', mode, label, ms }); return; }
     },
     castSpell(input, source = 'diagnostic', dodgeMode = 'natural', options) {
       const battle = get(), caster = isHero(battle.activeId) ? battle.activeId : null, spell = getSpell(input?.spellId);

@@ -372,12 +372,23 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
     if (mode === 'parry') heroStore(me).getState().setStance('guarding');
     useWolfTutorial.getState().notifyAction('parry');
     setFlash({ id: ++flashId.current, mode });
+    // Instant local buzzer feedback so the secondary laptop's glove never waits for a host round-trip!
+    buzzRef.current('tick');
   };
+
+  // Forward the guest's webcam defense poses (dodge left/right/duck & raise-arm block) to the host!
+  const cvMatching = useDefense((s) => s.matching);
+  useEffect(() => {
+    if (!attacking || me !== 'ally') return;
+    if (cvMatching === 'dodged') defend('dodge', 'Movement Dodge', 2400);
+    else if (cvMatching === 'blocked') defend('parry', 'Arm Block', 2400);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attacking, me, cvMatching]);
 
   const swung = (power: number) => {
     const state = useSpellBattle.getState();
     if (state.status !== 'active') return;
-    if (state.enemyTurn && state.activeId !== me) defend('parry', 'Glove Ward', 1600);
+    if (state.enemyTurn && state.activeId !== me) defend('parry', 'Glove Ward', 2400);
     else if (state.activeId === me && !state.pending && performance.now() >= armedAt.current) {
       pushRitualStep('swing', power);
     }
@@ -392,7 +403,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
     else if (event.type === 'dial' && !ritualRef.current && introReadyRef.current) moveTo(dialSlot(event.value, SLOTS, slotRef.current), true);
     else if (event.type === 'down' && event.button === 'B2') {
       heldB2.current = false;
-      if (enemyTurn) defend('parry', 'Glove Ward', 1600);
+      if (enemyTurn) defend('parry', 'Glove Ward', 2400);
     } else if (event.type === 'up' && event.button === 'B2') {
       if (!heldB2.current && !enemyTurn && mine) {
         if (ritualRef.current) pushRitualStep('B2');
@@ -402,7 +413,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       heldB2.current = true;
       if (mine) rest();
     } else if (event.type === 'down' && event.button === 'T') {
-      if (enemyTurn) defend('parry', 'Glove Ward', 1600);
+      if (enemyTurn) defend('parry', 'Glove Ward', 2400);
       else if (mine) {
         if (ritualRef.current) pushRitualStep('T');
         else cycleTarget(true);
@@ -442,7 +453,7 @@ function SpellWheel({ session }: { session: GloveSession | null }) {
       moveTo((slotRef.current ?? slot) + (key === 'ArrowRight' ? 1 : -1));
       event.preventDefault();
     } else if (key === 't' || (key === 'Tab' && !event.shiftKey && !onButton)) {
-      if (enemyTurn) defend('parry', 'Glove Ward', 1600);
+      if (enemyTurn) defend('parry', 'Glove Ward', 2400);
       else if (!event.repeat && introReadyRef.current) cycleTarget();
       if (key === 'Tab') event.preventDefault();
     } else if (mine && !event.repeat && key === '1') {
