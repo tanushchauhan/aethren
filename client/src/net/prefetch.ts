@@ -3,10 +3,14 @@ import { POSE_MODEL_URL, VISION_WASM_BASE } from '../vision/poseLandmarkerServic
 
 /**
  * Downloads every art, audio, video and font file (plus the webcam model) before play, so nothing has to stream in
- * mid-fight. The files land in the browser's own cache, so a later visit or a second press is fast.
+ * mid-fight.
  *
- * Service workers and the Cache API only exist on https and localhost, so this works through the ordinary HTTP
- * cache instead; the servers mark these files cacheable (see `assetPreloadPlugin` and the story server).
+ * CRITICAL FOR ZERO-LAG SCENE TRANSITIONS ON SECONDARY LAPTOPS:
+ * 1. `fetch()` alone only populates the HTTP disk cache; when `<img src="...">` mounts for a 2.9 MB 1536×1024 PNG,
+ *    the browser still has to read and progressively decode the PNG scanlines from top to bottom unless the
+ *    `HTMLImageElement` is already decoded and pinned in the browser's in-memory decoded bitmap cache.
+ * 2. We therefore keep a persistent module-level `pinnedImages` map of pre-decoded `HTMLImageElement`s (`img.decode()`),
+ *    and re-warm it automatically on startup whenever assets were already preloaded.
  */
 export type PrefetchStatus = 'idle' | 'running' | 'done' | 'error';
 
@@ -33,9 +37,10 @@ interface PrefetchState {
 }
 
 const STORAGE_KEY = 'memory.preloaded';
-const CONCURRENCY = 4;
+const CONCURRENCY = 6;
 const RETRIES = 2;
 const REMOTE_TIMEOUT_MS = 20_000;
+const IMAGE_EXT = /\.(png|jpe?g|webp|gif|svg)$/i;
 const REMOTE_FILES = [
   `${VISION_WASM_BASE}/vision_wasm_internal.js`,
   `${VISION_WASM_BASE}/vision_wasm_internal.wasm`,
@@ -43,6 +48,13 @@ const REMOTE_FILES = [
   `${VISION_WASM_BASE}/vision_wasm_nosimd_internal.wasm`,
   POSE_MODEL_URL,
 ];
+
+/**
+ * Persistent in-memory decoded `HTMLImageElement`s.
+ * Keeping references here prevents the browser from garbage-collecting decoded bitmaps between scenes,
+ * eliminating the top-to-bottom progressive PNG scanline render on scene changes.
+ */
+const pinnedImages = new Map<string, HTMLImageElement>();
 
 let controller: AbortController | null = null;
 
@@ -56,16 +68,59 @@ async function loadManifest(signal?: AbortSignal): Promise<Manifest> {
   return response.json() as Promise<Manifest>;
 }
 
-/** Reads the whole body (so the file is fully cached) and reports bytes as they arrive. */
+/** Pins an image in memory and decodes its bitmap ahead of time so `<img src={url}>` paints in 0ms. */
+async function decodeAndPinImage(url: string): Promise<void> {
+  if (typeof Image === 'undefined') return;
+  const existing = pinnedImages.get(url);
+  if (existing?.complete && existing.naturalWidth > 0) return;
+  const img = new Image();
+  img.decoding = 'async';
+  img.src = url;
+  pinnedImages.set(url, img);
+  try {
+    if (typeof img.decode === 'function') {
+      await img.decode();
+    } else {
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error(`Image load failed: ${url}`));
+      });
+    }
+  } catch {
+    /* ignore decode errors in headless/test environments */
+  }
+}
+
+/** Warms all manifest images into `pinnedImages` in the background (e.g. after a page reload). */
+function warmImagesInBackground(files: readonly ManifestFile[]): void {
+  const imageFiles = files.filter((f) => IMAGE_EXT.test(f.path));
+  let idx = 0;
+  const worker = async () => {
+    while (idx < imageFiles.length) {
+      const file = imageFiles[idx++];
+      if (!file) break;
+      await decodeAndPinImage(file.path);
+    }
+  };
+  for (let i = 0; i < 4; i++) void worker();
+}
+
+/** Reads the whole body (so the file is fully cached), reports bytes as they arrive, and pre-decodes images in RAM. */
 async function download(url: string, signal: AbortSignal, onBytes: (n: number) => void): Promise<void> {
   const response = await fetch(url, { signal, cache: 'force-cache' });
   if (!response.ok) throw new Error(`${response.status} ${url}`);
   const reader = response.body?.getReader();
-  if (!reader) { onBytes((await response.arrayBuffer()).byteLength); return; }
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) return;
-    onBytes(value.byteLength);
+  if (!reader) {
+    onBytes((await response.arrayBuffer()).byteLength);
+  } else {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      onBytes(value.byteLength);
+    }
+  }
+  if (IMAGE_EXT.test(url) && !signal.aborted) {
+    await decodeAndPinImage(url);
   }
 }
 
@@ -76,7 +131,10 @@ export const usePrefetch = create<PrefetchState>((set, get) => ({
   async checkReady() {
     try {
       const manifest = await loadManifest();
-      set({ ready: savedVersion() === manifest.version });
+      const isReady = savedVersion() === manifest.version;
+      set({ ready: isReady });
+      // Always warm & decode scene images in the background so `<img src="...">` never paints top-to-bottom!
+      warmImagesInBackground(manifest.files);
     } catch { set({ ready: false }); }
   },
 

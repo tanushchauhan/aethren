@@ -179,7 +179,7 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
 // --- Asset preloading -----------------------------------------------------------------------------------------
 // The home menu can download every art, audio, video and font file ahead of play. This lists them (path and size)
 // so the page knows what to fetch, and lets the browser keep them between visits.
-const PRELOAD_EXTENSIONS = /\.(png|jpe?g|webp|gif|svg|mp3|wav|ogg|mp4|webm|ttf|woff2?)$/i;
+const PRELOAD_EXTENSIONS = /\.(png|jpe?g|webp|gif|svg|mp3|m4a|wav|ogg|mp4|webm|ttf|woff2?)$/i;
 
 function listPublicAssets(dir: string, base = ''): { path: string; size: number }[] {
   const found: { path: string; size: number }[] = [];
@@ -210,18 +210,31 @@ function assetPreloadPlugin(): Plugin {
       // The dev server tells browsers to re-check every public file on every request. Let big art and audio stay cached
       // (for a day) so a second visit, or the preload button, does not download them again.
       server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: Connect.NextFunction) => {
-        if (req.method !== 'GET' || !/^\/(art|audio|fonts)\//.test(req.url ?? '')) return next();
-        const keep = 'public, max-age=86400';
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+        const urlPath = (req.url ?? '').split('?')[0] ?? '';
+        if (!/^\/(art|audio|fonts)\//.test(urlPath) && !PRELOAD_EXTENSIONS.test(urlPath)) return next();
+        const keep = 'public, max-age=86400, immutable';
         const setHeader = res.setHeader.bind(res);
-        res.setHeader = ((name: string, value: unknown) => setHeader(name, name.toLowerCase() === 'cache-control' ? keep : (value as string))) as typeof res.setHeader;
+        // Set Cache-Control immediately so sirv responses that omit Cache-Control still carry it!
+        setHeader('Cache-Control', keep);
+        res.setHeader = ((name: string, value: unknown) =>
+          setHeader(name, name.toLowerCase() === 'cache-control' ? keep : (value as string))) as typeof res.setHeader;
         const writeHead = res.writeHead.bind(res);
         res.writeHead = ((status: number, ...rest: unknown[]) => {
+          let sawCacheControl = false;
           for (const arg of rest) {
             if (arg && typeof arg === 'object' && !Array.isArray(arg)) {
               const headers = arg as Record<string, unknown>;
-              for (const key of Object.keys(headers)) if (key.toLowerCase() === 'cache-control') headers[key] = keep;
+              for (const key of Object.keys(headers)) {
+                if (key.toLowerCase() === 'cache-control') {
+                  headers[key] = keep;
+                  sawCacheControl = true;
+                }
+              }
+              if (!sawCacheControl) headers['Cache-Control'] = keep;
             }
           }
+          if (!sawCacheControl) setHeader('Cache-Control', keep);
           return (writeHead as (...a: unknown[]) => ServerResponse)(status, ...rest);
         }) as typeof res.writeHead;
         next();
