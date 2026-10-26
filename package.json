@@ -8,9 +8,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter @aethren/client --filter @aethren/server dev",
+    "dev": "trap 'kill 0' INT TERM EXIT; pnpm --dir firmware hub & pnpm --parallel --filter @aethren/client --filter @aethren/server dev",
     "dev:server": "pnpm --filter @aethren/server dev",
-    "demo": "pnpm --filter @aethren/client build && pnpm --filter @aethren/server start",
+    "hub": "pnpm --dir firmware hub",
+    "demo": "pnpm --filter @aethren/client build && (trap 'kill 0' INT TERM EXIT; pnpm --dir firmware hub & pnpm --filter @aethren/server start; wait)",
+    "start": "trap 'kill 0' INT TERM EXIT; pnpm --dir firmware hub & pnpm --filter @aethren/server start; wait",
     "typecheck": "pnpm -r --if-present typecheck",
     "build": "pnpm -r --if-present build",
     "test": "pnpm -r --if-present test"
