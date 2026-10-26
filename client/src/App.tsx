@@ -34,8 +34,8 @@ function StoryApp() {
   return <GameViewport>
     <GloveGate>
       {duel ? <DuelArena /> : started ? (startAt === 'boss' ? <BossFightEntry /> : <ScriptedIntroduction />) : <><LandingScreen /><GameMusic /><DevTools /></>}
-      {started && <PauseMenu />}
-      {started && room && <aside className="room-code">Room {room.code} · {room.players.length}/2 players</aside>}
+      {(started || duel) && <PauseMenu />}
+      {started && !duel && room && <aside className="room-code">Room {room.code} · {room.players.length}/2 players</aside>}
     </GloveGate>
   </GameViewport>;
 }

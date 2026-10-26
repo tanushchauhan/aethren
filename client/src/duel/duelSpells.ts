@@ -1,39 +1,93 @@
+import {
+  SPELLS,
+  SPELLS_BY_ELEMENT,
+  type Spell,
+  type SpellElement,
+  type SpellId,
+} from '../combat/spells';
+import { BODY_PART_TARGETS, type BodyPartTarget } from '../vision/poseClassifiers';
+
+export { SPELLS, SPELLS_BY_ELEMENT, BODY_PART_TARGETS };
+export type { Spell, SpellElement, SpellId, BodyPartTarget };
+
+export const DUEL_MAX_HP = 100;
+export const DUEL_MAX_MP = 12;
+export const DUEL_START_MP = 12;
+/** Fast passive MP regeneration in the real-time speed contest (MP per second). */
+export const DUEL_MP_PER_SECOND = 1.4;
+/** MP restored when holding B2 / pressing Rest. */
+export const DUEL_REST_MP = 4;
+/** Cooldown on Rest so a player can't spam it every frame. */
+export const DUEL_REST_COOLDOWN_MS = 1400;
+/** Share of damage mitigated when parrying an incoming spell instead of dodging the body ring. */
+export const PARRY_REDUCTION = 0.7;
+
 /**
- * Duel spells. Positions are fractions of the arena (0-1 across, 0-1 down) in the mirror view of the camera,
- * and radii are fractions of the arena height. Every spell is telegraphed at the caster's hand for `telegraphMs`
- * before it lands, so a smaller zone with a shorter warning is harder to read but easier to leave.
+ * Selectable Spell Cast Speed tiers!
+ * Faster tiers speed up your ritual timing bar AND make the Osu! target circles on your rival's body shrink much faster.
  */
-export interface DuelSpell {
-  id: string;
-  name: string;
-  color: string;
-  radius: number;
-  telegraphMs: number;
-  damage: number;
-  cost: number;
-  /** Share of the damage a clean block takes away. Big blasts push through a guard. */
-  blockReduction: number;
+export type CastSpeedTier = 1 | 2 | 3;
+
+export interface CastSpeedProfile {
+  tier: CastSpeedTier;
+  label: string;
+  tag: string;
+  /** Duration of each ritual step's timing bar (ms). Faster = quicker cast! */
+  stepDurationMs: number;
+  /** Projectile visual speed multiplier (0.45 = 2.2x faster projectile flight). */
+  vfxDurationScale: number;
+  /** Duration of each Osu! circle on the defender's body (ms). */
+  osuWindupMs: number;
+  /** Stagger delay between sequential disjoint Osu! circles in the same cast (ms). */
+  osuStaggerMs: number;
+  /** Bonus damage multiplier for weaving at higher speed! */
+  damageBonus: number;
 }
 
-export const DUEL_SPELLS: readonly DuelSpell[] = [
-  { id: 'ember', name: 'Ember', color: '#ff8a4a', radius: 0.11, telegraphMs: 1400, damage: 12, cost: 18, blockReduction: 0.7 },
-  { id: 'bolt', name: 'Bolt', color: '#ffe066', radius: 0.085, telegraphMs: 850, damage: 15, cost: 30, blockReduction: 0.5 },
-  { id: 'frost', name: 'Frost', color: '#7fd8ff', radius: 0.15, telegraphMs: 1900, damage: 18, cost: 28, blockReduction: 0.6 },
-  { id: 'nova', name: 'Nova', color: '#d58aff', radius: 0.25, telegraphMs: 2300, damage: 26, cost: 45, blockReduction: 0.25 },
-];
+export const CAST_SPEED_PROFILES: Record<CastSpeedTier, CastSpeedProfile> = {
+  1: {
+    tier: 1,
+    label: '1× Swift',
+    tag: '1×',
+    stepDurationMs: 2200,
+    vfxDurationScale: 0.48,
+    osuWindupMs: 1450,
+    osuStaggerMs: 650,
+    damageBonus: 1.0,
+  },
+  2: {
+    tier: 2,
+    label: '1.5× Rapid',
+    tag: '1.5×',
+    stepDurationMs: 1450,
+    vfxDurationScale: 0.35,
+    osuWindupMs: 1050,
+    osuStaggerMs: 480,
+    damageBonus: 1.15,
+  },
+  3: {
+    tier: 3,
+    label: '2× Blitz',
+    tag: '2×',
+    stepDurationMs: 950,
+    vfxDurationScale: 0.25,
+    osuWindupMs: 760,
+    osuStaggerMs: 360,
+    damageBonus: 1.3,
+  },
+};
 
-export const spellById = (id: string) => DUEL_SPELLS.find((spell) => spell.id === id);
-
-export const DUEL_HEALTH = 100;
-export const DUEL_MANA = 100;
-export const MANA_PER_SECOND = 14;
-export const CAST_COOLDOWN_MS = 650;
-export const GUARD_MAX = 100;
-export const GUARD_COST = 40;
-export const GUARD_PER_SECOND = 7;
-/** The arm must already be up this long when a spell lands, so a late flinch does not count as a block. */
-export const BLOCK_HOLD_MS = 280;
-/** Arena width over height, to turn x distances into the same units as y. */
-export const ARENA_ASPECT = 16 / 9;
-/** Extra reach around a spell zone, so clipping the edge with a shoulder counts. */
-export const BODY_PADDING = 0.02;
+/**
+ * Picks 2 or 3 distinct random body parts for every attack so the defender gets a sequence
+ * of disjoint (staggered-timer) Osu! circles they must dodge or parry one after another!
+ */
+export function pickRandomBodyTargets(spell: Spell): BodyPartTarget[] {
+  const pool = [...BODY_PART_TARGETS];
+  const count = spell.area || spell.splash || spell.chain || spell.cost >= 4 ? 3 : 2;
+  const chosen: BodyPartTarget[] = [];
+  for (let i = 0; i < count && pool.length > 0; i++) {
+    const idx = Math.floor(Math.random() * pool.length);
+    chosen.push(pool.splice(idx, 1)[0] ?? 'head');
+  }
+  return chosen;
+}

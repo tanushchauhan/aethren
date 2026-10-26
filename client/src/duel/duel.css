@@ -1,23 +1,143 @@
-.duel { position: absolute; inset: 0; overflow: hidden; color: #f1f4ff; font-family: 'Pixelify Sans', monospace;
-  background: radial-gradient(ellipse at 50% 30%, #1d2450 0%, #0a0d22 70%); }
-.duel[data-hurt='1'] { animation: duel-hurt .3s; } .duel[data-hurt='0'] { animation: duel-hurt2 .3s; }
-@keyframes duel-hurt { 0% { box-shadow: inset 0 0 120px #ff2a2aaa; } 100% { box-shadow: inset 0 0 0 #ff2a2a00; } }
-@keyframes duel-hurt2 { 0% { box-shadow: inset 0 0 120px #ff2a2aaa; } 100% { box-shadow: inset 0 0 0 #ff2a2a00; } }
-.duel-video { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.duel-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-.duel-hud { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; justify-content: space-between; gap: 24px; pointer-events: none; }
-.duel-hud section { width: min(360px, 44%); display: grid; gap: 6px; }
-.duel-hud strong { font-weight: 400; font-size: 22px; } .duel-hud .foe { text-align: right; }
-.duel-bar { position: relative; height: 14px; background: #ffffff1f; border: 1px solid #ffffff44; }
-.duel-bar span { position: absolute; inset: 0 auto 0 0; transition: width .2s; } .duel-bar b { position: absolute; right: 4px; top: -3px; font-size: 12px; font-weight: 400; }
-.duel-bar.health span { background: #d6455f; } .duel-bar.mana span { background: #4f8ff0; } .duel-bar.guard span { background: #4fe3ff; }
-.duel-spells { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.duel-spells li { display: grid; padding: 8px 16px; border: 1px solid #ffffff44; background: #0b0f24cc; text-align: center; opacity: .6; }
-.duel-spells li[data-active='true'] { opacity: 1; border-color: var(--c); box-shadow: 0 0 14px var(--c); } .duel-spells b { font-weight: 400; font-size: 20px; color: var(--c); } .duel-spells small { font-size: 13px; }
-.duel-feed { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); margin: 0; font-size: 24px; text-shadow: 0 2px 8px #000; text-align: center; }
-.duel-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100% - 32px)); padding: 28px; text-align: center;
-  background: #0b0f24ea; border: 1px solid #b393d8; display: grid; gap: 12px; justify-items: center; }
-.duel-card h2 { margin: 0; font-weight: 400; font-size: 36px; } .duel-card p { margin: 0; color: #cfc4e4; font-size: 18px; }
-.duel-count { font-size: 96px !important; }
-.duel-card button, .duel-leave.small { border: 1px solid #fff9; background: #dceafa20; padding: 8px 22px; font: 20px 'Pixelify Sans', monospace; color: #fff; cursor: pointer; }
-.duel-leave.small { position: absolute; right: 16px; bottom: 16px; padding: 4px 14px; font-size: 16px; }
+/* DuelArena uses the exact WolfCombatStage, GloveCombatControl, CombatCamera, and PlayerStatusPanel styles,
+   with layout rules for the centered Rival Spellbearer sprite, left-docked spell wheel, cast speed selector,
+   and zero-lag SVG defense rings. */
+
+.duel-combat-stage .duel-formation {
+  grid-template-columns: minmax(220px, 380px);
+  justify-content: center;
+  inset: 16% 18% 36%;
+}
+
+/* Dock the Spell Wheel and Ritual Stage to the LEFT side so the Rival Spellbearer in the center stays completely visible! */
+.duel-combat-stage .spell-wheel {
+  left: 24px;
+  translate: 0 0;
+  transform-origin: 0% 100%;
+}
+
+.duel-combat-stage .glove-combat[data-phase='banner'] .spell-wheel,
+.duel-combat-stage .glove-combat[data-phase='ritual'] .spell-wheel {
+  transform: scale(0.1) translateY(40px);
+}
+
+.duel-combat-stage .ritual-stage-overlay {
+  left: 24px;
+  translate: 0 0;
+  width: min(500px, calc(100% - 48px));
+}
+
+.duel-rival-slot {
+  aspect-ratio: 3 / 3.4;
+  max-height: 100%;
+}
+
+.duel-rival-combatant {
+  aspect-ratio: 3 / 3.4;
+  height: 100%;
+}
+
+/* Blend the pixel-art Spellbearer sprite's black canvas cleanly into the moonlit forest clearing */
+.duel-rival-combatant .duel-rival-sprite {
+  mix-blend-mode: screen;
+  filter: brightness(1.08) contrast(1.08) drop-shadow(0 0 18px #7fd8ff55);
+}
+
+.duel-rival-bars {
+  left: 4%;
+  right: 4%;
+  bottom: calc(100% + 6px);
+  gap: 8px;
+}
+
+.duel-rival-nameplate {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 10px;
+  background: #08141be6;
+  border: 1px solid #9bafac80;
+  color: #f3e8cf;
+  font-size: 16px;
+}
+.duel-rival-nameplate strong {
+  font-weight: 400;
+  color: #ffe5a1;
+}
+.duel-rival-nameplate small {
+  font-size: 12px;
+  color: #9fe3ff;
+}
+
+.duel-weaving-tag {
+  border-color: #7fd8ffaa !important;
+  background: #0b1e2ceb !important;
+}
+
+.duel-shield-pill {
+  color: #98e8ff !important;
+  margin-left: 6px;
+}
+
+.duel-defense-overlay {
+  z-index: 16;
+  pointer-events: none;
+}
+
+/* Disable expensive per-frame SVG drop-shadow filter blurs on Osu! circles so secondary laptops stay at 60fps! */
+.duel-fast-svg,
+.duel-fast-svg .projected-impact {
+  filter: none !important;
+  will-change: transform;
+}
+
+.duel-speed-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.duel-speed-selector.modal-speed {
+  gap: 8px;
+  font-size: 18px;
+  color: #d8e5e1;
+}
+.duel-speed-btn {
+  border: 1px solid #6b8580;
+  background: #102029;
+  color: #b9c8c2;
+  font: 13px 'Pixelify Sans', monospace;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.duel-speed-selector.modal-speed .duel-speed-btn {
+  font-size: 17px;
+  padding: 6px 14px;
+}
+.duel-speed-btn[data-active='true'] {
+  border-color: #ffd479;
+  background: #2c2410;
+  color: #fff3c4;
+  box-shadow: 0 0 10px #ffd47966;
+}
+.duel-speed-btn:hover {
+  border-color: #ffe5a1;
+  color: #fff;
+}
+
+.duel-modal-overlay {
+  z-index: 50;
+  pointer-events: auto;
+}
+
+.duel-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+}
+
+.duel-countdown-number {
+  font-size: 96px !important;
+  color: #ffe5a1 !important;
+  text-shadow: 0 0 28px #ff8a3d !important;
+}

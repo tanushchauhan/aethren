@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { useCoop } from '../net/coopLink';
+import { leaveCoop, useCoop } from '../net/coopLink';
+import { leaveDuel, useDuel } from '../duel/duelGame';
+import { useStoryStore } from '../net/storyStore';
 import { usePause } from '../pause/pauseStore';
 import { useGameMode } from '../combat/gameMode';
 import { useOptionalGloveSession } from '../glove/GloveSession';
@@ -55,7 +57,12 @@ export function PauseMenu() {
         <button type="button" aria-pressed={soundOff} onClick={() => setSoundOff(!soundOff)}>
           Sound <b>{soundOff ? 'Off' : 'On'}</b>
         </button>
-        <button type="button" className="pause-leave" onClick={() => window.location.reload()}>Leave to title</button>
+        <button type="button" className="pause-leave" onClick={() => {
+          closeMenu();
+          if (useDuel.getState().active) leaveDuel();
+          leaveCoop();
+          useStoryStore.setState({ started: false, room: null });
+        }}>Leave to title</button>
       </div>
     </dialog>
   </>;
